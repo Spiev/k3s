@@ -2,6 +2,8 @@
 
 Ziel: Schrittweiser Einstieg in Kubernetes mit k3s auf einem Raspberry Pi 5 (8 GB RAM, 256 GB NVMe), ausgehend vom bestehenden Docker-Setup. Erster Migrationskanditat: FreshRSS.
 
+→ [Architektur-Übersicht](./00-architecture.md) — Gesamtbild, Netzwerkfluss, Komponenten
+
 ---
 
 ## Architekturentscheidungen (Vorab)
@@ -123,11 +125,11 @@ Traefik in k3s läuft als `IngressController`. Es gibt zwei Wege, Routing zu def
 - **Ingress** (Kubernetes-Standard, einfacher)
 - **IngressRoute** (Traefik-spezifisch, mächtiger — Empfehlung)
 
-### cert-manager für Let's Encrypt
-```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
-```
-Danach einen `ClusterIssuer` für Let's Encrypt anlegen — dann bekommt jeder Service automatisch ein TLS-Zertifikat, analog zu deinem Certbot-Setup.
+### cert-manager / TLS
+
+**Noch nicht nötig.** Während der Migration terminiert nginx (auf dem alten Raspi) TLS — Traefik bekommt nur HTTP-Anfragen intern und braucht keine eigenen Zertifikate.
+
+cert-manager kommt erst ins Spiel wenn entschieden wird, ob Traefik nginx als externen Einstiegspunkt ablöst. Das ist eine spätere Entscheidung (siehe Phase 8).
 
 ---
 
