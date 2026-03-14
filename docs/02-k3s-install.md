@@ -29,12 +29,22 @@ sudo k3s kubectl get nodes
 mkdir -p ~/.kube
 sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
 sudo chown $USER:$USER ~/.kube/config
-# Kubeconfig auch auf dem Laptop verfügbar machen (optional):
-# scp stefan@raspi:~/.kube/config ~/.kube/config-raspi
-# Dann: export KUBECONFIG=~/.kube/config-raspi
 ```
 
-Ab jetzt: `kubectl` statt `sudo k3s kubectl`.
+Das k3s-kubectl schaut standardmäßig zuerst nach `/etc/rancher/k3s/k3s.yaml` (nur root-lesbar) statt `~/.kube/config`. Daher `KUBECONFIG` explizit setzen — für fish:
+
+```bash
+echo 'set -gx KUBECONFIG ~/.kube/config' >> ~/.config/fish/config.fish
+source ~/.config/fish/config.fish
+```
+
+Für bash/zsh (falls auf einem anderen System):
+```bash
+echo 'export KUBECONFIG=~/.kube/config' >> ~/.bashrc
+source ~/.bashrc
+```
+
+Ab jetzt funktioniert `kubectl` direkt ohne sudo und ohne Prefix.
 
 ---
 
