@@ -94,23 +94,41 @@ nmcli con up "Wired connection 1"
 
 ### Swap deaktivieren
 
-Raspberry Pi OS hat Swap standardmäßig aktiv (`dphys-swapfile`). k3s erfordert deaktivierten Swap:
+k3s erfordert deaktivierten Swap. Erst prüfen ob überhaupt Swap aktiv ist:
 
 ```bash
+free -h
+swapon --show
+```
+
+Wenn die Swap-Zeile `0B` zeigt bzw. `swapon` keine Ausgabe liefert — nichts zu tun, weiter zum nächsten Schritt.
+
+Falls Swap aktiv ist, je nach Swap-Variante deaktivieren:
+
+```bash
+# Variante A: dphys-swapfile (ältere RPi OS Versionen / SD-Karte)
 sudo dphys-swapfile swapoff
 sudo dphys-swapfile uninstall
 sudo systemctl disable dphys-swapfile
-```
 
-Prüfen:
-```bash
-free -h
-# Zeile "Swap: 0B 0B 0B"
+# Variante B: systemd swap file
+sudo swapoff /var/swap      # oder den Pfad aus "swapon --show"
+sudo sed -i '/swap/d' /etc/fstab
+
+# Variante C: zram (Raspberry Pi OS Bookworm)
+# zram-generator kann nicht per systemctl disable deaktiviert werden.
+# Zuverlässigste Lösung: Paket entfernen
+sudo swapoff /dev/zram0
+sudo apt remove systemd-zram-generator
+sudo reboot
+# Nach Neustart: swapon --show → keine Ausgabe = erledigt
 ```
 
 ### cgroups für k3s aktivieren
 
 k3s benötigt cgroup memory. Auf Raspberry Pi OS Bookworm in `/boot/firmware/cmdline.txt` am **Ende der einzigen Zeile** (kein Zeilenumbruch!) ergänzen:
+
+> Tipp in vim: `Shift+G` springt zur letzten Zeile, `A` wechselt in Append-Modus ans Zeilenende.
 
 ```
 cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1
@@ -127,9 +145,11 @@ sudo reboot
 
 Nach dem Neustart prüfen:
 ```bash
-grep cgroup /proc/cmdline
-# sollte cgroup_enable=memory cgroup_memory=1 enthalten
+cat /sys/fs/cgroup/cgroup.controllers
+# memory muss in der Ausgabe stehen: "cpuset cpu io memory pids"
 ```
+
+**Hinweis:** In `/proc/cmdline` erscheint zusätzlich `cgroup_disable=memory` — das wird vom Raspberry Pi Firmware-Bootloader automatisch injiziert und steht nicht in `cmdline.txt`. Kein Problem: der Linux-Kernel verarbeitet Parameter von links nach rechts, `cgroup_enable=memory` am Ende überschreibt das frühere `cgroup_disable=memory`. Maßgeblich ist allein ob `memory` in `/sys/fs/cgroup/cgroup.controllers` auftaucht.
 
 ### Firewall (ufw)
 
@@ -165,8 +185,8 @@ df -h /
 free -h
 # ~7.x GB total, Swap: 0B
 
-# cgroups aktiv
-grep cgroup /proc/cmdline
+# cgroups aktiv (memory muss in der Ausgabe stehen)
+cat /sys/fs/cgroup/cgroup.controllers
 
 # Netzwerk
 ip addr show eth0
