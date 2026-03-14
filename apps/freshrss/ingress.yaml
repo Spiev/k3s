@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: freshrss
+  namespace: freshrss
+  annotations:
+    # X-Forwarded-Proto: https weitergeben, damit FreshRSS weiß dass die externe Verbindung verschlüsselt war
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: freshrss.example.com    # <-- deine Domain eintragen
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: freshrss
+                port:
+                  number: 80
