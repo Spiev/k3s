@@ -1,6 +1,6 @@
 # Kubernetes Learning Path — Raspberry Pi 5
 
-Ziel: Schrittweiser Einstieg in Kubernetes mit k3s auf einem Raspberry Pi 5 (8 GB RAM, 256 GB NVMe), ausgehend vom bestehenden Docker-Setup. Erster Migrationskanditat: FreshRSS.
+Ziel: Schrittweiser Einstieg in Kubernetes mit k3s auf zwei Raspberry Pi 5 (je 8 GB RAM). Server-Node: 256 GB NVMe, Agent-Node (nach Migration): 2 TB NVMe. Vollständige Migration aller Docker-Services angestrebt.
 
 → [Architektur-Übersicht](./00-architecture.md) — Gesamtbild, Netzwerkfluss, Komponenten
 
@@ -376,7 +376,9 @@ Für Raspberry Pi Hardware-Metriken (CPU-Temperatur etc.): `node_exporter` läuf
 
 ## Phase 8 — Multi-Node: Alter Raspi hinzufügen (Zukunft)
 
-**Voraussetzung:** Der alte Raspi läuft erst dann als k3s Agent-Node, wenn alle seine Docker-Services vollständig nach k3s migriert sind. Beide Rollen gleichzeitig sind nicht möglich.
+**Voraussetzung:** Der alte Raspi (Raspi 5, 8 GB RAM, 2 TB NVMe) läuft erst dann als k3s Agent-Node, wenn alle seine Docker-Services vollständig nach k3s migriert sind. Beide Rollen gleichzeitig sind nicht möglich.
+
+Home Assistant läuft dann auf dem Agent-Node mit `hostNetwork: true` und `nodeAffinity` für den Zigbee-Dongle — kein Umstecken nötig.
 
 Ablauf wenn es soweit ist:
 1. Docker-Services stoppen, Daten sichern

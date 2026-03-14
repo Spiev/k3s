@@ -7,7 +7,8 @@ Private k3s (lightweight Kubernetes) infrastructure repository. Target hardware:
 ## Architecture
 
 - **OS**: Raspberry Pi OS Lite (64-bit, Bookworm) — keeps native hardware tools (`raspi-config`, `vcgencmd`, `rpi-eeprom-update`)
-- **k3s** single-node to start, later extended with an old Raspberry Pi as agent-node
+- **Hardware**: 2× Raspberry Pi 5 (8 GB RAM) — Server-Node 256 GB NVMe, Agent-Node 2 TB NVMe (currently Docker, joins k3s after full migration)
+- **k3s** single-node to start; Agent-Node joins when all Docker services are migrated
 - **Longhorn** for hyperconverged persistent storage (replicates across nodes)
 - **Traefik** (k3s built-in) as ingress controller with cert-manager for Let's Encrypt
 - **Flux CD** for GitOps (pull-based, bootstrapped from this repo)

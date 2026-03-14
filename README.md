@@ -2,6 +2,8 @@
 
 Kubernetes-Infrastruktur auf einem Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration der bestehenden Docker-Services aus [docker-runtime](../docker-runtime).
 
+**Hardware:** 2× Raspberry Pi 5 (8 GB RAM) — Server-Node 256 GB NVMe, Agent-Node 2 TB NVMe
+
 **Stack:** k3s · Longhorn · Traefik · Flux CD · Sealed Secrets
 
 ---
@@ -48,4 +50,4 @@ clusters/       Flux CD Konfiguration
 | Paperless | Offen | |
 | Teslamate | Offen | |
 | Pi-hole | Offen | |
-| Home Assistant | Bleibt Docker | USB-Dongle (Zigbee), kein k8s-Mehrwert |
+| Home Assistant | Geplant (Agent-Node) | `hostNetwork` + `nodeAffinity` für Zigbee-Dongle |

@@ -2,46 +2,49 @@
 
 ---
 
-## Gesamtbild
+## Hardware
+
+| Node | Rolle | RAM | NVMe | Status |
+|---|---|---|---|---|
+| Raspi 5 "neu" | k3s Server-Node (Control Plane) | 8 GB | 256 GB | k3s |
+| Raspi 5 "alt" | k3s Agent-Node (Workloads + Storage) | 8 GB | 2 TB | Docker → k3s (nach Migration) |
+
+Beide Nodes sind baugleich (Raspberry Pi 5, 8 GB RAM). Der alte Raspi hat dank 2 TB NVMe deutlich mehr Speicher — er wird der primäre Longhorn-Speicherknoten für große Volumes (Immich, Paperless).
+
+---
+
+## Gesamtbild (Zielzustand)
 
 ```
-                        Internet
-                           │
-                    ┌──────▼──────┐
-                    │   Router    │  Port 80/443 → Raspi
-                    └──────┬──────┘
-                           │
-          ┌────────────────▼────────────────────────────────┐
-          │              Raspberry Pi 5                      │
-          │                                                  │
-          │   ┌──────────────────────────────────────────┐  │
-          │   │              k3s Cluster                 │  │
-          │   │                                          │  │
-          │   │  ┌─────────┐   Routing   ┌───────────┐  │  │
-          │   │  │ Traefik │─────────────▶ freshrss  │  │  │
-          │   │  │(Ingress)│             │ Namespace │  │  │
-          │   │  └────┬────┘             └───────────┘  │  │
-          │   │       │       Routing   ┌───────────┐   │  │
-          │   │       └────────────────▶  seafile   │   │  │
-          │   │                        │ Namespace │   │  │
-          │   │                        └───────────┘   │  │
-          │   │                                          │  │
-          │   │  ┌──────────┐  ┌──────────┐             │  │
-          │   │  │ CoreDNS  │  │  Flannel │             │  │
-          │   │  │  (DNS)   │  │  (CNI)   │             │  │
-          │   │  └──────────┘  └──────────┘             │  │
-          │   │                                          │  │
-          │   │  ┌──────────────────────────────────┐   │  │
-          │   │  │           Longhorn               │   │  │
-          │   │  │    (Persistent Volume Storage)   │   │  │
-          │   │  └──────────────┬───────────────────┘   │  │
-          │   └─────────────────┼────────────────────────┘  │
-          │                     │                            │
-          │   ┌─────────────────▼────────────────────────┐  │
-          │   │           NVMe SSD (256 GB)              │  │
-          │   │  /var/lib/longhorn   /var/lib/rancher/k3s│  │
-          │   └──────────────────────────────────────────┘  │
-          └────────────────────────────────────────────────┘
+                           Internet
+                               │
+                        ┌──────▼──────┐
+                        │   Router    │  Port 80/443
+                        └──────┬──────┘
+                               │
+               ┌───────────────▼──────────────────────────────────────┐
+               │                   k3s Cluster                        │
+               │                                                      │
+               │  ┌─────────────────────┐  ┌──────────────────────┐  │
+               │  │  Server-Node        │  │  Agent-Node          │  │
+               │  │  Raspi 5 "neu"      │  │  Raspi 5 "alt"       │  │
+               │  │  256 GB NVMe        │  │  2 TB NVMe           │  │
+               │  │                     │  │                      │  │
+               │  │  Control Plane      │  │  [freshrss]          │  │
+               │  │  Traefik (Ingress)  │  │  [seafile]           │  │
+               │  │  CoreDNS            │  │  [immich]            │  │
+               │  │  Longhorn Engine    │  │  [paperless]         │  │
+               │  │                     │  │  [homeassistant] ←┐  │  │
+               │  └─────────────────────┘  │  [mosquitto]      │  │  │
+               │                           └──────────────────-┼──┘  │
+               │                                               │      │
+               │         Longhorn repliziert Volumes           │      │
+               │         zwischen beiden Nodes  ←──────────────┘      │
+               │                                                      │
+               └──────────────────────────────────────────────────────┘
+                                                    │
+                                            Zigbee USB-Dongle
+                                            steckt am Agent-Node
 ```
 
 ---
@@ -149,16 +152,19 @@ Pod schreibt Daten
   ┌─────────────────────────────────┐
   │  Engine (koordiniert Replicas)  │
   │  ┌─────────────┐               │
-  │  │  Replica 1  │ → NVMe Raspi 5│  ← jetzt (1 Node)
-  │  └─────────────┘               │
-  │  ┌─────────────┐               │
-  │  │  Replica 2  │ → NVMe alt.Pi │  ← später (2 Nodes)
-  │  └─────────────┘               │
-  └─────────────────────────────────┘
+  │  │  Replica 1  │ → 256 GB NVMe (Server-Node) │  ← jetzt
+  │  └─────────────┘                             │
+  │  ┌─────────────┐                             │
+  │  │  Replica 2  │ → 2 TB NVMe  (Agent-Node)  │  ← nach Migration
+  │  └─────────────┘                             │
+  └──────────────────────────────────────────────┘
 ```
 
-Im Single-Node-Betrieb: `numberOfReplicas: 1` — Daten liegen einmal auf der NVMe.
-Sobald zweiter Node joined: `numberOfReplicas: 2` → automatische Replikation.
+Im Single-Node-Betrieb: `numberOfReplicas: 1` — Daten liegen einmal auf der 256 GB NVMe.
+Sobald Agent-Node joined: `numberOfReplicas: 2` → automatische Replikation auf 2 TB NVMe.
+
+**Storage-Planung mit 2 Nodes:**
+Longhorn kann über Node-Tags steuern wo Volumes angelegt werden. Große Volumes (Immich-Bibliothek, Paperless-Dokumente) wandern bevorzugt auf den Agent-Node mit 2 TB. Kleine Volumes (FreshRSS, Seafile) können überall liegen.
 
 **Backup-Strategie (Single-Node):**
 ```
@@ -206,25 +212,25 @@ Pod liest Secret (Passwort, API-Key etc.)
 ## Aktueller Stand vs. Zielzustand
 
 ```
-Heute                          Ziel (nach Migration)
-─────────────────────          ──────────────────────────────
-Raspi 5 (neu, k3s)             Raspi 5: k3s Server-Node
-  └── (noch leer)                └── FreshRSS
-                                  └── Seafile
-Alter Raspi (Docker)           Alter Raspi: k3s Agent-Node (optional)
-  └── FreshRSS                   └── Workloads (Longhorn Replica 2)
-  └── Seafile
-  └── Immich
-  └── Paperless
-  └── Home Assistant            Alter Raspi: Docker (bleibt)
-  └── Teslamate                   └── Home Assistant (Hardware!)
-  └── Pi-hole                     └── Teslamate
-  └── Nginx Proxy                 └── Pi-hole
-                                  └── Immich (?)
-                                  └── Paperless (?)
+Heute                               Ziel (nach Migration)
+──────────────────────────────      ──────────────────────────────────────
+Raspi 5 "neu" (256 GB)              Raspi 5 "neu": k3s Server-Node
+  └── k3s (leer)                      └── Control Plane, Traefik, CoreDNS
+
+Raspi 5 "alt" (2 TB)                Raspi 5 "alt": k3s Agent-Node
+  └── Docker                           └── FreshRSS
+        └── FreshRSS                   └── Seafile
+        └── Immich                     └── Immich        (2 TB NVMe)
+        └── Paperless                  └── Paperless     (2 TB NVMe)
+        └── Home Assistant             └── Home Assistant (hostNetwork +
+        └── Teslamate                  └── Teslamate      USB nodeAffinity)
+        └── Pi-hole                    └── Pi-hole
+        └── Nginx Proxy                └── Mosquitto
+        └── Mosquitto                  └── Matter Hub
+        └── Matter Hub
 ```
 
-Home Assistant wird wahrscheinlich auf Docker bleiben — es hängt am Zigbee-USB-Dongle, was USB-Passthrough in Kubernetes aufwendig macht und keinen Mehrwert bringt.
+Beide Pis sind baugleich (Raspi 5, 8 GB RAM) — eine vollständige Migration auf k3s ist realistisch. Home Assistant läuft auf dem Agent-Node mit `hostNetwork: true` und `nodeAffinity` für den Zigbee-Dongle. nginx bleibt vorerst als externer Proxy, kann später durch Traefik abgelöst werden.
 
 ---
 
