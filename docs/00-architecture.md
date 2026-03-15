@@ -25,18 +25,18 @@ Beide Nodes sind baugleich (Raspberry Pi 5, 8 GB RAM). Der alte Raspi hat dank 2
                ┌───────────────▼──────────────────────────────────────┐
                │                   k3s Cluster                        │
                │                                                      │
-               │  ┌─────────────────────┐  ┌──────────────────────┐  │
-               │  │  Server-Node        │  │  Agent-Node          │  │
-               │  │  Raspi 5 "neu"      │  │  Raspi 5 "alt"       │  │
-               │  │  256 GB NVMe        │  │  2 TB NVMe           │  │
-               │  │                     │  │                      │  │
-               │  │  Control Plane      │  │  [freshrss]          │  │
-               │  │  Traefik (Ingress)  │  │  [seafile]           │  │
-               │  │  CoreDNS            │  │  [immich]            │  │
-               │  │  Longhorn Engine    │  │  [paperless]         │  │
-               │  │                     │  │  [homeassistant] ←┐  │  │
-               │  └─────────────────────┘  │  [mosquitto]      │  │  │
-               │                           └───────────────────┼──┘  │
+               │  ┌─────────────────────┐  ┌──────────────────────┐   │
+               │  │  Server-Node        │  │  Agent-Node          │   │
+               │  │  Raspi 5 "neu"      │  │  Raspi 5 "alt"       │   │
+               │  │  256 GB NVMe        │  │  2 TB NVMe           │   │
+               │  │                     │  │                      │   │
+               │  │  Control Plane      │  │  [freshrss]          │   │
+               │  │  Traefik (Ingress)  │  │  [seafile]           │   │
+               │  │  CoreDNS            │  │  [immich]            │   │
+               │  │  Longhorn Engine    │  │  [paperless]         │   │
+               │  │                     │  │  [homeassistant] ←┐  │   │
+               │  └─────────────────────┘  │  [mosquitto]      │  │   │
+               │                           └───────────────────┼──┘   │
                │                                               │      │
                │         Longhorn repliziert Volumes           │      │
                │         zwischen beiden Nodes  ←──────────────┘      │

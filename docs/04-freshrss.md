@@ -10,39 +10,40 @@ FreshRSS ist der erste Service der von Docker auf k3s migriert wird. Er hat ein 
 
 ```
 apps/freshrss/
-├── namespace.yaml      ← Namespace "freshrss"
-├── pvc.yaml            ← 5 GB Longhorn-Volume für /config
-├── deployment.yaml     ← Der eigentliche Container
-├── service.yaml        ← Cluster-interner Netzwerkendpunkt
-└── ingress.yaml        ← Traefik-Routing: Domain → Service
+├── base/                              ← ins Repo (keine sensiblen Infos)
+│   ├── kustomization.yaml
+│   ├── namespace.yaml
+│   ├── pvc.yaml
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── ingress.yaml                   ← Platzhalter-Domain
+└── overlays/
+    └── raspi/
+        ├── kustomization.yaml         ← ins Repo
+        ├── ingress-patch.yaml         ← .gitignore (echte Domain)
+        └── ingress-patch.yaml.example ← ins Repo (Template)
 ```
+
+Die echte Domain steht ausschließlich in `ingress-patch.yaml`, die per `.gitignore` nicht ins Repo kommt.
 
 ---
 
 ## 1. Domain eintragen
 
-In `apps/freshrss/ingress.yaml` die Platzhalter-Domain durch die echte ersetzen:
-
-```yaml
-rules:
-  - host: freshrss.deine-domain.de   # anpassen
+```bash
+cd apps/freshrss/overlays/raspi
+cp ingress-patch.yaml.example ingress-patch.yaml
+# ingress-patch.yaml editieren und echte Domain eintragen
 ```
 
 ---
 
 ## 2. Manifeste anwenden
 
-```bash
-kubectl apply -f apps/freshrss/namespace.yaml
-kubectl apply -f apps/freshrss/pvc.yaml
-kubectl apply -f apps/freshrss/deployment.yaml
-kubectl apply -f apps/freshrss/service.yaml
-kubectl apply -f apps/freshrss/ingress.yaml
-```
+Mit Kustomize (in `kubectl` eingebaut):
 
-Oder alle auf einmal:
 ```bash
-kubectl apply -f apps/freshrss/
+kubectl apply -k apps/freshrss/overlays/raspi/
 ```
 
 Status beobachten:
@@ -123,7 +124,12 @@ Der Container ist gestoppt, die Daten in `./config/` sind konsistent.
 ### Schritt 2 — Hilfspod starten der das PVC mountet
 
 Auf dem neuen Raspi (k3s):
+
+> **fish-Hinweis:** `<<EOF` ist bash-Syntax. Kurz in bash wechseln:
+
 ```bash
+bash   # kurz in bash wechseln
+
 kubectl apply -f - <<EOF
 apiVersion: v1
 kind: Pod
@@ -143,6 +149,8 @@ spec:
       persistentVolumeClaim:
         claimName: freshrss-config
 EOF
+
+exit   # zurück zu fish
 
 kubectl wait --for=condition=Ready pod/migration -n freshrss --timeout=30s
 ```

@@ -1,0 +1,2 @@
+# Lokale Overlays mit echten Domains und privaten Werten — nicht ins Repo
+apps/*/overlays/*/ingress-patch.yaml

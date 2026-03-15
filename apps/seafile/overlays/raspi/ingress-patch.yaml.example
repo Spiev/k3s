@@ -1,0 +1,13 @@
+# Kopiere diese Datei nach ingress-patch.yaml und trage deine echte Domain ein.
+# ingress-patch.yaml ist in .gitignore und kommt nicht ins Repo.
+#
+#   cp ingress-patch.yaml.example ingress-patch.yaml
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: seafile
+  namespace: seafile
+spec:
+  rules:
+    - host: seafile.deine-domain.de    # <-- echte Domain eintragen
