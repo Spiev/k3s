@@ -46,6 +46,87 @@ source ~/.bashrc
 
 Ab jetzt funktioniert `kubectl` direkt ohne sudo und ohne Prefix.
 
+### kubectl vom Laptop aus einrichten
+
+kubectl auf dem Laptop installieren:
+
+```bash
+# Arch Linux
+sudo pacman -S kubectl
+```
+
+#### TLS-SAN für den Hostnamen konfigurieren
+
+k3s stellt sein API-Zertifikat standardmäßig nur für `localhost`, `kubernetes` und den Kurznamen des Hosts aus. Damit eine Verbindung über den vollständigen Hostnamen (z.B. `k3s.fritz.box`) funktioniert, muss dieser als SAN (Subject Alternative Name) eingetragen werden.
+
+Auf dem Raspi:
+
+```bash
+# 1. k3s-Konfiguration mit dem Hostnamen anlegen
+printf 'tls-san:\n  - <raspi-hostname>\n' | sudo tee /etc/rancher/k3s/config.yaml > /dev/null
+```
+
+> Beispiel: `printf 'tls-san:\n  - k3s.fritz.box\n' | sudo tee /etc/rancher/k3s/config.yaml > /dev/null`
+
+```bash
+# 2. k3s stoppen, Serving-Zertifikat löschen (wird beim Start neu generiert)
+sudo systemctl stop k3s
+sudo rm /var/lib/rancher/k3s/server/tls/serving-kube-apiserver.crt
+sudo rm /var/lib/rancher/k3s/server/tls/serving-kube-apiserver.key
+
+# 3. k3s starten — generiert neues Zertifikat mit dem SAN
+sudo systemctl start k3s
+```
+
+Prüfen ob der Hostname im neuen Zertifikat enthalten ist:
+```bash
+sudo openssl x509 -in /var/lib/rancher/k3s/server/tls/serving-kube-apiserver.crt -noout -ext subjectAltName
+# DNS:k3s.fritz.box sollte in der Ausgabe erscheinen
+```
+
+#### Kubeconfig auf den Laptop kopieren
+
+```bash
+# Auf dem Laptop ausführen
+mkdir -p ~/.kube
+scp <user>@<raspi-hostname>:~/.kube/config ~/.kube/config-raspi
+```
+
+> Beispiel: `scp stefan@k3s.fritz.box:~/.kube/config ~/.kube/config-raspi`
+
+Die Datei enthält als Server-Adresse `127.0.0.1` — das muss auf den Hostnamen des Raspberry Pi geändert werden:
+
+```bash
+sed -i 's/127.0.0.1/<raspi-hostname>/g' ~/.kube/config-raspi
+```
+
+> Beispiel: `sed -i 's/127.0.0.1/k3s.fritz.box/g' ~/.kube/config-raspi`
+
+`KUBECONFIG` in der Shell setzen — für fish:
+
+```bash
+echo 'set -gx KUBECONFIG ~/.kube/config-raspi' >> ~/.config/fish/config.fish
+source ~/.config/fish/config.fish
+```
+
+Für bash/zsh:
+```bash
+echo 'export KUBECONFIG=~/.kube/config-raspi' >> ~/.bashrc
+source ~/.bashrc
+```
+
+Verbindung testen:
+
+```bash
+kubectl get nodes
+# NAME    STATUS   ROLES                  AGE   VERSION
+# k3s     Ready    control-plane,master   ...   v1.x.x+k3s1
+```
+
+Ab jetzt können alle `kubectl`-Befehle und `kubectl apply -f` direkt vom Laptop ausgeführt werden — ohne SSH.
+
+> **Hinweis:** Die `~/.kube/config-raspi` enthält Client-Zertifikat und privaten Schlüssel — wer diese Datei hat, hat vollen Cluster-Zugriff. Nicht committen, nicht teilen.
+
 ---
 
 ## 2. Was k3s mitbringt
