@@ -157,7 +157,7 @@ docker exec seafile-db mysqldump -u root -p --all-databases > seafile-dump.sql
 Da Seafile sync-basiert ist, haben Clients alle Datei-Blobs lokal. Die Blobs auf dem Server sind aber die kanonische Quelle für Versionshistorie und Sharing-Links.
 
 ```bash
-rsync -av /path/to/seafile/data/ stefan@raspi:/tmp/seafile-data/
+rsync -av /path/to/seafile/data/ <user>@<raspi-hostname>:/tmp/seafile-data/
 ```
 
 ---

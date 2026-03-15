@@ -59,7 +59,7 @@ k3s setzt das Default-Flag für `local-path` bei jedem Neustart neu — ein `kub
 
 ```bash
 # Auf dem Raspi: local-storage zur disable-Liste in der k3s-Konfiguration hinzufügen
-printf 'tls-san:\n  - k3s.fritz.box\ndisable:\n  - local-storage\n' | sudo tee /etc/rancher/k3s/config.yaml > /dev/null
+printf 'tls-san:\n  - <raspi-hostname>\ndisable:\n  - local-storage\n' | sudo tee /etc/rancher/k3s/config.yaml > /dev/null
 sudo systemctl restart k3s
 ```
 
@@ -90,7 +90,7 @@ Browser: `http://localhost:8080`
 
 Von einem anderen Rechner im Netzwerk (z.B. vom Laptop):
 ```bash
-ssh -L 8080:localhost:8080 stefan@raspi
+ssh -L 8080:localhost:8080 <user>@<raspi-hostname>
 # Dann: http://localhost:8080 im Browser auf dem Laptop
 ```
 

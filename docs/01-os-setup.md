@@ -38,7 +38,7 @@ Im Imager unter "OS Customisation" **vor dem Flashen** konfigurieren:
 ## 2. Erster Boot: EEPROM aktualisieren
 
 ```bash
-ssh stefan@<ip-adresse>
+ssh <user>@<ip-adresse>
 
 # System + Bootloader auf aktuellen Stand bringen
 sudo apt update && sudo apt full-upgrade -y
@@ -85,9 +85,9 @@ nmcli con show
 ```bash
 nmcli con mod "Wired connection 1" \
   ipv4.method manual \
-  ipv4.addresses "192.168.1.100/24" \
-  ipv4.gateway "192.168.1.1" \
-  ipv4.dns "192.168.1.1 1.1.1.1"   # Pi-hole oder Router als primärer DNS
+  ipv4.addresses "<server-ip>/24" \
+  ipv4.gateway "<gateway-ip>" \
+  ipv4.dns "<gateway-ip> 1.1.1.1"   # Pi-hole oder Router als primärer DNS
 
 nmcli con up "Wired connection 1"
 ```

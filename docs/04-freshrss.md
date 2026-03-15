@@ -163,11 +163,11 @@ Von deinem Laptop (oder direkt vom alten Raspi):
 # (oder direkt vom alten Raspi wenn du dort eingeloggt bist)
 
 # Option A: Laptop als Zwischenstation
-rsync -av stefan@raspberry:~/docker/freshrss/config/ /tmp/freshrss-config/
+rsync -av <user>@<alter-raspi>:~/docker/freshrss/config/ /tmp/freshrss-config/
 kubectl cp /tmp/freshrss-config/. freshrss/migration:/config/
 
 # Option B: Direkt vom alten Raspi in den Cluster (setzt kubectl-Zugriff auf altem Raspi voraus)
-# rsync -av ./config/ stefan@raspi5:/tmp/freshrss-config/
+# rsync -av ./config/ <user>@<raspi5>:/tmp/freshrss-config/
 # kubectl cp /tmp/freshrss-config/. freshrss/migration:/config/
 ```
 
@@ -212,7 +212,7 @@ Auf dem alten Raspi in deiner nginx-Konfiguration den `proxy_pass` für FreshRSS
 proxy_pass http://localhost:8080;
 
 # nachher (IP des neuen Raspi 5):
-proxy_pass http://192.168.1.100;   # Port 80, Traefik übernimmt das Routing
+proxy_pass http://<server-ip>;   # Port 80, Traefik übernimmt das Routing
 ```
 
 ```bash

@@ -76,7 +76,7 @@ Browser: `http://localhost:3000`
 
 Von einem anderen Rechner im Netzwerk:
 ```bash
-ssh -L 3000:localhost:3000 stefan@k3s.fritz.box
+ssh -L 3000:localhost:3000 <user>@<raspi-hostname>
 # Dann: http://localhost:3000 im Browser auf dem Laptop
 ```
 
