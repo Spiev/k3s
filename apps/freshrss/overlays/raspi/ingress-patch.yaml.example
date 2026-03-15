@@ -11,3 +11,12 @@ metadata:
 spec:
   rules:
     - host: freshrss.deine-domain.de    # <-- echte Domain eintragen
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: freshrss
+                port:
+                  number: 80
