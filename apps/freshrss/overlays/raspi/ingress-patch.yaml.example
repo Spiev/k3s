@@ -3,20 +3,8 @@
 #
 #   cp ingress-patch.yaml.example ingress-patch.yaml
 #
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: freshrss
-  namespace: freshrss
-spec:
-  rules:
-    - host: freshrss.deine-domain.de    # <-- echte Domain eintragen
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: freshrss
-                port:
-                  number: 80
+# JSON Patch: ersetzt nur den Host-Wert — paths und alles andere
+# kommen unverändert aus base/ingress.yaml.
+- op: replace
+  path: /spec/rules/0/host
+  value: freshrss.deine-domain.de    # <-- echte Domain eintragen

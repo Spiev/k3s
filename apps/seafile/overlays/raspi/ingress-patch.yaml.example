@@ -3,20 +3,8 @@
 #
 #   cp ingress-patch.yaml.example ingress-patch.yaml
 #
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: seafile
-  namespace: seafile
-spec:
-  rules:
-    - host: seafile.deine-domain.de    # <-- echte Domain eintragen
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: seafile
-                port:
-                  number: 80
+# JSON Patch: ersetzt nur den Host-Wert — paths und alles andere
+# kommen unverändert aus base/ingress.yaml.
+- op: replace
+  path: /spec/rules/0/host
+  value: seafile.deine-domain.de    # <-- echte Domain eintragen

@@ -3,4 +3,8 @@ kind: Kustomization
 resources:
   - ../../base
 patches:
-  - path: ingress-patch.yaml
+  - target:
+      kind: Ingress
+      name: seafile
+      namespace: seafile
+    path: ingress-patch.yaml
