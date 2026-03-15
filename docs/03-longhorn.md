@@ -53,11 +53,17 @@ Wenn alle Pods laufen:
 kubectl get storageclass
 ```
 
-Longhorn setzt sich automatisch als Default-StorageClass — allerdings behält `local-path` ebenfalls das Default-Flag. Zwei gleichzeitige Defaults können zu unerwartetem Verhalten führen. `local-path` muss manuell entfernt werden:
+Longhorn setzt sich automatisch als Default-StorageClass — allerdings behält `local-path` ebenfalls das Default-Flag. Zwei gleichzeitige Defaults können zu unerwartetem Verhalten führen.
+
+k3s setzt das Default-Flag für `local-path` bei jedem Neustart neu — ein `kubectl patch` ist daher keine dauerhafte Lösung. Stattdessen den `local-path-provisioner` in der k3s-Konfiguration dauerhaft deaktivieren:
 
 ```bash
-kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
+# Auf dem Raspi: local-storage zur disable-Liste in der k3s-Konfiguration hinzufügen
+printf 'tls-san:\n  - k3s.fritz.box\ndisable:\n  - local-storage\n' | sudo tee /etc/rancher/k3s/config.yaml > /dev/null
+sudo systemctl restart k3s
 ```
+
+> **Hinweis:** Der `printf`-Befehl überschreibt die gesamte `config.yaml`. Falls weitere Einträge vorhanden sind, diese vorher mit `cat /etc/rancher/k3s/config.yaml` prüfen und den Inhalt entsprechend anpassen.
 
 Danach sollte die Ausgabe so aussehen:
 
