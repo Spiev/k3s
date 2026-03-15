@@ -133,7 +133,9 @@ kubectl apply -f infrastructure/longhorn/storageclass.yaml
 
 Ergebnis — zwei Longhorn StorageClasses mit unterschiedlichem Zweck:
 
-```
+```bash
+kubectl get storageclass
+# Liste aller verfügbaren storagesclasses
 NAME              RECLAIMPOLICY   ZWECK
 longhorn          Delete          Von Longhorn verwaltet, für Tests
 longhorn-retain   Retain          Für alle produktiven Services
@@ -245,8 +247,12 @@ Für Produktion: tägliche Backups extern + stündliche Snapshots lokal.
 
 Einen temporären Pod mit einem PVC starten und prüfen ob Longhorn funktioniert:
 
+> **fish-Hinweis:** fish unterstützt kein `<<EOF` Heredoc. Kurz in bash wechseln, die Befehle ausführen, dann wieder `exit`:
+
 ```bash
 kubectl create namespace longhorn-test
+
+bash   # kurz in bash wechseln
 
 kubectl apply -f - <<EOF
 apiVersion: v1
@@ -280,6 +286,8 @@ spec:
       persistentVolumeClaim:
         claimName: test-pvc
 EOF
+
+exit   # zurück zu fish
 ```
 
 ```bash
