@@ -101,35 +101,20 @@ Raspberry Pi CPU-Temperatur ist unter **Node Exporter Full → Hardware → Ther
 
 ## 5. Persistenz konfigurieren
 
-Standardmäßig speichert Prometheus Metriken nur im Arbeitsspeicher — nach einem Pod-Neustart sind sie weg. Für persistente Speicherung PVCs anlegen:
-
-```yaml
-# infrastructure/monitoring/prometheus-pvc.yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: prometheus-data
-  namespace: monitoring
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: longhorn
-  resources:
-    requests:
-      storage: 10Gi
-```
-
-Helm-Installation mit Persistenz:
+Standardmäßig speichert Prometheus Metriken nur im Arbeitsspeicher — nach einem Pod-Neustart sind sie weg. Persistenz wird über eine Helm-Values-Datei konfiguriert (alle Einstellungen für Prometheus, Grafana und Alertmanager gebündelt):
 
 ```bash
 helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack \
   --namespace monitoring \
-  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=longhorn \
-  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=10Gi \
-  --set grafana.persistence.enabled=true \
-  --set grafana.persistence.storageClassName=longhorn \
-  --set grafana.persistence.size=2Gi
+  --values infrastructure/monitoring/values.yaml
 ```
+
+Die Values-Datei `infrastructure/monitoring/values.yaml` konfiguriert:
+- Prometheus: 10 Gi, `longhorn-retain`, 30 Tage Retention
+- Grafana: 2 Gi, `longhorn-retain`
+- Alertmanager: 1 Gi, `longhorn-retain`
+
+Longhorn legt die PVCs automatisch an — keine separate PVC-YAML nötig.
 
 ---
 
