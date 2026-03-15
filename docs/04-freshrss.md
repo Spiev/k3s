@@ -163,7 +163,7 @@ Von deinem Laptop (oder direkt vom alten Raspi):
 # (oder direkt vom alten Raspi wenn du dort eingeloggt bist)
 
 # Option A: Laptop als Zwischenstation
-rsync -av stefan@alter-raspi:~/docker/freshrss/config/ /tmp/freshrss-config/
+rsync -av stefan@raspberry:~/docker/freshrss/config/ /tmp/freshrss-config/
 kubectl cp /tmp/freshrss-config/. freshrss/migration:/config/
 
 # Option B: Direkt vom alten Raspi in den Cluster (setzt kubectl-Zugriff auf altem Raspi voraus)
@@ -176,6 +176,14 @@ Prüfen ob die Daten angekommen sind:
 kubectl exec -n freshrss migration -- ls /config
 # Sollte www/, log/ etc. zeigen — die FreshRSS-Verzeichnisstruktur
 ```
+
+> **Wichtig:** `kubectl cp` kopiert Dateien immer als `root`. Die linuxserver-Images laufen aber als User `abc` — nach dem Kopieren müssen die Permissions korrigiert werden:
+>
+> ```bash
+> kubectl exec -n freshrss deploy/freshrss -- chown -R abc:users /config/www/freshrss/data/users/
+> ```
+>
+> Ohne diesen Schritt kann FreshRSS den Read-State und andere User-Daten nicht schreiben.
 
 ### Schritt 4 — Hilfspod entfernen
 
