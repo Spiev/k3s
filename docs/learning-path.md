@@ -361,16 +361,13 @@ Das resultierende `SealedSecret` kann gefahrlos in das öffentliche Repo committ
 
 ## Phase 7 — Monitoring (Woche 5)
 
-```bash
-# kube-prometheus-stack: Prometheus + Grafana + Alertmanager in einem Helm-Chart
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-  -n monitoring --create-namespace
-```
+**kube-prometheus-stack** installiert Prometheus, Grafana und Alertmanager in einem Helm-Chart — inklusive vorgefertigter Dashboards für Node-Metriken, Pod-Ressourcen, PVCs und Kubernetes-Objekte.
 
-Grafana läuft dann auf Port 3000 (über Ingress erreichbar). Vordefinierte Dashboards für Node-Metriken, Pod-Ressourcen etc. sind bereits dabei.
+Raspberry Pi Hardware-Metriken (CPU-Temperatur etc.) liefert `node_exporter`, der bereits im Stack enthalten ist.
 
-Für Raspberry Pi Hardware-Metriken (CPU-Temperatur etc.): `node_exporter` läuft bereits im kube-prometheus-stack.
+Optional: Prometheus-Integration mit Home Assistant für Automationen auf Basis von Cluster-Metriken.
+
+Details: [docs/06-monitoring.md](./06-monitoring.md)
 
 ---
 
@@ -411,8 +408,11 @@ curl -sfL https://get.k3s.io | K3S_URL=https://<raspi5-ip>:6443 \
 
 ## Reihenfolge der nächsten Dokumente
 
-1. `docs/01-os-setup.md` — NVMe-Boot, Ubuntu-Config, cgroups
-2. `docs/02-k3s-install.md` — k3s, kubectl, erste Schritte
+1. `docs/01-os-setup.md` — NVMe-Boot, Raspberry Pi OS, cgroups
+2. `docs/02-k3s-install.md` — k3s, kubectl (lokal + remote), erste Schritte
 3. `docs/03-longhorn.md` — Storage einrichten
-4. `apps/freshrss/` — FreshRSS Manifeste + Migrations-Anleitung
-5. `docs/04-gitops-flux.md` — Flux setup
+4. `docs/04-freshrss.md` — Erste Service-Migration
+5. `docs/05-seafile.md` — Zweite Migration (Multi-Container, Secrets)
+6. `docs/06-monitoring.md` — Prometheus + Grafana
+7. `docs/07-traefik.md` — Traefik Ingress + cert-manager (TLS)
+8. `docs/08-flux.md` — GitOps mit Flux CD
