@@ -36,7 +36,7 @@ Beide Nodes sind baugleich (Raspberry Pi 5, 8 GB RAM). Der alte Raspi hat dank 2
                │  │  Longhorn Engine    │  │  [paperless]         │  │
                │  │                     │  │  [homeassistant] ←┐  │  │
                │  └─────────────────────┘  │  [mosquitto]      │  │  │
-               │                           └──────────────────-┼──┘  │
+               │                           └───────────────────┼──┘  │
                │                                               │      │
                │         Longhorn repliziert Volumes           │      │
                │         zwischen beiden Nodes  ←──────────────┘      │
@@ -149,15 +149,15 @@ Pod schreibt Daten
        │  Longhorn erfüllt die Anforderung
        ▼
   Longhorn Volume
-  ┌─────────────────────────────────┐
-  │  Engine (koordiniert Replicas)  │
-  │  ┌─────────────┐               │
-  │  │  Replica 1  │ → 256 GB NVMe (Server-Node) │  ← jetzt
-  │  └─────────────┘                             │
-  │  ┌─────────────┐                             │
-  │  │  Replica 2  │ → 2 TB NVMe  (Agent-Node)  │  ← nach Migration
-  │  └─────────────┘                             │
-  └──────────────────────────────────────────────┘
+  ┌───────────────────────────────────────────────────┐
+  │  Engine (koordiniert Replicas)                    │
+  │  ┌─────────────┐                                  │
+  │  │  Replica 1  │ → 256 GB NVMe (Server-Node)      │  ← jetzt
+  │  └─────────────┘                                  │
+  │  ┌─────────────┐                                  │
+  │  │  Replica 2  │ → 2 TB NVMe  (Agent-Node)        │  ← nach Migration
+  │  └─────────────┘                                  │
+  └───────────────────────────────────────────────────┘
 ```
 
 Im Single-Node-Betrieb: `numberOfReplicas: 1` — Daten liegen einmal auf der 256 GB NVMe.
