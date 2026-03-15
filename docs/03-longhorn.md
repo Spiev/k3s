@@ -100,22 +100,22 @@ Die UI zeigt:
 
 ## 4. StorageClass konfigurieren
 
-Die Default-StorageClass von Longhorn für Single-Node anpassen:
+Longhorn verwaltet die eingebaute `longhorn` StorageClass selbst — `reclaimPolicy` und `parameters` sind immutable und können nicht per `kubectl apply` geändert werden. Longhorn würde die StorageClass nach einem Delete auch sofort neu erstellen.
+
+Daher legen wir eine eigene StorageClass `longhorn-retain` für alle produktiven Workloads an:
 
 ```yaml
 # infrastructure/longhorn/storageclass.yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: longhorn
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
+  name: longhorn-retain
 provisioner: driver.longhorn.io
 allowVolumeExpansion: true
-reclaimPolicy: Retain      # Retain statt Delete: Volume bleibt bei PVC-Löschung erhalten
+reclaimPolicy: Retain      # Volume bleibt bei PVC-Löschung erhalten
 volumeBindingMode: Immediate
 parameters:
-  numberOfReplicas: "1"             # Single-Node: 1 Replica
+  numberOfReplicas: "1"             # Single-Node: 1 Replica (→ 2 wenn zweiter Node joint)
   staleReplicaTimeout: "2880"       # Verwaiste Replicas nach 48h aufräumen
   fromBackup: ""
   fsType: "ext4"
@@ -125,8 +125,18 @@ parameters:
 kubectl apply -f infrastructure/longhorn/storageclass.yaml
 ```
 
+Ergebnis — zwei Longhorn StorageClasses mit unterschiedlichem Zweck:
+
+```
+NAME              RECLAIMPOLICY   ZWECK
+longhorn          Delete          Von Longhorn verwaltet, für Tests
+longhorn-retain   Retain          Für alle produktiven Services
+```
+
 **Warum `reclaimPolicy: Retain`?**
 Mit `Delete` (Longhorn-Default) wird ein Volume sofort gelöscht wenn sein PVC gelöscht wird — auch bei einem versehentlichen `kubectl delete`. `Retain` lässt das Volume bestehen, es muss dann manuell in der Longhorn-UI entfernt werden. Für Produktionsdaten die sicherere Wahl.
+
+> Alle App-Manifeste (FreshRSS, Seafile etc.) verwenden `storageClassName: longhorn-retain`.
 
 ---
 
@@ -149,7 +159,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce     # RWO: nur ein Pod gleichzeitig (Standard für die meisten Services)
-  storageClassName: longhorn
+  storageClassName: longhorn-retain
   resources:
     requests:
       storage: 5Gi

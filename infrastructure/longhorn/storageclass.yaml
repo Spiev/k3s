@@ -1,0 +1,19 @@
+# infrastructure/longhorn/storageclass.yaml
+#
+# Longhorn verwaltet die eingebaute "longhorn" StorageClass selbst und
+# lässt keine Änderung von reclaimPolicy oder parameters zu.
+# Daher eine eigene StorageClass "longhorn-retain" für alle produktiven
+# Workloads — mit Retain statt Delete als Sicherheitsnetz.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn-retain
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Retain      # Volume bleibt bei PVC-Löschung erhalten
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "1"             # Single-Node: 1 Replica (→ 2 wenn zweiter Node joint)
+  staleReplicaTimeout: "2880"       # Verwaiste Replicas nach 48h aufräumen
+  fromBackup: ""
+  fsType: "ext4"
