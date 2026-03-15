@@ -11,7 +11,9 @@ Longhorn stellt persistente Volumes für alle Services bereit. Daten liegen dire
 Longhorn benötigt einige Pakete auf dem Host:
 
 ```bash
-sudo apt install -y open-iscsi nfs-common cryptsetup
+sudo apt install -y open-iscsi nfs-common cryptsetup jq
+sudo modprobe iscsi_tcp
+echo "iscsi_tcp" | sudo tee /etc/modules-load.d/iscsi.conf
 sudo systemctl enable --now iscsid
 ```
 
@@ -20,11 +22,12 @@ sudo systemctl enable --now iscsid
 | `open-iscsi` | Longhorn kommuniziert intern über iSCSI mit seinen Volumes |
 | `nfs-common` | Für RWX-Volumes (ReadWriteMany, mehrere Pods gleichzeitig) |
 | `cryptsetup` | Volume-Verschlüsselung (optional, aber Longhorn prüft auf dessen Existenz) |
+| `jq` | Wird vom Longhorn environment_check.sh Script benötigt |
 
 **Voraussetzungen automatisch prüfen** — Longhorn bringt ein Check-Script mit:
 
 ```bash
-curl -sSfL https://raw.githubusercontent.com/longhorn/longhorn/master/scripts/environment_check.sh | bash
+curl -sSfL https://raw.githubusercontent.com/longhorn/longhorn/v1.7.2/scripts/environment_check.sh | bash
 ```
 
 Alle Punkte sollten grün sein bevor es weitergeht.
@@ -34,7 +37,7 @@ Alle Punkte sollten grün sein bevor es weitergeht.
 ## 2. Longhorn installieren
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/master/deploy/longhorn.yaml
+kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.7.2/deploy/longhorn.yaml
 ```
 
 Die Installation dauert 2–3 Minuten. Fortschritt beobachten:
@@ -48,12 +51,24 @@ Wenn alle Pods laufen:
 
 ```bash
 kubectl get storageclass
-# NAME                 PROVISIONER          RECLAIMPOLICY   VOLUMEBINDINGMODE
-# longhorn (default)   driver.longhorn.io   Delete          Immediate
-# local-path           ...                  Delete          WaitForFirstConsumer
 ```
 
-Longhorn setzt sich automatisch als Default-StorageClass. Das ist korrekt.
+Longhorn setzt sich automatisch als Default-StorageClass — allerdings behält `local-path` ebenfalls das Default-Flag. Zwei gleichzeitige Defaults können zu unerwartetem Verhalten führen. `local-path` muss manuell entfernt werden:
+
+```bash
+kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
+```
+
+Danach sollte die Ausgabe so aussehen:
+
+```
+NAME                 PROVISIONER             RECLAIMPOLICY   VOLUMEBINDINGMODE
+local-path           rancher.io/local-path   Delete          WaitForFirstConsumer
+longhorn (default)   driver.longhorn.io      Delete          Immediate
+longhorn-static      driver.longhorn.io      Delete          Immediate
+```
+
+> `Warning: unrecognized format "int64"` beim `kubectl apply` ist harmlos — ein kosmetisches Kompatibilitätsproblem zwischen Longhorn CRDs und der k8s-API-Version in k3s. Longhorn läuft einwandfrei.
 
 ---
 
