@@ -44,7 +44,7 @@ clusters/       Flux CD Konfiguration
 
 | Service | Status | Anmerkung |
 |---|---|---|
-| FreshRSS | Manifeste fertig | Migration ausstehend |
+| FreshRSS | ✅ Migriert | Läuft auf k3s |
 | Seafile | Planung | Direkt in k3s neu aufsetzen |
 | Immich | Offen | Hohe Komplexität (ML, PostgreSQL) |
 | Paperless | Offen | |
