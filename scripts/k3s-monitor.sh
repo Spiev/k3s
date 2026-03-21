@@ -151,6 +151,7 @@ send_discovery() {
     send_sensor_discovery "k3s_cpu_usage"       "CPU Usage"           "%"    "mdi:cpu-64-bit"
     send_sensor_discovery "k3s_ram_usage"        "RAM Usage"           "%"    "mdi:memory"
     send_sensor_discovery "k3s_disk_usage"       "NVMe Usage"          "%"    "mdi:harddisk"
+    send_sensor_discovery "k3s_disk_free_gb"     "NVMe Free"           "GB"   "mdi:harddisk"
     send_sensor_discovery "k3s_cpu_temp"         "CPU Temperature"     "°C"   "mdi:thermometer"   "temperature"
     send_sensor_discovery "k3s_nvme_temp"        "NVMe Temperature"    "°C"   "mdi:thermometer"   "temperature"
     send_sensor_discovery "k3s_fan_rpm"          "Fan Speed"           "RPM"  "mdi:fan"
@@ -205,6 +206,11 @@ get_ram_usage() {
 # NVMe disk usage (%)
 get_disk_usage() {
     df / | awk 'NR==2 {gsub("%",""); print $5}'
+}
+
+# NVMe free space (GB)
+get_disk_free_gb() {
+    df / | awk 'NR==2 {printf "%.1f", $4/1024/1024}'
 }
 
 # Temperature from hwmon (millidegrees → °C, one decimal)
@@ -297,6 +303,7 @@ echo "Collecting metrics..."
 CPU_USAGE=$(get_cpu_usage)
 RAM_USAGE=$(get_ram_usage)
 DISK_USAGE=$(get_disk_usage)
+DISK_FREE_GB=$(get_disk_free_gb)
 CPU_TEMP=$(get_temp "cpu_thermal")
 NVME_TEMP=$(get_temp "nvme")
 FAN_RPM=$(get_fan_rpm)
@@ -306,7 +313,7 @@ NODE_READY=$(get_node_ready)
 UNHEALTHY_PODS=$(get_unhealthy_pods)
 UNBOUND_PVCS=$(get_unbound_pvcs)
 
-echo "CPU: ${CPU_USAGE}%, RAM: ${RAM_USAGE}%, Disk: ${DISK_USAGE}%"
+echo "CPU: ${CPU_USAGE}%, RAM: ${RAM_USAGE}%, Disk: ${DISK_USAGE}% (${DISK_FREE_GB} GB free)"
 echo "CPU temp: ${CPU_TEMP}°C, NVMe temp: ${NVME_TEMP}°C"
 echo "Fan: ${FAN_RPM} RPM (${FAN_PWM}%)"
 echo "Node ready: ${NODE_READY}, Unhealthy pods: ${UNHEALTHY_PODS}, Unbound PVCs: ${UNBOUND_PVCS}"
@@ -317,6 +324,7 @@ PAYLOAD=$(cat <<EOF
   "k3s_cpu_usage": $CPU_USAGE,
   "k3s_ram_usage": $RAM_USAGE,
   "k3s_disk_usage": $DISK_USAGE,
+  "k3s_disk_free_gb": $DISK_FREE_GB,
   "k3s_cpu_temp": $CPU_TEMP,
   "k3s_nvme_temp": $NVME_TEMP,
   "k3s_fan_rpm": $FAN_RPM,
