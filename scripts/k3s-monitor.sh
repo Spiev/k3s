@@ -34,11 +34,11 @@ KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
 # Load Credentials & Environment Config
 # ============================================================================
 
-CREDENTIALS_FILE="$SCRIPT_DIR/.mqtt_credentials"
+CREDENTIALS_FILE="$SCRIPT_DIR/.credentials"
 
 if [[ ! -f "$CREDENTIALS_FILE" ]]; then
     echo "ERROR: MQTT credentials file not found at $CREDENTIALS_FILE" >&2
-    echo "Please create it from .mqtt_credentials.example" >&2
+    echo "Please create it from .credentials.example" >&2
     exit 1
 fi
 
