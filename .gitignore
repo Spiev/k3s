@@ -3,4 +3,4 @@ apps/*/overlays/*/ingress-patch.yaml
 apps/*/**-ingress.yaml
 
 # Secrets und Credentials — nie ins Repo
-scripts/.mqtt_credentials
+scripts/.credentials
