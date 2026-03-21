@@ -2,6 +2,99 @@
 
 Voraussetzung: [03 — Longhorn Storage](./03-longhorn.md) abgeschlossen, Cluster läuft stabil.
 
+## Strategie
+
+**Primär: Home Assistant Integration** — die wichtigsten Node- und Cluster-Metriken werden per MQTT-Script in HA eingespeist. HA dient als zentrales Dashboard für Smarthome und Infrastruktur.
+
+**Optional/explorativ: kube-prometheus-stack** — der vollständige Prometheus/Grafana-Stack für tiefgehende Kubernetes-Metriken. Sinnvoll zum Lernen, aber kein dauerhafter Betrieb geplant (separater Stack mit eigenem Ressourcenbedarf).
+
+---
+
+## 1. Home Assistant Integration via MQTT
+
+Das Script `scripts/k3s-monitor.sh` läuft auf dem k3s Server-Node, sammelt Metriken und pusht sie via MQTT Discovery zu Home Assistant — genau wie das bestehende `check_raspi_update.sh` auf dem Docker-Host.
+
+### Was wird gemonitort
+
+**Node-Metriken (Linux):**
+
+| Sensor | Quelle | HA-Entity |
+|---|---|---|
+| CPU Usage | `/proc/stat` | `sensor.cpu_usage` |
+| RAM Usage | `/proc/meminfo` | `sensor.ram_usage` |
+| NVMe Disk Usage | `df /` | `sensor.nvme_usage` |
+| CPU Temperatur | `hwmon` (`cpu_thermal`) | `sensor.cpu_temperature` |
+| NVMe Temperatur | `hwmon` (`nvme`) | `sensor.nvme_temperature` |
+| Lüfter RPM | `hwmon` (`pwmfan/fan1_input`) | `sensor.fan_speed` |
+| Lüfter PWM | `hwmon` (`pwmfan/pwm1`) | `sensor.fan_pwm` |
+| Unterspannung | `hwmon` (`rpi_volt`) | `binary_sensor.k3s_undervoltage` |
+
+**k3s Cluster-Status:**
+
+| Sensor | Quelle | HA-Entity |
+|---|---|---|
+| Node Ready | `kubectl get nodes` | `binary_sensor.k3s_node_ready` |
+| Unhealthy Pods | `kubectl get pods -A` | `sensor.k3s_unhealthy_pods` |
+| Unbound PVCs | `kubectl get pvc -A` | `sensor.k3s_unbound_pvcs` |
+
+> Die hwmon-Pfade (`hwmon0`, `hwmon1` etc.) werden dynamisch per Name aufgelöst — kein Hardcoding, bleibt stabil über Reboots.
+
+### Voraussetzungen
+
+```bash
+# Auf dem k3s Server-Node
+sudo apt install -y mosquitto-clients
+```
+
+`kubectl` ist bereits vorhanden, Kubeconfig liegt unter `~/.kube/config`.
+
+### Setup
+
+```bash
+# 1. Credentials anlegen
+cp scripts/.mqtt_credentials.example scripts/.mqtt_credentials
+chmod 600 scripts/.mqtt_credentials
+# MQTT_USER und MQTT_PASSWORD eintragen (selbe Zugangsdaten wie check_raspi_update.sh)
+
+# 2. Script ausführbar machen
+chmod +x scripts/k3s-monitor.sh
+
+# 3. Einmalig testen
+bash scripts/k3s-monitor.sh
+# Ausgabe prüfen — alle Werte sollten plausibel sein
+# In HA: Einstellungen → Geräte & Dienste → MQTT → "k3s Server Node" erscheint automatisch
+```
+
+### Cron einrichten
+
+```bash
+crontab -e
+```
+
+```
+*/5 * * * * /home/stefan/k3s/scripts/k3s-monitor.sh >> /home/stefan/logs/k3s-monitor.log 2>&1
+```
+
+Log-Verzeichnis anlegen falls nötig:
+
+```bash
+mkdir -p ~/logs
+```
+
+### Ergebnis in Home Assistant
+
+Nach dem ersten Lauf erscheint automatisch das Gerät **"k3s Server Node"** in HA (MQTT Discovery). Alle Sensoren sind sofort verfügbar — kein manuelles Anlegen nötig.
+
+Empfohlene HA-Automationen:
+- Benachrichtigung wenn `binary_sensor.k3s_node_ready` auf `OFF` wechselt
+- Benachrichtigung wenn `sensor.k3s_unhealthy_pods` > 0
+- Benachrichtigung bei `binary_sensor.k3s_undervoltage` = `ON`
+- Warnung wenn CPU-Temperatur > 75 °C oder NVMe-Temperatur > 60 °C
+
+---
+
+## 2. kube-prometheus-stack (optional/explorativ)
+
 Der Standard-Stack für Kubernetes-Monitoring: **Prometheus + Grafana + Alertmanager**, installiert über das **kube-prometheus-stack** Helm-Chart.
 
 ```
@@ -12,9 +105,7 @@ Alertmanager         → verarbeitet Alerts von Prometheus
 Grafana              → Dashboards und Visualisierung
 ```
 
----
-
-## 1. Helm installieren
+### 2.1 Helm installieren
 
 Helm ist der Paketmanager für Kubernetes — ähnlich wie `apt` für Debian.
 
@@ -28,7 +119,7 @@ curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
 ---
 
-## 2. kube-prometheus-stack installieren
+### 2.2 kube-prometheus-stack installieren
 
 ```bash
 # Helm-Repository hinzufügen
@@ -61,7 +152,7 @@ Was installiert wird:
 
 ---
 
-## 3. Grafana aufrufen
+### 2.3 Grafana aufrufen
 
 Port-Forward für den ersten Zugriff:
 
@@ -84,7 +175,7 @@ ssh -L 3000:localhost:3000 <user>@<raspi-hostname>
 
 ---
 
-## 4. Vorgefertigte Dashboards
+### 2.4 Vorgefertigte Dashboards
 
 kube-prometheus-stack liefert viele Dashboards out-of-the-box. Die wichtigsten für dieses Setup:
 
@@ -99,7 +190,7 @@ Raspberry Pi CPU-Temperatur ist unter **Node Exporter Full → Hardware → Ther
 
 ---
 
-## 5. Persistenz konfigurieren
+### 2.5 Persistenz konfigurieren
 
 Standardmäßig speichert Prometheus Metriken nur im Arbeitsspeicher — nach einem Pod-Neustart sind sie weg. Persistenz wird über eine Helm-Values-Datei konfiguriert (alle Einstellungen für Prometheus, Grafana und Alertmanager gebündelt):
 
@@ -118,25 +209,7 @@ Longhorn legt die PVCs automatisch an — keine separate PVC-YAML nötig.
 
 ---
 
-## 6. Integration mit Home Assistant (optional)
-
-Home Assistant kann Prometheus-Metriken lesen und z.B. für Automationen nutzen (Benachrichtigung bei hoher CPU-Temperatur o.ä.).
-
-In der HA `configuration.yaml`:
-
-```yaml
-prometheus:
-  host: <raspi-ip>
-  port: 9090
-```
-
-Oder umgekehrt: Prometheus scrapt den HA-eigenen `/api/prometheus`-Endpunkt und bringt HA-Sensoren in Grafana-Dashboards.
-
-> Für den Alltag reicht Grafana als primäres Monitoring-Tool — die HA-Integration ist nice-to-have.
-
----
-
-## 7. Abschluss-Check
+### 2.6 Abschluss-Check
 
 ```bash
 # Alle Monitoring-Pods laufen
