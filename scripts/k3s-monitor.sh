@@ -313,7 +313,7 @@ NODE_READY=$(get_node_ready)
 UNHEALTHY_PODS=$(get_unhealthy_pods)
 UNBOUND_PVCS=$(get_unbound_pvcs)
 
-echo "CPU: ${CPU_USAGE}%, RAM: ${RAM_USAGE}%, Disk: ${DISK_USAGE}%"
+echo "CPU: ${CPU_USAGE}%, RAM: ${RAM_USAGE}%, Disk: ${DISK_USAGE}% (${DISK_FREE_GB} GB free)"
 echo "CPU temp: ${CPU_TEMP}°C, NVMe temp: ${NVME_TEMP}°C"
 echo "Fan: ${FAN_RPM} RPM (${FAN_PWM}%)"
 echo "Node ready: ${NODE_READY}, Unhealthy pods: ${UNHEALTHY_PODS}, Unbound PVCs: ${UNBOUND_PVCS}"
