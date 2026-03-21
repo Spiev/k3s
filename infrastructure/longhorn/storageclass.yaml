@@ -2,8 +2,8 @@
 #
 # Longhorn verwaltet die eingebaute "longhorn" StorageClass selbst und
 # lässt keine Änderung von reclaimPolicy oder parameters zu.
-# Daher eine eigene StorageClass "longhorn-retain" für alle produktiven
-# Workloads — mit Retain statt Delete als Sicherheitsnetz.
+# Daher eigene StorageClasses: "longhorn-retain" als Fallback/Migration,
+# "longhorn-retain-encrypted" (Default) für alle produktiven Workloads.
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -17,3 +17,25 @@ parameters:
   staleReplicaTimeout: "2880"       # Verwaiste Replicas nach 48h aufräumen
   fromBackup: ""
   fsType: "ext4"
+
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn-retain-encrypted
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "1"
+  staleReplicaTimeout: "2880"
+  fsType: "ext4"
+  encrypted: "true"
+  csi.storage.k8s.io/provisioner-secret-name: longhorn-crypto-secret
+  csi.storage.k8s.io/provisioner-secret-namespace: longhorn-system
+  csi.storage.k8s.io/node-publish-secret-name: longhorn-crypto-secret
+  csi.storage.k8s.io/node-publish-secret-namespace: longhorn-system
+  csi.storage.k8s.io/node-stage-secret-name: longhorn-crypto-secret
+  csi.storage.k8s.io/node-stage-secret-namespace: longhorn-system
+

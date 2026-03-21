@@ -27,7 +27,7 @@ sudo systemctl enable --now iscsid
 **Voraussetzungen automatisch prüfen** — Longhorn bringt ein Check-Script mit:
 
 ```bash
-curl -sSfL https://raw.githubusercontent.com/longhorn/longhorn/v1.7.2/scripts/environment_check.sh | bash
+curl -sSfL https://raw.githubusercontent.com/longhorn/longhorn/v1.10.2/scripts/environment_check.sh | bash
 ```
 
 Alle Punkte sollten grün sein bevor es weitergeht.
@@ -37,7 +37,7 @@ Alle Punkte sollten grün sein bevor es weitergeht.
 ## 2. Longhorn installieren
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.7.2/deploy/longhorn.yaml
+kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.10.2/deploy/longhorn.yaml
 ```
 
 Die Installation dauert 2–3 Minuten. Fortschritt beobachten:
@@ -131,24 +131,91 @@ parameters:
 kubectl apply -f infrastructure/longhorn/storageclass.yaml
 ```
 
-Ergebnis — zwei Longhorn StorageClasses mit unterschiedlichem Zweck:
-
-```bash
-kubectl get storageclass
-# Liste aller verfügbaren storagesclasses
-NAME              RECLAIMPOLICY   ZWECK
-longhorn          Delete          Von Longhorn verwaltet, für Tests
-longhorn-retain   Retain          Für alle produktiven Services
-```
-
 **Warum `reclaimPolicy: Retain`?**
 Mit `Delete` (Longhorn-Default) wird ein Volume sofort gelöscht wenn sein PVC gelöscht wird — auch bei einem versehentlichen `kubectl delete`. `Retain` lässt das Volume bestehen, es muss dann manuell in der Longhorn-UI entfernt werden. Für Produktionsdaten die sicherere Wahl.
 
-> Alle App-Manifeste (FreshRSS, Seafile etc.) verwenden `storageClassName: longhorn-retain`.
+---
+
+## 5. Verschlüsselte StorageClass einrichten
+
+Longhorn verschlüsselt Volumes auf Block-Ebene via LUKS — transparent für den Pod, kein Unterschied in der Nutzung. Der Encryption Key liegt als Secret im Cluster und muss **zusätzlich im Passwortmanager** gesichert werden (siehe [09 — Backup & Restore](./09-backup-restore.md)).
+
+### Crypto Secret anlegen
+
+```bash
+kubectl create secret generic longhorn-crypto-secret \
+  -n longhorn-system \
+  --from-literal=CRYPTO_KEY_VALUE="$(openssl rand -base64 32)" \
+  --from-literal=CRYPTO_KEY_PROVIDER=secret
+```
+
+Den generierten Key sofort im Passwortmanager sichern:
+
+```bash
+kubectl get secret longhorn-crypto-secret -n longhorn-system \
+  -o jsonpath='{.data.CRYPTO_KEY_VALUE}' | base64 -d
+```
+
+### Verschlüsselte StorageClass anlegen
+
+```yaml
+# infrastructure/longhorn/storageclass.yaml  (ergänzen)
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn-retain-encrypted
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "1"
+  staleReplicaTimeout: "2880"
+  fsType: "ext4"
+  encrypted: "true"
+  csi.storage.k8s.io/provisioner-secret-name: longhorn-crypto-secret
+  csi.storage.k8s.io/provisioner-secret-namespace: longhorn-system
+  csi.storage.k8s.io/node-publish-secret-name: longhorn-crypto-secret
+  csi.storage.k8s.io/node-publish-secret-namespace: longhorn-system
+  csi.storage.k8s.io/node-stage-secret-name: longhorn-crypto-secret
+  csi.storage.k8s.io/node-stage-secret-namespace: longhorn-system
+```
+
+```bash
+kubectl apply -f infrastructure/longhorn/storageclass.yaml
+```
+
+Ergebnis — vier StorageClasses:
+
+```bash
+kubectl get storageclass
+NAME                                RECLAIMPOLICY   ZWECK
+longhorn                            Delete          Von Longhorn verwaltet, für Tests
+longhorn-static                     Delete          Von Longhorn verwaltet, für statische PVs
+longhorn-retain                     Retain          Unverschlüsselt (Fallback/Migration)
+longhorn-retain-encrypted (default) Retain          Für alle produktiven Services
+```
+
+`longhorn-retain-encrypted` als Default setzen:
+
+```bash
+kubectl patch storageclass longhorn \
+  -p '{"metadata": {"annotations": {"storageclass.kubernetes.io/is-default-class": "false"}}}'
+
+kubectl patch storageclass longhorn-retain-encrypted \
+  -p '{"metadata": {"annotations": {"storageclass.kubernetes.io/is-default-class": "true"}}}'
+```
+
+> Alle App-Manifeste (FreshRSS, Pi-hole, Seafile etc.) verwenden `storageClassName: longhorn-retain-encrypted`.
+
+### Warum drei statt zwei?
+
+`longhorn-retain` bleibt erhalten als Fallback — z.B. beim Restore eines Backups der vor der Verschlüsselung erstellt wurde. Bestehende unverschlüsselte Volumes können nicht in-place verschlüsselt werden; bei Bedarf: neues verschlüsseltes Volume anlegen, Daten manuell migrieren, altes Volume löschen.
 
 ---
 
-## 5. Konzepte: PVC und PV
+## 6. Konzepte: PVC und PV
 
 Pods sprechen nie direkt mit Longhorn. Der Weg ist immer:
 
@@ -167,7 +234,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce     # RWO: nur ein Pod gleichzeitig (Standard für die meisten Services)
-  storageClassName: longhorn-retain
+  storageClassName: longhorn-retain-encrypted
   resources:
     requests:
       storage: 5Gi
@@ -198,11 +265,13 @@ spec:
 
 ---
 
-## 6. Backup-Strategie (Single-Node)
+## 7. Backup-Strategie (Single-Node)
 
 Im Single-Node-Betrieb gibt es keine Replikation — Backup ist daher kritisch.
 
-Longhorn unterstützt Backups auf S3-kompatible Ziele. **Empfehlung: Backblaze B2** (günstig, S3-kompatibel, europäische Rechenzentren verfügbar).
+Longhorn unterstützt Backups auf S3-kompatible Ziele. Als externes Backup-Ziel wird **Hetzner Object Storage** verwendet (S3-kompatibel, EU-Standorte). Die Einrichtung des Buckets und der Access Keys ist in [09 — Backup & Restore](./09-backup-restore.md) beschrieben.
+
+> **Wichtig:** Das Backup-Ziel muss vor einem k3s-Neuinstall konfiguriert und ein vollständiges Backup erstellt werden — danach sind die Volume-Daten extern gesichert und können nach dem Neuinstall wiederhergestellt werden.
 
 ### Backup-Ziel konfigurieren
 
@@ -210,14 +279,18 @@ Longhorn unterstützt Backups auf S3-kompatible Ziele. **Empfehlung: Backblaze B
 # Credentials als Secret anlegen
 kubectl create secret generic longhorn-backup-secret \
   -n longhorn-system \
-  --from-literal=AWS_ACCESS_KEY_ID=<b2-key-id> \
-  --from-literal=AWS_SECRET_ACCESS_KEY=<b2-application-key> \
-  --from-literal=AWS_ENDPOINTS=https://s3.eu-central-003.backblazeb2.com
+  --from-literal=AWS_ACCESS_KEY_ID="<hetzner-access-key-id>" \
+  --from-literal=AWS_SECRET_ACCESS_KEY="<hetzner-secret-key>" \
+  --from-literal=AWS_ENDPOINTS=https://nbg1.your-objectstorage.com
 ```
 
 In der Longhorn UI unter **Settings → Backup**:
-- `Backup Target`: `s3://dein-bucket-name@eu-central-003/`
+- `Backup Target`: `s3://bkp-home@nbg1/`
+  - `bkp-home` = Bucket-Name, `nbg1` = Location
+  - `nbg1` = Location des Buckets (`fsn1`, `nbg1` oder `hel1`)
 - `Backup Target Credential Secret`: `longhorn-backup-secret`
+
+Nach dem Speichern sollte **Backup Target Status: Available** erscheinen.
 
 ### Backup-Plan für Volumes
 
@@ -243,7 +316,7 @@ Für Produktion: tägliche Backups extern + stündliche Snapshots lokal.
 
 ---
 
-## 7. Erstes Volume testen
+## 8. Erstes Volume testen
 
 Einen temporären Pod mit einem PVC starten und prüfen ob Longhorn funktioniert:
 
@@ -311,7 +384,7 @@ Das Volume bleibt in der Longhorn UI als `Detached` sichtbar (wegen `reclaimPoli
 
 ---
 
-## 8. Abschluss-Check
+## 9. Abschluss-Check
 
 ```bash
 # Longhorn Pods alle Running
@@ -332,4 +405,4 @@ STORAGE:.status.allocatable.ephemeral-storage
 
 ---
 
-## Weiter: [04 — FreshRSS deployen](./04-freshrss.md)
+## Weiter: [04a — FreshRSS deployen](./04a-freshrss.md)

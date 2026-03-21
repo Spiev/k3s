@@ -1,3 +1,25 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: freshrss
+  labels:
+    app: freshrss
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: freshrss-config-enc
+  namespace: freshrss
+  labels:
+    app: freshrss
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn-retain-encrypted
+  resources:
+    requests:
+      storage: 5Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -41,4 +63,18 @@ spec:
       volumes:
         - name: config
           persistentVolumeClaim:
-            claimName: freshrss-config
+            claimName: freshrss-config-enc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: freshrss
+  namespace: freshrss
+  labels:
+    app: freshrss
+spec:
+  selector:
+    app: freshrss
+  ports:
+    - port: 80
+      targetPort: 80

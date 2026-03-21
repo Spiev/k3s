@@ -166,6 +166,8 @@ Sobald Agent-Node joined: `numberOfReplicas: 2` → automatische Replikation auf
 **Storage-Planung mit 2 Nodes:**
 Longhorn kann über Node-Tags steuern wo Volumes angelegt werden. Große Volumes (Immich-Bibliothek, Paperless-Dokumente) wandern bevorzugt auf den Agent-Node mit 2 TB. Kleine Volumes (FreshRSS, Seafile) können überall liegen.
 
+→ Migrationsstrategie für Immich (1,5 TB Bibliothek): [`docs/04d-immich.md`](04d-immich.md)
+
 **Backup-Strategie (Single-Node):**
 ```
 Longhorn Volume
