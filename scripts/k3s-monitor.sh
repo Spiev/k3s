@@ -270,18 +270,20 @@ get_node_ready() {
 
 # Count pods not in Running/Succeeded/Completed phase
 get_unhealthy_pods() {
-    KUBECONFIG="$KUBECONFIG" kubectl get pods --all-namespaces --no-headers 2>/dev/null \
+    local result
+    result=$(KUBECONFIG="$KUBECONFIG" kubectl get pods --all-namespaces --no-headers 2>/dev/null \
         | awk '{print $4}' \
-        | grep -vcE "^(Running|Succeeded|Completed)$" \
-        || echo "0"
+        | { grep -vcE "^(Running|Succeeded|Completed)$" || true; })
+    echo "${result:-0}"
 }
 
 # Count PVCs not in Bound state
 get_unbound_pvcs() {
-    KUBECONFIG="$KUBECONFIG" kubectl get pvc --all-namespaces --no-headers 2>/dev/null \
+    local result
+    result=$(KUBECONFIG="$KUBECONFIG" kubectl get pvc --all-namespaces --no-headers 2>/dev/null \
         | awk '{print $3}' \
-        | grep -vc "^Bound$" \
-        || echo "0"
+        | { grep -vc "^Bound$" || true; })
+    echo "${result:-0}"
 }
 
 # ============================================================================
