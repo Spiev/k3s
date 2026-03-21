@@ -12,7 +12,6 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
-    environment: pr-review
     
     steps:
       - name: Checkout code
@@ -29,7 +28,7 @@ jobs:
 
       - name: Run Claude PR Review
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO_OWNER: ${{ github.repository_owner }}
