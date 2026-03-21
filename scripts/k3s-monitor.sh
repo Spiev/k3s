@@ -156,6 +156,7 @@ send_discovery() {
     send_sensor_discovery "k3s_nvme_temp"        "NVMe Temperature"    "°C"   "mdi:thermometer"   "temperature"
     send_sensor_discovery "k3s_fan_rpm"          "Fan Speed"           "RPM"  "mdi:fan"
     send_sensor_discovery "k3s_fan_pwm"          "Fan PWM"             "%"    "mdi:fan"
+    send_sensor_discovery "k3s_last_boot"        "Last Boot"           ""     "mdi:restart"       "timestamp"
 
     # k3s cluster metrics
     send_sensor_discovery "k3s_unhealthy_pods"   "Unhealthy Pods"      ""     "mdi:kubernetes"
@@ -211,6 +212,11 @@ get_disk_usage() {
 # NVMe free space (GB)
 get_disk_free_gb() {
     df / | awk 'NR==2 {printf "%.1f", $4/1024/1024}'
+}
+
+# Last boot time (ISO 8601 for HA timestamp device_class)
+get_last_boot() {
+    date -d "$(uptime -s)" --iso-8601=seconds
 }
 
 # Temperature from hwmon (millidegrees → °C, one decimal)
@@ -304,6 +310,7 @@ CPU_USAGE=$(get_cpu_usage)
 RAM_USAGE=$(get_ram_usage)
 DISK_USAGE=$(get_disk_usage)
 DISK_FREE_GB=$(get_disk_free_gb)
+LAST_BOOT=$(get_last_boot)
 CPU_TEMP=$(get_temp "cpu_thermal")
 NVME_TEMP=$(get_temp "nvme")
 FAN_RPM=$(get_fan_rpm)
@@ -325,6 +332,7 @@ PAYLOAD=$(cat <<EOF
   "k3s_ram_usage": $RAM_USAGE,
   "k3s_disk_usage": $DISK_USAGE,
   "k3s_disk_free_gb": $DISK_FREE_GB,
+  "k3s_last_boot": "$LAST_BOOT",
   "k3s_cpu_temp": $CPU_TEMP,
   "k3s_nvme_temp": $NVME_TEMP,
   "k3s_fan_rpm": $FAN_RPM,
