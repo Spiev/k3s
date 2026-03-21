@@ -51,10 +51,11 @@ sudo apt install -y mosquitto-clients
 ### Setup
 
 ```bash
-# 1. Credentials anlegen
+# 1. Credentials & Umgebungskonfiguration anlegen
 cp scripts/.mqtt_credentials.example scripts/.mqtt_credentials
 chmod 600 scripts/.mqtt_credentials
-# MQTT_USER und MQTT_PASSWORD eintragen (selbe Zugangsdaten wie check_raspi_update.sh)
+# MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_PASSWORD eintragen
+# (MQTT_HOST = Hostname des Mosquitto-Brokers, Zugangsdaten wie check_raspi_update.sh)
 
 # 2. Script ausführbar machen
 chmod +x scripts/k3s-monitor.sh

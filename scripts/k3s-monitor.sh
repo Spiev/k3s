@@ -24,17 +24,14 @@ echo "Script started at $(date --iso-8601=ns)"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-MQTT_HOST="raspberrypi.fritz.box"
-MQTT_PORT="1883"
 STATE_TOPIC="k3s/monitor/state"
-
 DEVICE_ID="k3s_server_node"
 DEVICE_NAME="k3s Server Node"
 
 KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
 
 # ============================================================================
-# Load Credentials
+# Load Credentials & Environment Config
 # ============================================================================
 
 CREDENTIALS_FILE="$SCRIPT_DIR/.mqtt_credentials"
@@ -52,8 +49,9 @@ fi
 
 source "$CREDENTIALS_FILE"
 
-if [[ -z "${MQTT_USER:-}" ]] || [[ -z "${MQTT_PASSWORD:-}" ]]; then
-    echo "ERROR: MQTT_USER or MQTT_PASSWORD not set in $CREDENTIALS_FILE" >&2
+if [[ -z "${MQTT_HOST:-}" ]] || [[ -z "${MQTT_PORT:-}" ]] || \
+   [[ -z "${MQTT_USER:-}" ]] || [[ -z "${MQTT_PASSWORD:-}" ]]; then
+    echo "ERROR: MQTT_HOST, MQTT_PORT, MQTT_USER or MQTT_PASSWORD not set in $CREDENTIALS_FILE" >&2
     exit 1
 fi
 
