@@ -143,7 +143,7 @@ sudo systemctl enable --now iscsid
 
 ### Longhorn installieren
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/master/deploy/longhorn.yaml
+kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.10.2/deploy/longhorn.yaml
 ```
 
 Longhorn-UI ist dann erreichbar über einen Port-Forward:
@@ -192,15 +192,12 @@ Das bedeutet: **Im Single-Node-Betrieb ersetzt Backup die Replikation.**
 Longhorn hat dafür eine native Lösung — Backups auf ein S3-kompatibles Ziel:
 
 ```
-Longhorn Volume Snapshot → Longhorn Backup → Backblaze B2 / Hetzner Object Storage
-```
-
-Alternativ passt das bekannte Restic-Pattern aus dem docker-runtime-Setup:
-```
-Longhorn Volume → gemountetes Verzeichnis auf NVMe → Restic → externe HDD
+Longhorn Volume Snapshot → Longhorn Backup → Hetzner Object Storage (bkp-home, nbg1)
 ```
 
 Longhorn-native Backups sind die empfohlene Variante, da sie inkrementell und snapshot-basiert arbeiten und direkt über die Longhorn-UI geplant werden können.
+
+Details zu Backup & Restore (inkl. Hetzner Object Storage einrichten): [docs/09-backup-restore.md](./09-backup-restore.md)
 
 ### Weg zum zweiten Node
 
@@ -315,6 +312,52 @@ k3s/
 └── docs/
 ```
 
+### Traefik aus k3s herauslösen
+
+Traefik ist in k3s eingebaut und an die k3s-Version gekoppelt — Versionsverwaltung und Renovate-Tracking sind so nicht möglich. Mit Flux lässt sich das sauber lösen:
+
+**Schritt 1 — Eingebautes Traefik deaktivieren** (in `/etc/rancher/k3s/config.yaml` auf dem Pi):
+
+```yaml
+disable:
+  - traefik
+  - local-storage
+```
+
+`sudo systemctl restart k3s` — Traefik wird aus dem Cluster entfernt.
+
+**Schritt 2 — Traefik als Flux HelmRelease ins Repo** (`infrastructure/traefik/helmrelease.yaml`):
+
+```yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  url: https://traefik.github.io/charts
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  chart:
+    spec:
+      chart: traefik
+      version: "34.4.0"   # Renovate tracked das automatisch
+      sourceRef:
+        kind: HelmRepository
+        name: traefik
+```
+
+Flux deployed das beim nächsten Sync automatisch. Renovate erkennt `HelmRelease`-Ressourcen nativ und schlägt Updates als PRs vor.
+
+> **Wichtig:** Erst Traefik in k3s deaktivieren, dann Flux deployen — sonst gibt es CRD-Ownership-Konflikte (beide versuchen dieselben Gateway-CRDs zu verwalten).
+
+> **HelmChart vs. HelmRelease:** k3s hat einen eigenen `HelmChart`-Typ (`helm.cattle.io/v1`) der ebenfalls von Renovate unterstützt wird. Flux nutzt `HelmRelease` (`helm.toolkit.fluxcd.io/v2`) mit separatem `HelmRepository`-Objekt. Beide funktionieren, aber sobald Flux da ist, ist `HelmRelease` der konsistentere Weg.
+
 ### Flux installieren & bootstrappen
 
 ```bash
@@ -406,13 +449,15 @@ curl -sfL https://get.k3s.io | K3S_URL=https://<raspi5-ip>:6443 \
 
 ---
 
-## Reihenfolge der nächsten Dokumente
+## Reihenfolge der Dokumente
 
 1. `docs/01-os-setup.md` — NVMe-Boot, Raspberry Pi OS, cgroups
-2. `docs/02-k3s-install.md` — k3s, kubectl (lokal + remote), erste Schritte
-3. `docs/03-longhorn.md` — Storage einrichten
-4. `docs/04-freshrss.md` — Erste Service-Migration
-5. `docs/05-seafile.md` — Zweite Migration (Multi-Container, Secrets)
-6. `docs/06-monitoring.md` — Prometheus + Grafana
-7. `docs/07-traefik.md` — Traefik Ingress + cert-manager (TLS)
-8. `docs/08-flux.md` — GitOps mit Flux CD
+2. `docs/02-k3s-install.md` — k3s mit Dual-Stack (IPv4+IPv6), kubectl (lokal + remote), erste Schritte
+3. `docs/03-longhorn.md` — Storage einrichten, Verschlüsselung, Backup-Strategie
+4. `docs/04a-freshrss.md` — FreshRSS migrieren
+5. `docs/04b-pihole.md` — Pi-hole: DNS via LoadBalancer
+6. `docs/04c-seafile.md` — Seafile migrieren (Multi-Container, Secrets)
+7. `docs/04d-immich.md` — Immich migrieren (Restic-Restore-Strategie, großes Volume)
+8. `docs/06-monitoring.md` — Prometheus + Grafana
+9. `docs/09-backup-restore.md` — Backup & Restore, kritische Secrets
+10. `docs/10-migrate-to-encrypted.md` — Volume-Migration auf verschlüsselte StorageClass

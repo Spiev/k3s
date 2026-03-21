@@ -35,4 +35,5 @@ Coming from `../docker-runtime`. Migration order by complexity:
 - YAML indentation: 2 spaces
 - All Kubernetes resources need `namespace` and `labels` set explicitly
 - Secrets: always use Sealed Secrets (`kubeseal`), never plain `Secret` objects in git
-- Longhorn StorageClass: `longhorn` (set as default), `numberOfReplicas: "1"` until second node joins, then `"2"`
+- Longhorn StorageClass: `longhorn-retain-encrypted` (default), `numberOfReplicas: "1"` until second node joins, then `"2"`
+- **No Kustomize** — single manifest file per service (e.g. `apps/freshrss/freshrss.yaml`), Ingress in separate `*-ingress.yaml` excluded via `.gitignore`; deploy with `kubectl apply -f apps/<service>/`
