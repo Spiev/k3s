@@ -129,7 +129,7 @@ spec:
           command: ['sh', '-c', 'until nc -z mariadb 3306; do echo "waiting for mariadb..."; sleep 2; done']
       containers:
         - name: seafile
-          image: seafileltd/seafile-mc:13.0.19
+          image: seafileltd/seafile-mc:13.0.19  # TODO vor Deployment prüfen: ARM64-Support? Stabile Tags sind ggf. nur amd64. Aktuelle Tags: hub.docker.com/r/seafileltd/seafile-mc/tags
           env:
             - name: DB_HOST
               value: mariadb
