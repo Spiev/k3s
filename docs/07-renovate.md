@@ -116,6 +116,35 @@ LinuxServer.io-Images (`lscr.io/linuxserver/*`) verwenden das Format `1.28.1-ls2
 
 ---
 
+## Digest Pinning
+
+Mit `"pinDigests": true` ergänzt Renovate jeden Image-Tag um den SHA256-Digest:
+
+```yaml
+# vorher
+image: lscr.io/linuxserver/freshrss:1.28.1-ls299
+
+# nachher (Renovate-PR)
+image: lscr.io/linuxserver/freshrss:1.28.1-ls299@sha256:3f2a1b...
+```
+
+Kubernetes verwendet dann ausschließlich den Digest zum Pullen — der Tag bleibt nur zur Lesbarkeit erhalten. Das schützt gegen Tag-Mutability: ein Registry-Betreiber könnte theoretisch denselben Tag auf ein anderes Image pushen, der Digest bleibt dagegen unveränderlich.
+
+Renovate trackt zwei Update-Typen:
+
+| Update-Typ | Wann | Beispiel |
+|---|---|---|
+| `patch` / `minor` | Neuer Tag verfügbar | `ls299` → `ls300` |
+| `digest` | Neuer SHA256 beim selben Tag | Base-Image-Patch ohne neuen Tag |
+
+**Wichtig:** Digest-Updates haben einen eigenen `updateType: "digest"` — dieser muss explizit in der Automerge-Regel stehen, sonst werden Digest-PRs nicht automatisch gemergt:
+
+```json
+"matchUpdateTypes": ["minor", "patch", "digest"]
+```
+
+---
+
 ## Debugging
 
 Wenn Renovate keinen PR erstellt, zuerst Debug-Logging aktivieren (temporär):
