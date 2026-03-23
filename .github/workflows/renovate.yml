@@ -26,3 +26,4 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
         env:
           RENOVATE_AUTODISCOVER: "true"
+          LOG_LEVEL: "debug"
