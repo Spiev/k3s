@@ -119,6 +119,47 @@ NodePort     → Port auf dem Node öffnen (für Tests, nicht für Produktion)
 LoadBalancer → externe IP zuweisen (braucht MetalLB auf bare metal)
 ```
 
+### MetalLB installieren
+
+k3s bringt ein eingebautes ServiceLB (Klipper) mit, das `LoadBalancer`-Services einfach auf die Node-IP bindet. Für eine stabile VIP die bei Multi-Node zwischen Nodes wandern kann, braucht es MetalLB.
+
+**Schritt 1 — k3s ServiceLB deaktivieren** (in `/etc/rancher/k3s/config.yaml`):
+```yaml
+disable:
+  - servicelb
+```
+`sudo systemctl restart k3s`
+
+**Schritt 2 — MetalLB deployen:**
+```bash
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+```
+
+**Schritt 3 — IP-Pool konfigurieren** (`infrastructure/metallb/metallb.yaml`):
+```yaml
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: homelab-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 192.168.178.200-192.168.178.220   # freier Bereich im Heimnetz
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: homelab-l2
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - homelab-pool
+```
+
+Ab jetzt bekommt jeder `type: LoadBalancer`-Service eine dedizierte IP aus dem Pool — kein Port-Sharing, kein Konflikt zwischen Services.
+
+> **Warum MetalLB statt kube-vip?** MetalLB ist purpose-built für genau diese Aufgabe und in professionellen On-Premises-Kubernetes-Umgebungen deutlich verbreiteter. kube-vip löst primär Control Plane HA (3+ Nodes) — in diesem Setup nicht relevant.
+
 ### Traefik konfigurieren
 
 Traefik in k3s läuft als `IngressController`. Es gibt zwei Wege, Routing zu definieren:
@@ -421,8 +462,9 @@ Details: [docs/06-monitoring.md](./06-monitoring.md)
 Home Assistant läuft dann auf dem Agent-Node mit `hostNetwork: true` und `nodeAffinity` für den Zigbee-Dongle — kein Umstecken nötig.
 
 Ablauf wenn es soweit ist:
-1. Docker-Services stoppen, Daten sichern
-2. k3s Agent auf dem alten Raspi installieren:
+1. **MetalLB einrichten** (falls noch nicht geschehen) — VIP-Pool konfigurieren damit Services eine stabile IP bekommen die zwischen Nodes wandern kann (siehe Phase 2)
+2. Docker-Services stoppen, Daten sichern
+3. k3s Agent auf dem alten Raspi installieren:
 
 ```bash
 # Token vom Server-Node holen

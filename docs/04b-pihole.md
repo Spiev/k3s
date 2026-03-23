@@ -176,7 +176,8 @@ kubectl logs -n pihole -l app=pihole
 
 # DNS-Service hat keine External-IP?
 kubectl describe svc -n pihole pihole-dns
-# → Events prüfen ob klipper-lb den Port binden konnte
+# → Events prüfen ob MetalLB eine IP aus dem Pool zugewiesen hat
+# → Ohne MetalLB: klipper-lb (k3s built-in ServiceLB) übernimmt — dann bindet der Service an die Node-IP
 
 # Port 53 bereits belegt auf dem Node?
 ssh stefan@k3s.fritz.box "sudo ss -tulpn | grep :53"
