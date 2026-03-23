@@ -7,7 +7,7 @@
   "packageRules": [
     {
       "description": "LinuxServer.io images use 1.x.y-lsNNN versioning — loose versioning handles this correctly",
-      "matchPackageNames": ["lscr.io/linuxserver/**"],
+      "matchPackagePrefixes": ["lscr.io/linuxserver/"],
       "versioning": "loose"
     },
     {
