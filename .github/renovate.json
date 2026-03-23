@@ -6,6 +6,7 @@
     "fileMatch": ["apps/.+\\.yaml$", "infrastructure/.+\\.yaml$"]
   },
   "dependencyDashboard": false,
+  "pinDigests": true,
   "packageRules": [
     {
       "description": "LinuxServer.io images use 1.x.y-lsNNN versioning — regex extracts build number for correct comparison",
@@ -13,8 +14,8 @@
       "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-ls(?<build>\\d+)$"
     },
     {
-      "description": "Auto-merge minor and patch updates",
-      "matchUpdateTypes": ["minor", "patch"],
+      "description": "Auto-merge minor, patch and digest updates",
+      "matchUpdateTypes": ["minor", "patch", "digest"],
       "automerge": true,
       "automergeType": "pr"
     },
