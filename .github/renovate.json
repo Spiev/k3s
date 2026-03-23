@@ -6,13 +6,11 @@
     "fileMatch": ["apps/.+\\.yaml$", "infrastructure/.+\\.yaml$"]
   },
   "dependencyDashboard": false,
-  "timezone": "Europe/Berlin",
-  "schedule": ["after 3am and before 4am"],
   "packageRules": [
     {
-      "description": "LinuxServer.io images use 1.x.y-lsNNN versioning — loose versioning handles this correctly",
+      "description": "LinuxServer.io images use 1.x.y-lsNNN versioning — regex extracts build number for correct comparison",
       "matchPackagePrefixes": ["lscr.io/linuxserver/"],
-      "versioning": "loose"
+      "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-ls(?<build>\\d+)$"
     },
     {
       "description": "Auto-merge minor and patch updates",
