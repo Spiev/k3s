@@ -55,7 +55,7 @@ spec:
     spec:
       containers:
         - name: mariadb
-          image: mariadb:10.11
+          image: mariadb:10.11@sha256:4045aba619003d93b5dc834e89e6815ba078d2cb3ff0a26f316ab5d7eab35093
           env:
             - name: MYSQL_ROOT_PASSWORD
               valueFrom:
@@ -125,11 +125,11 @@ spec:
       initContainers:
         # Warten bis MariaDB bereit ist, bevor Seafile startet
         - name: wait-for-mariadb
-          image: alpine:3.21
+          image: alpine:3.21@sha256:c3f8e73fdb79deaebaa2037150150191b9dcbfba68b4a46d70103204c53f4709
           command: ['sh', '-c', 'until nc -z mariadb 3306; do echo "waiting for mariadb..."; sleep 2; done']
       containers:
         - name: seafile
-          image: seafileltd/seafile-mc:13.0.19  # TODO vor Deployment prüfen: ARM64-Support? Stabile Tags sind ggf. nur amd64. Aktuelle Tags: hub.docker.com/r/seafileltd/seafile-mc/tags
+          image: seafileltd/seafile-mc:13.0.19@sha256:3483711551088e1e3423ec2ee933dccfdc779041b11191ea5a943e3225b15637  # TODO vor Deployment prüfen: ARM64-Support? Stabile Tags sind ggf. nur amd64. Aktuelle Tags: hub.docker.com/r/seafileltd/seafile-mc/tags
           env:
             - name: DB_HOST
               value: mariadb
