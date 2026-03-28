@@ -24,6 +24,7 @@ Kubernetes-Infrastruktur auf einem Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migra
 | [06 — Monitoring](docs/06-monitoring.md) | kube-prometheus-stack, Grafana, Alertmanager |
 | [09 — Backup & Restore](docs/09-backup-restore.md) | Cluster-Rebuild, Longhorn-Restore, kritische Secrets |
 | [10 — Migration: unverschlüsselt → verschlüsselt](docs/10-migrate-to-encrypted.md) | Volume-Migration auf LUKS-verschlüsselte StorageClass |
+| [11 — Vaultwarden](docs/11-vaultwarden.md) | Password Manager: Konzept, SSO, YubiKey, Backup, Tier-0-Notfallkonzept |
 
 ---
 
@@ -57,3 +58,4 @@ clusters/       Flux CD Konfiguration
 | Paperless | Offen | |
 | Teslamate | Offen | |
 | Home Assistant | Geplant (Agent-Node) | `hostNetwork` + `nodeAffinity` für Zigbee-Dongle |
+| Vaultwarden | Konzept | Google SSO (OIDC-Fork), YubiKey 2FA — erst nach YubiKey-Beschaffung |
