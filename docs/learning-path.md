@@ -423,23 +423,29 @@ Secrets in Kubernetes sind nur base64-kodiert, nicht verschlüsselt. Für ein ö
 ### Sealed Secrets
 
 ```bash
-# Controller im Cluster installieren
-kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/latest/download/controller.yaml
+# Controller im Cluster installieren (Version prüfen: https://github.com/bitnami-labs/sealed-secrets/releases)
+SEALED_SECRETS_VERSION="v0.27.1"
+kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/${SEALED_SECRETS_VERSION}/controller.yaml
 
-# CLI-Tool
-curl -L https://github.com/bitnami-labs/sealed-secrets/releases/latest/download/kubeseal-linux-arm64.tar.gz | tar xz
-sudo install kubeseal /usr/local/bin/
+# CLI-Tool auf dem Laptop (Arch Linux, x86_64)
+KUBESEAL_VERSION="${SEALED_SECRETS_VERSION#v}"
+curl -L "https://github.com/bitnami-labs/sealed-secrets/releases/download/${SEALED_SECRETS_VERSION}/kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz" \
+  | tar xz kubeseal
+sudo install -m 755 kubeseal /usr/local/bin/kubeseal
 ```
 
 ```bash
 # Secret verschlüsseln → kann sicher ins Git-Repo
-kubectl create secret generic freshrss-env \
-  --from-literal=PASSWORD=geheim \
+kubectl create secret generic pihole-secret \
+  --namespace pihole \
+  --from-literal=WEBPASSWORD="geheim" \
   --dry-run=client -o yaml | \
-  kubeseal --format yaml > apps/freshrss/secret.yaml
+  kubeseal --format yaml > apps/pihole/pihole-sealed-secret.yaml
 ```
 
 Das resultierende `SealedSecret` kann gefahrlos in das öffentliche Repo committed werden. Nur der Cluster kann es entschlüsseln.
+
+> **Wichtig:** Den Controller-Schlüssel sofort nach der Installation sichern — Details und vollständige Recovery-Prozedur: [docs/04e-sealed-secrets.md](./04e-sealed-secrets.md)
 
 ---
 
@@ -497,9 +503,10 @@ curl -sfL https://get.k3s.io | K3S_URL=https://<raspi5-ip>:6443 \
 2. `docs/02-k3s-install.md` — k3s mit Dual-Stack (IPv4+IPv6), kubectl (lokal + remote), erste Schritte
 3. `docs/03-longhorn.md` — Storage einrichten, Verschlüsselung, Backup-Strategie
 4. `docs/04a-freshrss.md` — FreshRSS migrieren
-5. `docs/04b-pihole.md` — Pi-hole: DNS via LoadBalancer
-6. `docs/04c-seafile.md` — Seafile migrieren (Multi-Container, Secrets)
-7. `docs/04d-immich.md` — Immich migrieren (Restic-Restore-Strategie, großes Volume)
-8. `docs/06-monitoring.md` — Prometheus + Grafana
-9. `docs/09-backup-restore.md` — Backup & Restore, kritische Secrets
-10. `docs/10-migrate-to-encrypted.md` — Volume-Migration auf verschlüsselte StorageClass
+5. `docs/04e-sealed-secrets.md` — Sealed Secrets einrichten (Voraussetzung für alle weiteren Secrets)
+6. `docs/04b-pihole.md` — Pi-hole: DNS via LoadBalancer
+7. `docs/04c-seafile.md` — Seafile migrieren (Multi-Container, Secrets)
+8. `docs/04d-immich.md` — Immich migrieren (Restic-Restore-Strategie, großes Volume)
+9. `docs/06-monitoring.md` — Prometheus + Grafana
+10. `docs/09-backup-restore.md` — Backup & Restore, kritische Secrets
+11. `docs/10-migrate-to-encrypted.md` — Volume-Migration auf verschlüsselte StorageClass
