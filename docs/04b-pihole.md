@@ -66,7 +66,7 @@ apps/pihole/
 # SealedSecret erzeugen (ersetze <dein-passwort>)
 kubectl create secret generic pihole-secret \
   --namespace pihole \
-  --from-literal=WEBPASSWORD="<dein-passwort>" \
+  --from-literal=FTLCONF_webserver_api_password="<dein-passwort>" \
   --dry-run=client -o yaml \
   | kubeseal --format yaml > apps/pihole/pihole-sealed-secret.yaml
 
