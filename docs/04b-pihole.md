@@ -1,6 +1,6 @@
 # 04b — Pi-hole deployen
 
-Voraussetzung: [03 — Longhorn](./03-longhorn.md) abgeschlossen, [04e — Sealed Secrets](./04e-sealed-secrets.md) eingerichtet, Dual-Stack-Cluster läuft (siehe [02 — k3s installieren](./02-k3s-install.md)).
+Voraussetzung: [03 — Longhorn](./03-longhorn.md) abgeschlossen, [02b — MetalLB](./02b-metallb.md) eingerichtet, [04e — Sealed Secrets](./04e-sealed-secrets.md) eingerichtet, Dual-Stack-Cluster läuft (siehe [02 — k3s installieren](./02-k3s-install.md)).
 
 Pi-hole läuft als DNS-Resolver für das gesamte Heimnetz. Da es ein Neudeploy ist (keine komplexen Daten zu migrieren), geht das Volume direkt auf `longhorn-retain-encrypted`.
 
@@ -66,24 +66,35 @@ apps/pihole/
 # SealedSecret erzeugen (ersetze <dein-passwort>)
 kubectl create secret generic pihole-secret \
   --namespace pihole \
-  --from-literal=WEBPASSWORD="<dein-passwort>" \
+  --from-literal=FTLCONF_webserver_api_password="<dein-passwort>" \
   --dry-run=client -o yaml \
   | kubeseal --format yaml > apps/pihole/pihole-sealed-secret.yaml
 
-# Ins Repo committen und deployen
+# Ins Repo committen
 git add apps/pihole/pihole-sealed-secret.yaml
 git commit -m "feat(pihole): add sealed secret for admin password"
-
-kubectl apply -f apps/pihole/pihole-sealed-secret.yaml
 ```
+
+> Das SealedSecret wird erst in Schritt 4 deployed — der Namespace muss zuerst existieren.
 
 ---
 
 ## Schritt 4 — Manifeste deployen
 
+Reihenfolge ist wichtig: erst Namespace, dann Secret, dann den Rest — so startet der Pod direkt ohne Fehler-Zwischenzustand.
+
 ```bash
-kubectl apply -f apps/pihole/
+# 1. Namespace anlegen (--save-config verhindert Warning beim späteren kubectl apply)
+kubectl create namespace pihole --save-config
+
+# 2. SealedSecret deployen — Controller legt das echte Secret sofort an
+kubectl apply -f apps/pihole/pihole-sealed-secret.yaml
+
+# 3. PVC, Deployment und Services deployen
+kubectl apply -f apps/pihole/pihole.yaml
 ```
+
+> `kubectl apply -f apps/pihole/` würde auch die `.example`-Dateien anwenden — daher explizit die Dateien benennen.
 
 Status beobachten:
 ```bash
@@ -101,31 +112,15 @@ kubectl get svc -n pihole pihole-dns -o wide
 
 ---
 
-## Schritt 5 — Custom DNS-Einträge übertragen
+## Schritt 5 — Konfiguration übertragen (Teleporter)
 
-Aktuelle Einträge vom alten Pi-hole exportieren:
+Pi-hole hat eine eingebaute Import/Export-Funktion die alle Einstellungen auf einmal überträgt: DNS-Einträge, CNAMEs, Blocklisten, Whitelists, Einstellungen.
 
-```bash
-# Auf dem alten Raspi
-cat /etc/pihole/custom.list
-```
+**Export auf dem alten Pi-hole:**
+Admin-UI → **Settings → Teleporter → Backup**
 
-In die neue Instanz eintragen:
-
-```bash
-# Auf dem k3s-Node
-kubectl exec -it -n pihole deploy/pihole -- bash
-
-# Einträge hinzufügen (Format: <IP> <Hostname>)
-echo "192.168.178.113 raspberrypi.fritz.box" >> /etc/pihole/custom.list
-# ... weitere Einträge
-
-# Pi-hole neu laden
-pihole restartdns
-exit
-```
-
-Alternativ über die Admin-UI: **Local DNS → DNS Records**.
+**Import auf dem neuen Pi-hole:**
+Admin-UI → **Settings → Teleporter → Restore** → exportierte Datei hochladen
 
 ---
 
