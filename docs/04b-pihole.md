@@ -84,8 +84,8 @@ git commit -m "feat(pihole): add sealed secret for admin password"
 Reihenfolge ist wichtig: erst Namespace, dann Secret, dann den Rest — so startet der Pod direkt ohne Fehler-Zwischenzustand.
 
 ```bash
-# 1. Namespace anlegen
-kubectl create namespace pihole
+# 1. Namespace anlegen (--save-config verhindert Warning beim späteren kubectl apply)
+kubectl create namespace pihole --save-config
 
 # 2. SealedSecret deployen — Controller legt das echte Secret sofort an
 kubectl apply -f apps/pihole/pihole-sealed-secret.yaml
