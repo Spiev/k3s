@@ -1,0 +1,41 @@
+# MetalLB Konfiguration — Layer 2 Modus, Dual-Stack
+#
+# Voraussetzung: MetalLB Controller ist installiert (siehe docs/02b-metallb.md)
+# und k3s ServiceLB (Klipper) ist deaktiviert.
+
+---
+# IPAddressPool — der IP-Vorrat für LoadBalancer-Services
+#
+# MetalLB weist IPs aus diesem Pool als EXTERNAL-IP zu wenn ein Service
+# type: LoadBalancer anfragt. Der Bereich muss außerhalb des DHCP-Bereichs
+# der Fritz!Box liegen (DHCP endet bei .200).
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: homelab-pool
+  namespace: metallb-system
+  labels:
+    app: metallb
+spec:
+  addresses:
+    - <METALLB-IPV4-START>-<METALLB-IPV4-END>   # IPv4: außerhalb DHCP-Bereich
+    - <ULA-PREFIX>::<RANGE-START>-<ULA-PREFIX>::<RANGE-END>  # IPv6: symmetrisch zur IPv4-Range
+---
+# L2Advertisement — aktiviert Layer-2-Modus (ARP für IPv4, NDP für IPv6)
+#
+# MetalLB läuft als DaemonSet auf jedem Node und antwortet auf ARP/NDP-Anfragen
+# für die zugewiesenen VIPs. Für das lokale Netz sieht die VIP aus als würde
+# sie direkt auf dem Node liegen.
+#
+# Beim Failover (Node-Ausfall oder Neustart) übernimmt der andere Node die
+# ARP/NDP-Ankündigung — die VIP wandert automatisch mit.
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: homelab-l2
+  namespace: metallb-system
+  labels:
+    app: metallb
+spec:
+  ipAddressPools:
+    - homelab-pool    # Referenz auf den Pool oben

@@ -39,23 +39,28 @@ spec:
       labels:
         app: pihole
     spec:
+      hostNetwork: true   # WLAN-Workaround: MetalLB ARP funktioniert nicht über WLAN.
+                          # Pi-hole bindet direkt auf Node-Interfaces (wie Docker network_mode: host).
+                          # Entfernen sobald Ethernet verfügbar und MetalLB VIP erreichbar ist.
       containers:
         - name: pihole
           image: pihole/pihole:2026.02.0@sha256:ee348529cea9601df86ad94d62a39cad26117e1eac9e82d8876aa0ec7fe1ba27
           env:
             - name: TZ
               value: "Europe/Berlin"
-            - name: WEBPASSWORD
+            - name: FTLCONF_webserver_api_password
               valueFrom:
                 secretKeyRef:
                   name: pihole-secret
-                  key: WEBPASSWORD
+                  key: FTLCONF_webserver_api_password
             - name: PIHOLE_DNS_
               value: "8.8.8.8;8.8.4.4;2001:4860:4860::8888;2001:4860:4860::8844"
             - name: FTLCONF_LOCAL_IPV6
               value: "::"          # FTL auf allen IPv6-Interfaces lauschen
             - name: IPv6
               value: "true"
+            - name: FTLCONF_webserver_port
+              value: "8080"
           ports:
             - containerPort: 53
               protocol: TCP
@@ -63,7 +68,7 @@ spec:
             - containerPort: 53
               protocol: UDP
               name: dns-udp
-            - containerPort: 80
+            - containerPort: 8080
               protocol: TCP
               name: web
           securityContext:
@@ -77,7 +82,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /admin
-              port: 80
+              port: 8080
             initialDelaySeconds: 15
             periodSeconds: 10
       volumes:
@@ -123,5 +128,5 @@ spec:
   selector:
     app: pihole
   ports:
-    - port: 80
-      targetPort: 80
+    - port: 8080
+      targetPort: 8080
