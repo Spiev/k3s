@@ -77,8 +77,8 @@ kubectl get l2advertisement -n metallb-system
 Einen bestehenden LoadBalancer-Service prüfen (z.B. Pi-hole):
 ```bash
 kubectl get svc -n pihole pihole-dns
-# → EXTERNAL-IP sollte jetzt eine IP aus 192.168.178.201-220 zeigen
-# → nicht mehr die Node-IP 192.168.178.171
+# → EXTERNAL-IP sollte jetzt eine IP aus dem MetalLB-Pool zeigen
+# → nicht mehr die Node-IP
 ```
 
 Falls der Service vorher schon lief (mit Klipper), bekommt er nach MetalLB-Installation automatisch eine neue VIP aus dem Pool zugewiesen.
@@ -89,14 +89,14 @@ Falls der Service vorher schon lief (mit Klipper), bekommt er nach MetalLB-Insta
 
 | Bereich | Zweck |
 |---|---|
-| `192.168.178.1-200` | Fritz!Box DHCP — nicht anfassen |
-| `192.168.178.201-220` | MetalLB Pool — dedizierte Service-VIPs |
-| `fd9d:c2c4:babc::201-::220` | MetalLB Pool IPv6 |
+| `<HEIMNETZ-SUBNET>.1-200` | Fritz!Box DHCP — nicht anfassen |
+| `<METALLB-IPV4-START>-<METALLB-IPV4-END>` | MetalLB Pool — dedizierte Service-VIPs |
+| `<ULA-PREFIX>::<RANGE-START>-::<RANGE-END>` | MetalLB Pool IPv6 |
 
 Vergebene VIPs:
 | Service | IPv4 | IPv6 |
 |---|---|---|
-| Pi-hole DNS | 192.168.178.201 | fd9d:c2c4:babc::201 |
+| Pi-hole DNS | `<METALLB-IPV4-START>` | `<ULA-PREFIX>::<RANGE-START>` |
 
 > Diese Tabelle manuell aktuell halten wenn neue LoadBalancer-Services hinzukommen.
 

@@ -18,8 +18,8 @@ metadata:
     app: metallb
 spec:
   addresses:
-    - 192.168.178.201-192.168.178.220   # IPv4: 20 Adressen außerhalb DHCP-Bereich
-    - fd9d:c2c4:babc::201-fd9d:c2c4:babc::220  # IPv6: symmetrisch zur IPv4-Range
+    - <METALLB-IPV4-START>-<METALLB-IPV4-END>   # IPv4: außerhalb DHCP-Bereich
+    - <ULA-PREFIX>::<RANGE-START>-<ULA-PREFIX>::<RANGE-END>  # IPv6: symmetrisch zur IPv4-Range
 ---
 # L2Advertisement — aktiviert Layer-2-Modus (ARP für IPv4, NDP für IPv6)
 #

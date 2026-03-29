@@ -24,7 +24,7 @@ Pi-hole läuft als DNS-Resolver für das gesamte Heimnetz. Da es ein Neudeploy i
 
 ## Schritt 1 — Statische ULA-Adresse auf dem k3s-Node einrichten
 
-Der k3s-Node bekommt eine feste IPv6-Adresse aus dem ULA-Prefix der Fritz!Box (`fd9d:c2c4:babc::/64`). ULA-Adressen ändern sich nie — unabhängig vom ISP-Prefix. Der andere Raspi nutzt bereits `fd9d:c2c4:babc::53`, wir nehmen `fd9d:c2c4:babc::1` für den k3s-Node.
+Der k3s-Node bekommt eine feste IPv6-Adresse aus dem ULA-Prefix der Fritz!Box (`<ULA-PREFIX>/64`). ULA-Adressen ändern sich nie — unabhängig vom ISP-Prefix. Eine freie Adresse aus dem ULA-Bereich wählen, z.B. `<ULA-PREFIX>::1`.
 
 ```bash
 # Auf dem k3s-Node: aktive Verbindung und Interface ermitteln
@@ -33,14 +33,14 @@ nmcli connection show --active
 
 # Statische IPv6 zur aktiven Verbindung hinzufügen (Connection-Name anpassen)
 sudo nmcli connection modify "preconfigured" \
-  ipv6.addresses "fd9d:c2c4:babc::1/64" \
+  ipv6.addresses "<ULA-PREFIX>::1/64" \
   ipv6.method "auto"        # SLAAC bleibt aktiv, ULA wird zusätzlich gesetzt
 
 sudo nmcli connection up "preconfigured"
 
 # Prüfen (Interface-Name aus nmcli-Ausgabe verwenden, z.B. wlan0 oder eth0)
 ip addr show wlan0
-# → fd9d:c2c4:babc::1/64 sollte erscheinen
+# → <ULA-PREFIX>::1/64 sollte erscheinen
 ```
 
 > `ipv6.method auto` behält SLAAC (für globale IPv6-Erreichbarkeit) und fügt die ULA als zusätzliche Adresse hinzu. Pi-hole antwortet auf beide.
@@ -131,7 +131,7 @@ Erst testen bevor die Fritz!Box umgestellt wird:
 ```bash
 # Vom Laptop aus: DNS-Anfrage direkt an die neue Pi-hole-IP schicken
 dig @<EXTERNAL-IPv4-des-pihole-dns> google.com
-dig @fd9d:c2c4:babc::1 google.com
+dig @<ULA-PREFIX>::1 google.com
 
 # Custom-Hostname testen
 dig @<EXTERNAL-IPv4-des-pihole-dns> raspberrypi.fritz.box
@@ -145,7 +145,7 @@ Beide Anfragen sollten eine Antwort liefern. Wenn ja: Pi-hole funktioniert korre
 
 In der **Fritz!Box** unter Heimnetz → Netzwerk → DNS:
 - DNS-Server (IPv4): `<EXTERNAL-IPv4 des pihole-dns Service>`
-- DNS-Server (IPv6): `fd9d:c2c4:babc::1`
+- DNS-Server (IPv6): `<ULA-PREFIX>::1`
 
 Danach DHCP-Lease auf einem Client erneuern und prüfen:
 ```bash
@@ -188,8 +188,8 @@ ssh stefan@k3s.fritz.box "sudo ss -tulpn | grep :53"
 # → systemd-resolved hört auf 127.0.0.53, nicht auf dem Netzwerk-Interface → kein Konflikt
 
 # IPv6 DNS antwortet nicht?
-ssh stefan@k3s.fritz.box "ip addr | grep fd9d"
-# → ULA-Adresse fd9d:c2c4:babc::1/64 muss vorhanden sein (auf wlan0 oder eth0)
+ssh stefan@k3s.fritz.box "ip addr | grep <ULA-PREFIX>"
+# → ULA-Adresse <ULA-PREFIX>::1/64 muss vorhanden sein (auf wlan0 oder eth0)
 ```
 
 ---
