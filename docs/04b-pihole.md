@@ -1,11 +1,11 @@
 # 04b — Pi-hole deployen
 
-Voraussetzung: [03 — Longhorn](./03-longhorn.md) abgeschlossen, Dual-Stack-Cluster läuft (siehe [02 — k3s installieren](./02-k3s-install.md)).
+Voraussetzung: [03 — Longhorn](./03-longhorn.md) abgeschlossen, [04e — Sealed Secrets](./04e-sealed-secrets.md) eingerichtet, Dual-Stack-Cluster läuft (siehe [02 — k3s installieren](./02-k3s-install.md)).
 
 Pi-hole läuft als DNS-Resolver für das gesamte Heimnetz. Da es ein Neudeploy ist (keine komplexen Daten zu migrieren), geht das Volume direkt auf `longhorn-retain-encrypted`.
 
-> **Voraussetzung: Ethernet-Verbindung auf dem k3s-Node**
-> Pi-hole ist DNS für das gesamte Heimnetz — WLAN ist dafür zu unzuverlässig. Den k3s-Node erst per Ethernet anschließen, dann mit dieser Anleitung fortfahren.
+> **Hinweis: Netzwerkverbindung**
+> Pi-hole ist DNS für das gesamte Heimnetz. WLAN funktioniert für den Einstieg, solange die Verbindung stabil ist. Ethernet ist empfohlen für dauerhaften Produktionsbetrieb — kann jederzeit nachgerüstet werden ohne Pi-hole neu deployen zu müssen.
 
 ---
 
@@ -27,19 +27,19 @@ Pi-hole läuft als DNS-Resolver für das gesamte Heimnetz. Da es ein Neudeploy i
 Der k3s-Node bekommt eine feste IPv6-Adresse aus dem ULA-Prefix der Fritz!Box (`fd9d:c2c4:babc::/64`). ULA-Adressen ändern sich nie — unabhängig vom ISP-Prefix. Der andere Raspi nutzt bereits `fd9d:c2c4:babc::53`, wir nehmen `fd9d:c2c4:babc::1` für den k3s-Node.
 
 ```bash
-# Auf dem k3s-Node: aktuelle Verbindung prüfen
-nmcli connection show
-# → Name der aktiven Verbindung notieren (z.B. "Wired connection 1")
+# Auf dem k3s-Node: aktive Verbindung und Interface ermitteln
+nmcli connection show --active
+# → Name und DEVICE notieren (z.B. "preconfigured" / wlan0, oder "Wired connection 1" / eth0)
 
-# Statische IPv6 zur bestehenden Verbindung hinzufügen
-sudo nmcli connection modify "Wired connection 1" \
+# Statische IPv6 zur aktiven Verbindung hinzufügen (Connection-Name anpassen)
+sudo nmcli connection modify "preconfigured" \
   ipv6.addresses "fd9d:c2c4:babc::1/64" \
   ipv6.method "auto"        # SLAAC bleibt aktiv, ULA wird zusätzlich gesetzt
 
-sudo nmcli connection up "Wired connection 1"
+sudo nmcli connection up "preconfigured"
 
-# Prüfen
-ip addr show eth0
+# Prüfen (Interface-Name aus nmcli-Ausgabe verwenden, z.B. wlan0 oder eth0)
+ip addr show wlan0
 # → fd9d:c2c4:babc::1/64 sollte erscheinen
 ```
 
@@ -63,18 +63,38 @@ apps/pihole/
 ## Schritt 3 — Secret für Admin-Passwort anlegen
 
 ```bash
-cp apps/pihole/pihole-secret.yaml.example apps/pihole/pihole-secret.yaml
-# Passwort in pihole-secret.yaml eintragen
-kubectl apply -f apps/pihole/pihole-secret.yaml
+# SealedSecret erzeugen (ersetze <dein-passwort>)
+kubectl create secret generic pihole-secret \
+  --namespace pihole \
+  --from-literal=FTLCONF_webserver_api_password="<dein-passwort>" \
+  --dry-run=client -o yaml \
+  | kubeseal --format yaml > apps/pihole/pihole-sealed-secret.yaml
+
+# Ins Repo committen
+git add apps/pihole/pihole-sealed-secret.yaml
+git commit -m "feat(pihole): add sealed secret for admin password"
 ```
+
+> Das SealedSecret wird erst in Schritt 4 deployed — der Namespace muss zuerst existieren.
 
 ---
 
 ## Schritt 4 — Manifeste deployen
 
+Reihenfolge ist wichtig: erst Namespace, dann Secret, dann den Rest — so startet der Pod direkt ohne Fehler-Zwischenzustand.
+
 ```bash
-kubectl apply -f apps/pihole/
+# 1. Namespace anlegen (--save-config verhindert Warning beim späteren kubectl apply)
+kubectl create namespace pihole --save-config
+
+# 2. SealedSecret deployen — Controller legt das echte Secret sofort an
+kubectl apply -f apps/pihole/pihole-sealed-secret.yaml
+
+# 3. PVC, Deployment und Services deployen
+kubectl apply -f apps/pihole/pihole.yaml
 ```
+
+> `kubectl apply -f apps/pihole/` würde auch die `.example`-Dateien anwenden — daher explizit die Dateien benennen.
 
 Status beobachten:
 ```bash
@@ -92,31 +112,15 @@ kubectl get svc -n pihole pihole-dns -o wide
 
 ---
 
-## Schritt 5 — Custom DNS-Einträge übertragen
+## Schritt 5 — Konfiguration übertragen (Teleporter)
 
-Aktuelle Einträge vom alten Pi-hole exportieren:
+Pi-hole hat eine eingebaute Import/Export-Funktion die alle Einstellungen auf einmal überträgt: DNS-Einträge, CNAMEs, Blocklisten, Whitelists, Einstellungen.
 
-```bash
-# Auf dem alten Raspi
-cat /etc/pihole/custom.list
-```
+**Export auf dem alten Pi-hole:**
+Admin-UI → **Settings → Teleporter → Backup**
 
-In die neue Instanz eintragen:
-
-```bash
-# Auf dem k3s-Node
-kubectl exec -it -n pihole deploy/pihole -- bash
-
-# Einträge hinzufügen (Format: <IP> <Hostname>)
-echo "192.168.178.113 raspberrypi.fritz.box" >> /etc/pihole/custom.list
-# ... weitere Einträge
-
-# Pi-hole neu laden
-pihole restartdns
-exit
-```
-
-Alternativ über die Admin-UI: **Local DNS → DNS Records**.
+**Import auf dem neuen Pi-hole:**
+Admin-UI → **Settings → Teleporter → Restore** → exportierte Datei hochladen
 
 ---
 
@@ -184,8 +188,8 @@ ssh stefan@k3s.fritz.box "sudo ss -tulpn | grep :53"
 # → systemd-resolved hört auf 127.0.0.53, nicht auf dem Netzwerk-Interface → kein Konflikt
 
 # IPv6 DNS antwortet nicht?
-ssh stefan@k3s.fritz.box "ip addr show eth0 | grep fd9d"
-# → ULA-Adresse muss vorhanden sein
+ssh stefan@k3s.fritz.box "ip addr | grep fd9d"
+# → ULA-Adresse fd9d:c2c4:babc::1/64 muss vorhanden sein (auf wlan0 oder eth0)
 ```
 
 ---
