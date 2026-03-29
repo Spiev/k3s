@@ -81,12 +81,17 @@ git commit -m "feat(pihole): add sealed secret for admin password"
 
 ## Schritt 4 — Manifeste deployen
 
-```bash
-# Zuerst pihole.yaml: legt Namespace, PVC, Deployment und Services an
-kubectl apply -f apps/pihole/pihole.yaml
+Reihenfolge ist wichtig: erst Namespace, dann Secret, dann den Rest — so startet der Pod direkt ohne Fehler-Zwischenzustand.
 
-# Dann SealedSecret (Namespace existiert jetzt)
+```bash
+# 1. Namespace anlegen
+kubectl create namespace pihole
+
+# 2. SealedSecret deployen — Controller legt das echte Secret sofort an
 kubectl apply -f apps/pihole/pihole-sealed-secret.yaml
+
+# 3. PVC, Deployment und Services deployen
+kubectl apply -f apps/pihole/pihole.yaml
 ```
 
 > `kubectl apply -f apps/pihole/` würde auch die `.example`-Dateien anwenden — daher explizit die Dateien benennen.
