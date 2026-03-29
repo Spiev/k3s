@@ -114,29 +114,32 @@ kubectl get svc -n pihole pihole-dns -o wide
 
 ## Schritt 5 — Custom DNS-Einträge übertragen
 
-Aktuelle Einträge vom alten Pi-hole exportieren:
+Pi-hole v6 unterscheidet zwei Typen von lokalen DNS-Einträgen:
+
+| Typ | Speicherort | Beispiel |
+|---|---|---|
+| A/AAAA-Records | `/etc/pihole/custom.list` (automatisch verwaltet) | `192.168.178.113 raspberrypi.fritz.box` |
+| CNAMEs | `/etc/pihole/pihole.toml` → `cnameRecords` | `photos.example.com,raspberrypi.fritz.box` |
+
+### A-Records exportieren
 
 ```bash
-# Auf dem alten Raspi
+# Auf dem alten Raspi (Docker Pi-hole)
 cat /etc/pihole/custom.list
 ```
 
-In die neue Instanz eintragen:
+A-Records über die Admin-UI eintragen: **Local DNS → DNS Records → Add**.
+
+### CNAMEs exportieren
 
 ```bash
-# Auf dem k3s-Node
-kubectl exec -it -n pihole deploy/pihole -- bash
-
-# Einträge hinzufügen (Format: <IP> <Hostname>)
-echo "192.168.178.113 raspberrypi.fritz.box" >> /etc/pihole/custom.list
-# ... weitere Einträge
-
-# Pi-hole neu laden
-pihole restartdns
-exit
+# Auf dem alten Raspi (Docker Pi-hole)
+grep "cnameRecords" -A50 /etc/pihole/pihole.toml
 ```
 
-Alternativ über die Admin-UI: **Local DNS → DNS Records**.
+CNAMEs über die Admin-UI eintragen: **Local DNS → CNAME Records → Add**.
+
+> **Hinweis:** Direkte Änderungen an `pihole.toml` per `kubectl exec` sind möglich, aber die Admin-UI ist der empfohlene Weg — Pi-hole v6 verwaltet `pihole.toml` selbst und überschreibt manuelle Änderungen beim Neustart.
 
 ---
 
