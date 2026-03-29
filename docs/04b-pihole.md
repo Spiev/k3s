@@ -112,34 +112,15 @@ kubectl get svc -n pihole pihole-dns -o wide
 
 ---
 
-## Schritt 5 — Custom DNS-Einträge übertragen
+## Schritt 5 — Konfiguration übertragen (Teleporter)
 
-Pi-hole v6 unterscheidet zwei Typen von lokalen DNS-Einträgen:
+Pi-hole hat eine eingebaute Import/Export-Funktion die alle Einstellungen auf einmal überträgt: DNS-Einträge, CNAMEs, Blocklisten, Whitelists, Einstellungen.
 
-| Typ | Speicherort | Beispiel |
-|---|---|---|
-| A/AAAA-Records | `/etc/pihole/custom.list` (automatisch verwaltet) | `192.168.178.113 raspberrypi.fritz.box` |
-| CNAMEs | `/etc/pihole/pihole.toml` → `cnameRecords` | `photos.example.com,raspberrypi.fritz.box` |
+**Export auf dem alten Pi-hole:**
+Admin-UI → **Settings → Teleporter → Backup**
 
-### A-Records exportieren
-
-```bash
-# Auf dem alten Raspi (Docker Pi-hole)
-cat /etc/pihole/custom.list
-```
-
-A-Records über die Admin-UI eintragen: **Local DNS → DNS Records → Add**.
-
-### CNAMEs exportieren
-
-```bash
-# Auf dem alten Raspi (Docker Pi-hole)
-grep "cnameRecords" -A50 /etc/pihole/pihole.toml
-```
-
-CNAMEs über die Admin-UI eintragen: **Local DNS → CNAME Records → Add**.
-
-> **Hinweis:** Direkte Änderungen an `pihole.toml` per `kubectl exec` sind möglich, aber die Admin-UI ist der empfohlene Weg — Pi-hole v6 verwaltet `pihole.toml` selbst und überschreibt manuelle Änderungen beim Neustart.
+**Import auf dem neuen Pi-hole:**
+Admin-UI → **Settings → Teleporter → Restore** → exportierte Datei hochladen
 
 ---
 
