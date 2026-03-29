@@ -1,6 +1,6 @@
 # 04b — Pi-hole deployen
 
-Voraussetzung: [03 — Longhorn](./03-longhorn.md) abgeschlossen, [04e — Sealed Secrets](./04e-sealed-secrets.md) eingerichtet, Dual-Stack-Cluster läuft (siehe [02 — k3s installieren](./02-k3s-install.md)).
+Voraussetzung: [03 — Longhorn](./03-longhorn.md) abgeschlossen, [02b — MetalLB](./02b-metallb.md) eingerichtet, [04e — Sealed Secrets](./04e-sealed-secrets.md) eingerichtet, Dual-Stack-Cluster läuft (siehe [02 — k3s installieren](./02-k3s-install.md)).
 
 Pi-hole läuft als DNS-Resolver für das gesamte Heimnetz. Da es ein Neudeploy ist (keine komplexen Daten zu migrieren), geht das Volume direkt auf `longhorn-retain-encrypted`.
 

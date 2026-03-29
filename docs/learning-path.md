@@ -501,12 +501,13 @@ curl -sfL https://get.k3s.io | K3S_URL=https://<raspi5-ip>:6443 \
 
 1. `docs/01-os-setup.md` — NVMe-Boot, Raspberry Pi OS, cgroups
 2. `docs/02-k3s-install.md` — k3s mit Dual-Stack (IPv4+IPv6), kubectl (lokal + remote), erste Schritte
-3. `docs/03-longhorn.md` — Storage einrichten, Verschlüsselung, Backup-Strategie
-4. `docs/04a-freshrss.md` — FreshRSS migrieren
-5. `docs/04e-sealed-secrets.md` — Sealed Secrets einrichten (Voraussetzung für alle weiteren Secrets)
-6. `docs/04b-pihole.md` — Pi-hole: DNS via LoadBalancer
-7. `docs/04c-seafile.md` — Seafile migrieren (Multi-Container, Secrets)
-8. `docs/04d-immich.md` — Immich migrieren (Restic-Restore-Strategie, großes Volume)
-9. `docs/06-monitoring.md` — Prometheus + Grafana
-10. `docs/09-backup-restore.md` — Backup & Restore, kritische Secrets
-11. `docs/10-migrate-to-encrypted.md` — Volume-Migration auf verschlüsselte StorageClass
+3. `docs/02b-metallb.md` — MetalLB einrichten (LoadBalancer-VIPs für Bare Metal)
+4. `docs/03-longhorn.md` — Storage einrichten, Verschlüsselung, Backup-Strategie
+5. `docs/04a-freshrss.md` — FreshRSS migrieren
+6. `docs/04e-sealed-secrets.md` — Sealed Secrets einrichten (Voraussetzung für alle weiteren Secrets)
+7. `docs/04b-pihole.md` — Pi-hole: DNS via LoadBalancer
+8. `docs/04c-seafile.md` — Seafile migrieren (Multi-Container, Secrets)
+9. `docs/04d-immich.md` — Immich migrieren (Restic-Restore-Strategie, großes Volume)
+10. `docs/06-monitoring.md` — Prometheus + Grafana
+11. `docs/09-backup-restore.md` — Backup & Restore, kritische Secrets
+12. `docs/10-migrate-to-encrypted.md` — Volume-Migration auf verschlüsselte StorageClass
