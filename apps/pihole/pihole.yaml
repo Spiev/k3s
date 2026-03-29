@@ -45,11 +45,11 @@ spec:
           env:
             - name: TZ
               value: "Europe/Berlin"
-            - name: FTLCONF_webserver_api_password
+            - name: WEBPASSWORD
               valueFrom:
                 secretKeyRef:
                   name: pihole-secret
-                  key: FTLCONF_webserver_api_password
+                  key: WEBPASSWORD
             - name: PIHOLE_DNS_
               value: "8.8.8.8;8.8.4.4;2001:4860:4860::8888;2001:4860:4860::8844"
             - name: FTLCONF_LOCAL_IPV6
