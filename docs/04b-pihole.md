@@ -105,6 +105,8 @@ kubectl get svc -n pihole
 # pihole-dns sollte EXTERNAL-IP (IPv4 + IPv6) zeigen
 ```
 
+> **WLAN-Hinweis:** MetalLB ARP/NDP funktioniert nicht über WLAN (Fritz!Box blockiert Gratuitous ARP für IPs außerhalb DHCP). Mit `hostNetwork: true` im Deployment bindet Pi-hole direkt auf die Node-IP — Details und Ethernet-Migration: [02b-metallb.md](./02b-metallb.md).
+
 Die External-IPs des `pihole-dns`-Service notieren — werden in Schritt 6 benötigt:
 ```bash
 kubectl get svc -n pihole pihole-dns -o wide
@@ -129,12 +131,13 @@ Admin-UI → **Settings → Teleporter → Restore** → exportierte Datei hochl
 Erst testen bevor die Fritz!Box umgestellt wird:
 
 ```bash
-# Vom Laptop aus: DNS-Anfrage direkt an die neue Pi-hole-IP schicken
-dig @<EXTERNAL-IPv4-des-pihole-dns> google.com
-dig @fd9d:c2c4:babc::1 google.com
+# Ethernet (MetalLB VIP)
+dig @192.168.178.201 google.com
+dig @fd9d:c2c4:babc::201 google.com
 
-# Custom-Hostname testen
-dig @<EXTERNAL-IPv4-des-pihole-dns> raspberrypi.fritz.box
+# WLAN (hostNetwork, Node-IP)
+dig @192.168.178.171 google.com
+dig @fd9d:c2c4:babc:0:8aa2:9eff:feca:30b4 google.com
 ```
 
 Beide Anfragen sollten eine Antwort liefern. Wenn ja: Pi-hole funktioniert korrekt.
@@ -144,8 +147,14 @@ Beide Anfragen sollten eine Antwort liefern. Wenn ja: Pi-hole funktioniert korre
 ## Schritt 7 — Fritz!Box umstellen
 
 In der **Fritz!Box** unter Heimnetz → Netzwerk → DNS:
-- DNS-Server (IPv4): `<EXTERNAL-IPv4 des pihole-dns Service>`
-- DNS-Server (IPv6): `fd9d:c2c4:babc::1`
+
+**Ethernet (MetalLB VIP — stabil, empfohlen):**
+- DNS-Server (IPv4): `192.168.178.201`
+- DNS-Server (IPv6): `fd9d:c2c4:babc::201`
+
+**WLAN-Betrieb (hostNetwork, Node-IP):**
+- DNS-Server (IPv4): `192.168.178.171`
+- DNS-Server (IPv6): `fd9d:c2c4:babc:0:8aa2:9eff:feca:30b4`
 
 Danach DHCP-Lease auf einem Client erneuern und prüfen:
 ```bash
