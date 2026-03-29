@@ -17,6 +17,8 @@ SEALED_SECRETS_VERSION="v0.27.1"
 kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/${SEALED_SECRETS_VERSION}/controller.yaml
 ```
 
+> **GitOps-Hinweis:** Das Laden des Manifests direkt aus dem Internet ist für den manuellen Setup-Schritt pragmatisch in Ordnung. Sobald Flux CD eingerichtet ist, gehört `controller.yaml` ins Repo (`infrastructure/sealed-secrets/controller.yaml`) — dann deployed Flux es deterministisch aus dem Repo, kein Internetzugriff beim Deploy nötig, und Renovate kann Updates als PR vorschlagen.
+
 Controller-Status prüfen:
 ```bash
 kubectl get pods -n kube-system -l name=sealed-secrets-controller -w
