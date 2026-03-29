@@ -156,40 +156,13 @@ In der **Longhorn UI → Volumes** das alte Volume `freshrss-config-restored` l�
 
 ---
 
-## Schritt 7 — PVC umbenennen (optional aber empfohlen)
-
-Das neue PVC heißt `freshrss-config-enc` — zur Konsistenz mit dem Repo-Manifest umbenennen:
-
-```bash
-# Neues PVC mit dem Original-Namen anlegen — auf dasselbe Volume zeigen
-kubectl get pvc freshrss-config-enc -n freshrss -o yaml | \
-  sed 's/name: freshrss-config-enc/name: freshrss-config/' | \
-  sed '/resourceVersion/d; /uid/d; /creationTimestamp/d; /status/d' | \
-  kubectl apply -f -
-
-# Deployment zurück auf Original-Namen umstellen
-kubectl patch deployment freshrss -n freshrss \
-  --type=json \
-  -p='[{"op":"replace","path":"/spec/template/spec/volumes/0/persistentVolumeClaim/claimName","value":"freshrss-config"}]'
-
-kubectl scale deployment freshrss -n freshrss --replicas=0
-kubectl scale deployment freshrss -n freshrss --replicas=1
-
-# Altes Zwischen-PVC löschen
-kubectl delete pvc freshrss-config-enc -n freshrss
-```
-
-Danach stimmt der PVC-Name wieder mit `apps/freshrss/base/pvc.yaml` überein.
-
----
-
 ## Abschluss-Check
 
 ```bash
 # PVC läuft auf verschlüsselter StorageClass
 kubectl get pvc -n freshrss
-# NAME              STORAGECLASS                ...
-# freshrss-config   longhorn-retain-encrypted   Bound
+# NAME                  STORAGECLASS                ...
+# freshrss-config-enc   longhorn-retain-encrypted   Bound
 
 # Longhorn UI → Volume → Encrypted: true
 # Longhorn UI → Volume → Health: healthy
