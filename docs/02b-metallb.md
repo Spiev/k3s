@@ -60,6 +60,14 @@ kubectl wait --namespace metallb-system \
 
 ## Schritt 3 — IP-Pool konfigurieren
 
+Vor dem Apply `infrastructure/metallb/metallb.yaml` anpassen — Platzhalter durch die eigenen Werte ersetzen:
+
+| Platzhalter | Bedeutung | Beispiel |
+|---|---|---|
+| `<METALLB-IPV4-START>` | Erste freie IP außerhalb DHCP-Bereich | erste IP nach DHCP-Ende |
+| `<METALLB-IPV4-END>` | Letzte IP des Pools | +19 IPs |
+| `<ULA-PREFIX>` | ULA-Prefix der Fritz!Box (ohne `::`) | aus Fritz!Box Netzwerk-Einstellungen |
+
 ```bash
 kubectl apply -f infrastructure/metallb/metallb.yaml
 ```
@@ -78,8 +86,8 @@ MetalLB weist VIPs zu, aber UFW (Firewall auf dem Node) blockiert eingehenden Tr
 
 Beispiel Pi-hole DNS (Port 53):
 ```bash
-sudo ufw allow from 192.168.178.0/24 to any port 53
-sudo ufw allow from fd9d:c2c4:babc::/64 to any port 53
+sudo ufw allow from <HEIMNETZ-SUBNET> to any port 53
+sudo ufw allow from <ULA-PREFIX>::/64 to any port 53
 ```
 
 > Nicht `ufw allow 53` ohne Quell-Einschränkung — das öffnet den Port für das gesamte Internet.
@@ -91,8 +99,8 @@ sudo ufw allow from fd9d:c2c4:babc::/64 to any port 53
 Einen bestehenden LoadBalancer-Service prüfen (z.B. Pi-hole):
 ```bash
 kubectl get svc -n pihole pihole-dns
-# → EXTERNAL-IP sollte jetzt eine IP aus 192.168.178.201-220 zeigen
-# → nicht mehr die Node-IP 192.168.178.171
+# → EXTERNAL-IP sollte jetzt eine IP aus dem konfigurierten Pool zeigen
+# → nicht mehr die Node-IP
 ```
 
 Falls der Service vorher schon lief (mit Klipper), bekommt er nach MetalLB-Installation automatisch eine neue VIP aus dem Pool zugewiesen.
@@ -105,7 +113,7 @@ MetalLB Layer 2 Modus kündigt VIPs per **Gratuitous ARP** (IPv4) und **NDP** (I
 
 **Workaround für WLAN-Betrieb:**
 
-`hostNetwork: true` im Deployment — der Pod bindet direkt auf alle Node-Interfaces (wie Docker `network_mode: host`). Pi-hole ist dann über die Node-IP erreichbar, nicht über die MetalLB-VIP.
+`hostNetwork: true` im Deployment — der Pod bindet direkt auf alle Node-Interfaces (wie Docker `network_mode: host`). Der Service ist dann über die Node-IP erreichbar, nicht über die MetalLB-VIP.
 
 ```yaml
 spec:
@@ -116,23 +124,18 @@ spec:
 
 **Sobald Ethernet angeschlossen:**
 1. `hostNetwork: true` aus dem Deployment entfernen
-2. `kubectl apply -f apps/pihole/pihole.yaml`
-3. Fritz!Box DNS von Node-IP auf MetalLB-VIP umstellen (`192.168.178.201` / `fd9d:c2c4:babc::201`)
+2. `kubectl apply -f apps/<service>/<service>.yaml`
+3. Fritz!Box DNS von Node-IP auf MetalLB-VIP umstellen
 
 ---
 
 ## IP-Pool Übersicht
 
-| Bereich | Zweck |
-|---|---|
-| `192.168.178.1-200` | Fritz!Box DHCP — nicht anfassen |
-| `192.168.178.201-220` | MetalLB Pool — dedizierte Service-VIPs |
-| `fd9d:c2c4:babc::201-::220` | MetalLB Pool IPv6 |
+Eine Tabelle der vergebenen VIPs hilft den Überblick zu behalten:
 
-Vergebene VIPs:
-| Service | IPv4 | IPv6 |
+| Service | IPv4 VIP | IPv6 VIP |
 |---|---|---|
-| Pi-hole DNS | 192.168.178.201 | fd9d:c2c4:babc::201 |
+| Pi-hole DNS | `<erste IP aus Pool>` | `<erste IPv6 aus Pool>` |
 
 > Diese Tabelle manuell aktuell halten wenn neue LoadBalancer-Services hinzukommen.
 

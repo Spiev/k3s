@@ -24,7 +24,7 @@ Pi-hole läuft als DNS-Resolver für das gesamte Heimnetz. Da es ein Neudeploy i
 
 ## Schritt 1 — Statische ULA-Adresse auf dem k3s-Node einrichten
 
-Der k3s-Node bekommt eine feste IPv6-Adresse aus dem ULA-Prefix der Fritz!Box (`fd9d:c2c4:babc::/64`). ULA-Adressen ändern sich nie — unabhängig vom ISP-Prefix. Der andere Raspi nutzt bereits `fd9d:c2c4:babc::53`, wir nehmen `fd9d:c2c4:babc::1` für den k3s-Node.
+Der k3s-Node bekommt eine feste IPv6-Adresse aus dem ULA-Prefix der Fritz!Box (`<ULA-PREFIX>/64`). ULA-Adressen ändern sich nie — unabhängig vom ISP-Prefix. Wir vergeben `<ULA-PREFIX>::1` für den k3s-Node.
 
 ```bash
 # Auf dem k3s-Node: aktive Verbindung und Interface ermitteln
@@ -33,14 +33,14 @@ nmcli connection show --active
 
 # Statische IPv6 zur aktiven Verbindung hinzufügen (Connection-Name anpassen)
 sudo nmcli connection modify "preconfigured" \
-  ipv6.addresses "fd9d:c2c4:babc::1/64" \
+  ipv6.addresses "<ULA-PREFIX>::1/64" \
   ipv6.method "auto"        # SLAAC bleibt aktiv, ULA wird zusätzlich gesetzt
 
 sudo nmcli connection up "preconfigured"
 
 # Prüfen (Interface-Name aus nmcli-Ausgabe verwenden, z.B. wlan0 oder eth0)
 ip addr show wlan0
-# → fd9d:c2c4:babc::1/64 sollte erscheinen
+# → <ULA-PREFIX>::1/64 sollte erscheinen
 ```
 
 > `ipv6.method auto` behält SLAAC (für globale IPv6-Erreichbarkeit) und fügt die ULA als zusätzliche Adresse hinzu. Pi-hole antwortet auf beide.
@@ -132,12 +132,12 @@ Erst testen bevor die Fritz!Box umgestellt wird:
 
 ```bash
 # Ethernet (MetalLB VIP)
-dig @192.168.178.201 google.com
-dig @fd9d:c2c4:babc::201 google.com
+dig @<METALLB-IPV4-VIP> google.com
+dig @<METALLB-IPV6-VIP> google.com
 
 # WLAN (hostNetwork, Node-IP)
-dig @192.168.178.171 google.com
-dig @fd9d:c2c4:babc:0:8aa2:9eff:feca:30b4 google.com
+dig @<NODE-IP> google.com
+dig @<NODE-IPV6-SLAAC> google.com
 ```
 
 Beide Anfragen sollten eine Antwort liefern. Wenn ja: Pi-hole funktioniert korrekt.
@@ -149,12 +149,12 @@ Beide Anfragen sollten eine Antwort liefern. Wenn ja: Pi-hole funktioniert korre
 In der **Fritz!Box** unter Heimnetz → Netzwerk → DNS:
 
 **Ethernet (MetalLB VIP — stabil, empfohlen):**
-- DNS-Server (IPv4): `192.168.178.201`
-- DNS-Server (IPv6): `fd9d:c2c4:babc::201`
+- DNS-Server (IPv4): `<METALLB-IPV4-VIP>`
+- DNS-Server (IPv6): `<METALLB-IPV6-VIP>`
 
 **WLAN-Betrieb (hostNetwork, Node-IP):**
-- DNS-Server (IPv4): `192.168.178.171`
-- DNS-Server (IPv6): `fd9d:c2c4:babc:0:8aa2:9eff:feca:30b4`
+- DNS-Server (IPv4): `<NODE-IP>`
+- DNS-Server (IPv6): `<NODE-IPV6-SLAAC>`
 
 Danach DHCP-Lease auf einem Client erneuern und prüfen:
 ```bash
@@ -198,7 +198,7 @@ ssh stefan@k3s.fritz.box "sudo ss -tulpn | grep :53"
 
 # IPv6 DNS antwortet nicht?
 ssh stefan@k3s.fritz.box "ip addr | grep fd9d"
-# → ULA-Adresse fd9d:c2c4:babc::1/64 muss vorhanden sein (auf wlan0 oder eth0)
+# → ULA-Adresse <ULA-PREFIX>::1/64 muss vorhanden sein (auf wlan0 oder eth0)
 ```
 
 ---
