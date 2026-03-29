@@ -1,13 +1,21 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
+  "enabledManagers": ["github-actions", "kubernetes"],
+  "kubernetes": {
+    "fileMatch": ["apps/.+\\.yaml$", "infrastructure/.+\\.yaml$"]
+  },
   "dependencyDashboard": false,
-  "timezone": "Europe/Berlin",
-  "schedule": ["after 3am and before 4am"],
+  "pinDigests": true,
   "packageRules": [
     {
-      "description": "Auto-merge minor and patch updates",
-      "matchUpdateTypes": ["minor", "patch"],
+      "description": "LinuxServer.io images use 1.x.y-lsNNN versioning — regex extracts build number for correct comparison",
+      "matchPackagePrefixes": ["lscr.io/linuxserver/"],
+      "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-ls(?<build>\\d+)$"
+    },
+    {
+      "description": "Auto-merge minor, patch and digest updates",
+      "matchUpdateTypes": ["minor", "patch", "digest"],
       "automerge": true,
       "automergeType": "pr"
     },

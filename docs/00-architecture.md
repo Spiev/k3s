@@ -245,6 +245,7 @@ Beide Pis sind baugleich (Raspi 5, 8 GB RAM) — eine vollständige Migration au
 | Traefik | Ingress Controller | Internes k8s-Routing (später ggf. nginx ablösen) | k3s built-in |
 | CoreDNS | DNS | Cluster-internes DNS | k3s built-in |
 | Flannel | CNI | Pod-Netzwerk | k3s built-in |
+| MetalLB | Load Balancer | Externe IPs für Services auf Bare Metal (ersetzt k3s ServiceLB) | Installiert via kubectl |
 | Longhorn | Storage | Persistente Volumes | Installiert via kubectl |
 | cert-manager | Controller | Let's Encrypt TLS — erst nötig wenn Traefik nginx ablöst | Später |
 | Flux CD | GitOps | Automatisches Deployment | Installiert via flux CLI |
