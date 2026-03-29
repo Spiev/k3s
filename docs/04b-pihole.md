@@ -70,20 +70,26 @@ kubectl create secret generic pihole-secret \
   --dry-run=client -o yaml \
   | kubeseal --format yaml > apps/pihole/pihole-sealed-secret.yaml
 
-# Ins Repo committen und deployen
+# Ins Repo committen
 git add apps/pihole/pihole-sealed-secret.yaml
 git commit -m "feat(pihole): add sealed secret for admin password"
-
-kubectl apply -f apps/pihole/pihole-sealed-secret.yaml
 ```
+
+> Das SealedSecret wird erst in Schritt 4 deployed — der Namespace muss zuerst existieren.
 
 ---
 
 ## Schritt 4 — Manifeste deployen
 
 ```bash
-kubectl apply -f apps/pihole/
+# Zuerst pihole.yaml: legt Namespace, PVC, Deployment und Services an
+kubectl apply -f apps/pihole/pihole.yaml
+
+# Dann SealedSecret (Namespace existiert jetzt)
+kubectl apply -f apps/pihole/pihole-sealed-secret.yaml
 ```
+
+> `kubectl apply -f apps/pihole/` würde auch die `.example`-Dateien anwenden — daher explizit die Dateien benennen.
 
 Status beobachten:
 ```bash
