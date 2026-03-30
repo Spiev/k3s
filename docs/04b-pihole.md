@@ -1,11 +1,21 @@
 # 04b — Pi-hole deployen
 
-Voraussetzung: [03 — Longhorn](./03-longhorn.md) abgeschlossen, [02b — MetalLB](./02b-metallb.md) eingerichtet, [04e — Sealed Secrets](./04e-sealed-secrets.md) eingerichtet, Dual-Stack-Cluster läuft (siehe [02 — k3s installieren](./02-k3s-install.md)).
+Voraussetzung: [03 — Longhorn](./03-longhorn.md) abgeschlossen, [04e — Sealed Secrets](./04e-sealed-secrets.md) eingerichtet, Dual-Stack-Cluster läuft (siehe [02 — k3s installieren](./02-k3s-install.md)).
+
+> [!NOTE]
+> MetalLB ist für Pi-hole **keine Voraussetzung mehr**. Klipper/ServiceLB (k3s-Standard) bindet Port 53 direkt auf der Node-IP — das reicht für DNS. MetalLB bringt hier nur dann einen Vorteil, wenn der Node per Ethernet angebunden ist (stabile VIP unabhängig von der Node-IP). Siehe [02b — MetalLB](./02b-metallb.md).
 
 Pi-hole läuft als DNS-Resolver für das gesamte Heimnetz. Da es ein Neudeploy ist (keine komplexen Daten zu migrieren), geht das Volume direkt auf `longhorn-retain-encrypted`.
 
 > **Hinweis: Netzwerkverbindung**
 > Pi-hole ist DNS für das gesamte Heimnetz. WLAN funktioniert für den Einstieg, solange die Verbindung stabil ist. Ethernet ist empfohlen für dauerhaften Produktionsbetrieb — kann jederzeit nachgerüstet werden ohne Pi-hole neu deployen zu müssen.
+
+> [!WARNING]
+> **`hostNetwork: true` nicht ohne zwingenden Grund verwenden.**
+>
+> `hostNetwork: true` war als WLAN-Workaround für MetalLB gedacht (MetalLB-ARP funktioniert nicht über WLAN). Es hat aber einen gravierenden Nebeneffekt: Pi-hole mit `NET_ADMIN` setzt iptables-Regeln direkt auf dem Node-Host und kann dabei die INPUT-Policy auf DROP setzen. Das blockiert Cluster-interne DNS-Anfragen (CoreDNS → Pi-hole) aus dem Pod-Netzwerk und bricht die Namensauflösung für alle Pods.
+>
+> Mit Klipper/ServiceLB ist `hostNetwork` nicht nötig — Klipper bindet Port 53 über einen svclb-Pod direkt auf der Node-IP.
 
 ---
 
@@ -17,6 +27,7 @@ Pi-hole läuft als DNS-Resolver für das gesamte Heimnetz. Da es ein Neudeploy i
 | Dual-Stack DNS | Pi-hole muss auf IPv4 + IPv6 antworten |
 | Statische ULA | Node braucht feste IPv6 damit DNS-IP stabil bleibt |
 | `NET_ADMIN` | Capability für DNS-Listener (und optional DHCP) |
+| `hostNetwork` | **Nur als WLAN-Workaround** — siehe Hinweis unten |
 | Admin-Passwort | Aus gitignoriertem Secret-File (bis Sealed Secrets eingerichtet) |
 | Custom DNS | Wenige Hostnamen — manuell übertragen |
 
