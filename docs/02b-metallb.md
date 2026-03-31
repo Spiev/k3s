@@ -7,6 +7,17 @@ MetalLB ist ein Load Balancer für Bare-Metal-Kubernetes. k3s bringt einen einge
 **Wann wird MetalLB gebraucht?**
 Immer wenn ein Service nicht über HTTP/HTTPS läuft und deshalb nicht durch Traefik geroutet werden kann. Pi-hole DNS (Port 53) ist der erste solche Service.
 
+> [!WARNING]
+> **MetalLB funktioniert nur mit Ethernet — nicht über WLAN.**
+>
+> MetalLB im Layer-2-Modus nutzt ARP (IPv4) bzw. NDP (IPv6) um VIPs im Netzwerk bekannt zu machen. Die meisten WLAN-Access-Points und Router leiten ARP-Announcements zwischen WLAN-Clients nicht weiter — die VIP ist dann im Netzwerk schlicht nicht erreichbar.
+>
+> Symptome: `kubectl get svc` zeigt eine EXTERNAL-IP, aber Verbindungen zu dieser IP hängen (Timeout). `curl <VIP>` hängt bei "Trying...".
+>
+> **Klipper/ServiceLB** (der k3s-Standard) bindet Ports direkt auf allen Node-Interfaces (inkl. WLAN) und ist für WLAN-Setups die richtige Wahl. MetalLB erst einrichten wenn der Node per Ethernet angebunden ist.
+>
+> Weitere Details: [metallb.universe.tf — Layer 2 Limitations](https://metallb.universe.tf/concepts/layer2/#limitations)
+
 ---
 
 ## Schritt 1 — k3s ServiceLB deaktivieren

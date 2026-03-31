@@ -83,7 +83,7 @@ Der Workflow ist immer gleich: Plain Secret auf stdout erzeugen → durch kubese
 # 1. SealedSecret erzeugen (ersetze <dein-passwort>)
 kubectl create secret generic pihole-secret \
   --namespace pihole \
-  --from-literal=WEBPASSWORD="<dein-passwort>" \
+  --from-literal=FTLCONF_webserver_api_password="<dein-passwort>" \
   --dry-run=client -o yaml \
   | kubeseal --format yaml > apps/pihole/pihole-sealed-secret.yaml
 

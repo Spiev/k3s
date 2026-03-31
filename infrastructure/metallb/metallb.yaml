@@ -21,8 +21,8 @@ metadata:
     app: metallb
 spec:
   addresses:
-    - <METALLB-IPV4-START>-<METALLB-IPV4-END>   # IPv4: freier Bereich außerhalb DHCP
-    - <ULA-PREFIX>::<RANGE-START>-<ULA-PREFIX>::<RANGE-END>  # IPv6: aus dem ULA-Prefix der Fritz!Box
+    - <METALLB-IPV4-START>-<METALLB-IPV4-END>   # IPv4: außerhalb DHCP-Bereich
+    - <ULA-PREFIX>::<RANGE-START>-<ULA-PREFIX>::<RANGE-END>  # IPv6: symmetrisch zur IPv4-Range
 ---
 # L2Advertisement — aktiviert Layer-2-Modus (ARP für IPv4, NDP für IPv6)
 #
