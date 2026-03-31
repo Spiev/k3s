@@ -17,8 +17,8 @@
 #
 # Setup:
 #   cp backup.sh.example backup.sh && chmod 700 backup.sh
+#   cp .mqtt.env.example .mqtt.env && chmod 600 .mqtt.env
 #   cp .restic.env.example .restic.env && chmod 600 .restic.env
-#   cp .mqtt_credentials.example .mqtt_credentials && chmod 600 .mqtt_credentials
 #
 # Cron (daily at 02:30):
 #   30 2 * * * /home/stefan/workspace/priv/k3s/scripts/backup.sh >> /var/log/k3s-backup.log 2>&1
@@ -68,17 +68,18 @@ mqtt_discovery_topic()  { echo "homeassistant/sensor/backup_${1}/config"; }
 # Load Credentials
 # ============================================================================
 
-MQTT_CREDENTIALS="$SCRIPT_DIR/.mqtt_credentials"
-if [[ ! -f "$MQTT_CREDENTIALS" ]]; then
-    echo "ERROR: MQTT credentials not found at $MQTT_CREDENTIALS" >&2
+MQTT_ENV="$SCRIPT_DIR/.mqtt.env"
+if [[ ! -f "$MQTT_ENV" ]]; then
+    echo "ERROR: MQTT config not found at $MQTT_ENV" >&2
     exit 1
 fi
-if [[ "$(stat -c %a "$MQTT_CREDENTIALS")" != "600" ]]; then
-    echo "WARNING: Insecure permissions on $MQTT_CREDENTIALS (expected 600)" >&2
+if [[ "$(stat -c %a "$MQTT_ENV")" != "600" ]]; then
+    echo "WARNING: Insecure permissions on $MQTT_ENV (expected 600)" >&2
 fi
-source "$MQTT_CREDENTIALS"
-if [[ -z "${MQTT_USER:-}" ]] || [[ -z "${MQTT_PASSWORD:-}" ]]; then
-    echo "ERROR: MQTT_USER or MQTT_PASSWORD not set in $MQTT_CREDENTIALS" >&2
+source "$MQTT_ENV"
+if [[ -z "${MQTT_HOST:-}" ]] || [[ -z "${MQTT_PORT:-}" ]] || \
+   [[ -z "${MQTT_USER:-}" ]] || [[ -z "${MQTT_PASSWORD:-}" ]]; then
+    echo "ERROR: MQTT_HOST, MQTT_PORT, MQTT_USER or MQTT_PASSWORD not set in $MQTT_ENV" >&2
     exit 1
 fi
 

@@ -1,4 +1,4 @@
 # Actual credentials — never commit these
 backup.sh
+.mqtt.env
 .restic.env
-.mqtt_credentials
