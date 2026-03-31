@@ -2,13 +2,16 @@
 #
 # Voraussetzung: MetalLB Controller ist installiert (siehe docs/02b-metallb.md)
 # und k3s ServiceLB (Klipper) ist deaktiviert.
+#
+# ANPASSEN: Adressen an das eigene Heimnetz anpassen.
+# Der Pool-Bereich muss außerhalb des DHCP-Bereichs der Fritz!Box liegen.
 
 ---
 # IPAddressPool — der IP-Vorrat für LoadBalancer-Services
 #
 # MetalLB weist IPs aus diesem Pool als EXTERNAL-IP zu wenn ein Service
 # type: LoadBalancer anfragt. Der Bereich muss außerhalb des DHCP-Bereichs
-# der Fritz!Box liegen (DHCP endet bei .200).
+# der Fritz!Box liegen.
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
@@ -29,6 +32,9 @@ spec:
 #
 # Beim Failover (Node-Ausfall oder Neustart) übernimmt der andere Node die
 # ARP/NDP-Ankündigung — die VIP wandert automatisch mit.
+#
+# Bekannte Einschränkung: funktioniert nicht über WLAN (Fritz!Box blockiert
+# Gratuitous ARP für IPs außerhalb DHCP). Ethernet erforderlich.
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
 metadata:
