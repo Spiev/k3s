@@ -1,0 +1,405 @@
+#!/bin/bash
+# k3s Restic Backup Script
+#
+# Backs up services running in the k3s cluster to Hetzner S3 via Restic.
+# Each service gets its own MQTT sensor in Home Assistant.
+#
+# Setup:
+#   cp backup.sh.example backup.sh && chmod 700 backup.sh
+#   cp .restic.env.example .restic.env && chmod 600 .restic.env
+#   cp .mqtt_credentials.example .mqtt_credentials && chmod 600 .mqtt_credentials
+#
+# Cron (daily at 02:30):
+#   30 2 * * * /home/stefan/workspace/priv/k3s/scripts/backup.sh >> /var/log/k3s-backup.log 2>&1
+#
+# Per service, the backup consists of:
+#   1. DB dump via kubectl exec into the database pod (pg_dumpall → gzip)
+#   2. Data files via kubectl cp from the application pod
+#   3. Restic backup of the staging directory
+#
+# After all services, all new snapshots are copied to S3 via `restic copy`.
+
+set -euo pipefail
+
+echo "Backup script started at $(date --iso-8601=ns)"
+
+# ============================================================================
+# Configuration
+# ============================================================================
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# MQTT topics — one sensor per service plus one overall sensor.
+# State values: running | success | failed
+# Discovery topic pattern: homeassistant/sensor/backup_<service>/config
+mqtt_state_topic()      { echo "homeassistant/sensor/backup_${1}/state"; }
+mqtt_attributes_topic() { echo "homeassistant/sensor/backup_${1}/attributes"; }
+mqtt_discovery_topic()  { echo "homeassistant/sensor/backup_${1}/config"; }
+
+# ============================================================================
+# Load Credentials
+# ============================================================================
+
+MQTT_CREDENTIALS="$SCRIPT_DIR/.mqtt_credentials"
+if [[ ! -f "$MQTT_CREDENTIALS" ]]; then
+    echo "ERROR: MQTT credentials not found at $MQTT_CREDENTIALS" >&2
+    exit 1
+fi
+if [[ "$(stat -c %a "$MQTT_CREDENTIALS")" != "600" ]]; then
+    echo "WARNING: Insecure permissions on $MQTT_CREDENTIALS (expected 600)" >&2
+fi
+source "$MQTT_CREDENTIALS"
+if [[ -z "${MQTT_USER:-}" ]] || [[ -z "${MQTT_PASSWORD:-}" ]]; then
+    echo "ERROR: MQTT_USER or MQTT_PASSWORD not set in $MQTT_CREDENTIALS" >&2
+    exit 1
+fi
+
+RESTIC_ENV="$SCRIPT_DIR/.restic.env"
+if [[ ! -f "$RESTIC_ENV" ]]; then
+    echo "ERROR: Restic config not found at $RESTIC_ENV" >&2
+    exit 1
+fi
+if [[ "$(stat -c %a "$RESTIC_ENV")" != "600" ]]; then
+    echo "WARNING: Insecure permissions on $RESTIC_ENV (expected 600)" >&2
+fi
+source "$RESTIC_ENV"
+
+for VAR in MQTT_HOST MQTT_PORT BACKUP_TEMP_DIR BACKUP_SERVICES \
+           RESTIC_REPO_S3 RESTIC_PASSWORD_S3 \
+           AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+    if [[ -z "${!VAR:-}" ]]; then
+        echo "ERROR: $VAR is not set in $RESTIC_ENV" >&2
+        exit 1
+    fi
+done
+
+# Guard against restic picking up RESTIC_REPOSITORY env var from the shell.
+unset RESTIC_REPOSITORY RESTIC_PASSWORD RESTIC_REPOSITORY2 RESTIC_PASSWORD2
+
+# ============================================================================
+# Helper: MQTT
+# ============================================================================
+
+mqtt_pub() {
+    local topic="$1" message="$2" retain="${3:-}"
+    local retain_flag=""
+    [[ -n "$retain" ]] && retain_flag="-r"
+    mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" \
+        -u "$MQTT_USER" -P "$MQTT_PASSWORD" \
+        -t "$topic" -m "$message" $retain_flag
+}
+
+# Register a sensor in Home Assistant via MQTT discovery.
+# Idempotent — safe to call on every run.
+send_discovery() {
+    local service="$1"
+    local display_name="$2"
+    local payload
+    payload=$(cat <<EOF
+{
+  "name": "Status",
+  "object_id": "backup_${service}",
+  "unique_id": "backup_${service}",
+  "state_topic": "$(mqtt_state_topic "$service")",
+  "json_attributes_topic": "$(mqtt_attributes_topic "$service")",
+  "icon": "mdi:backup-restore",
+  "device": {
+    "identifiers": ["backup_${service}"],
+    "name": "Backup ${display_name}",
+    "model": "Restic k3s Backup",
+    "manufacturer": "Homelab"
+  }
+}
+EOF
+)
+    mqtt_pub "$(mqtt_discovery_topic "$service")" "$payload" retain
+}
+
+send_state() {
+    local service="$1" state="$2"
+    echo "MQTT [$service]: $state"
+    mqtt_pub "$(mqtt_state_topic "$service")" "$state" retain
+}
+
+send_attributes() {
+    local service="$1" json="$2"
+    echo "MQTT [$service]: sending attributes"
+    mqtt_pub "$(mqtt_attributes_topic "$service")" "$json" retain
+}
+
+# ============================================================================
+# Helper: Restic
+# ============================================================================
+
+parse_restic_stats() {
+    local output="$1"
+    local files_new files_changed dirs_new
+    files_new=$(echo "$output"    | grep "Files:"     | awk '{print $2}' | grep -o '[0-9]*' || echo "0")
+    files_changed=$(echo "$output" | grep "Files:"    | awk '{print $4}' | grep -o '[0-9]*' || echo "0")
+    dirs_new=$(echo "$output"     | grep "Dirs:"      | awk '{print $2}' | grep -o '[0-9]*' || echo "0")
+    echo "${files_new:-0}|${files_changed:-0}|${dirs_new:-0}"
+}
+
+# Run restic backup of a staging directory and return parsed stats via global vars.
+run_restic_backup() {
+    local service="$1"
+    local source_dir="$BACKUP_TEMP_DIR/$service"
+
+    echo ""
+    echo "--- Restic backup: $service ---"
+    local output
+    output=$(RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" \
+        restic -r "$RESTIC_REPO_S3" backup "$source_dir" \
+        --tag "$service" \
+        --verbose 2>&1)
+    echo "$output"
+
+    IFS='|' read -r \
+        "LAST_FILES_NEW" "LAST_FILES_CHANGED" "LAST_DIRS_NEW" \
+        <<< "$(parse_restic_stats "$output")"
+}
+
+# ============================================================================
+# Helper: kubectl
+# ============================================================================
+
+# Get the first running pod name matching a label selector in a namespace.
+get_pod() {
+    local namespace="$1" selector="$2"
+    kubectl get pod -n "$namespace" -l "$selector" \
+        --field-selector=status.phase=Running \
+        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null
+}
+
+# ============================================================================
+# Service Backup Functions
+# ============================================================================
+
+# Each function:
+#   - stages data into $BACKUP_TEMP_DIR/<service>/
+#   - sets SERVICE_DISPLAY_NAME for MQTT
+#   - calls run_restic_backup
+#   - sends per-service MQTT success
+#
+# Add a new function here for each service migrated to k3s.
+
+backup_paperless() {
+    local svc="paperless"
+    SERVICE_DISPLAY_NAME="Paperless-ngx"
+    local staging="$BACKUP_TEMP_DIR/$svc"
+    mkdir -p "$staging"
+
+    echo ""
+    echo "=========================================="
+    echo "Backing up: Paperless-ngx"
+    echo "=========================================="
+
+    # --- DB dump ---
+    echo "Dumping Paperless database..."
+    local db_pod
+    db_pod=$(get_pod "paperless" "app=paperless-db")
+    if [[ -z "$db_pod" ]]; then
+        echo "ERROR: No running paperless-db pod found" >&2
+        return 1
+    fi
+    kubectl exec -n paperless "$db_pod" -- \
+        pg_dumpall -U paperless \
+        | gzip > "$staging/paperless_db_$(date +%Y-%m-%d_%H%M%S).sql.gz"
+    echo "DB dump complete."
+
+    # --- Media files ---
+    # /usr/src/paperless/media contains all scanned documents.
+    # kubectl cp streams via tar — safe to run while the pod is active.
+    echo "Copying media files..."
+    local app_pod
+    app_pod=$(get_pod "paperless" "app=paperless")
+    if [[ -z "$app_pod" ]]; then
+        echo "ERROR: No running paperless app pod found" >&2
+        return 1
+    fi
+    kubectl cp "paperless/$app_pod:/usr/src/paperless/media" "$staging/media"
+    echo "Media copy complete."
+
+    run_restic_backup "$svc"
+
+    local success_json
+    success_json=$(cat <<EOF
+{
+  "last_run": "$(date --iso-8601=seconds)",
+  "status": "success",
+  "files_new": ${LAST_FILES_NEW:-0},
+  "files_changed": ${LAST_FILES_CHANGED:-0},
+  "dirs_new": ${LAST_DIRS_NEW:-0}
+}
+EOF
+)
+    send_state "$svc" "success"
+    send_attributes "$svc" "$success_json"
+}
+
+backup_teslamate() {
+    local svc="teslamate"
+    SERVICE_DISPLAY_NAME="Teslamate"
+    local staging="$BACKUP_TEMP_DIR/$svc"
+    mkdir -p "$staging"
+
+    echo ""
+    echo "=========================================="
+    echo "Backing up: Teslamate"
+    echo "=========================================="
+
+    # --- DB dump ---
+    echo "Dumping Teslamate database..."
+    local db_pod
+    db_pod=$(get_pod "teslamate" "app=teslamate-db")
+    if [[ -z "$db_pod" ]]; then
+        echo "ERROR: No running teslamate-db pod found" >&2
+        return 1
+    fi
+    kubectl exec -n teslamate "$db_pod" -- \
+        pg_dumpall -U teslamate \
+        | gzip > "$staging/teslamate_db_$(date +%Y-%m-%d_%H%M%S).sql.gz"
+    echo "DB dump complete."
+
+    run_restic_backup "$svc"
+
+    local success_json
+    success_json=$(cat <<EOF
+{
+  "last_run": "$(date --iso-8601=seconds)",
+  "status": "success",
+  "files_new": ${LAST_FILES_NEW:-0},
+  "files_changed": ${LAST_FILES_CHANGED:-0},
+  "dirs_new": ${LAST_DIRS_NEW:-0}
+}
+EOF
+)
+    send_state "$svc" "success"
+    send_attributes "$svc" "$success_json"
+}
+
+# ============================================================================
+# Cleanup / Error Handler
+# ============================================================================
+
+START_TIME=$(date +%s)
+FAILED_SERVICE=""
+
+cleanup() {
+    local exit_code=$?
+
+    if [[ $exit_code -ne 0 ]]; then
+        echo "ERROR: Backup failed (exit $exit_code) — service: ${FAILED_SERVICE:-unknown}"
+
+        # If a specific service failed, mark it failed in MQTT.
+        if [[ -n "$FAILED_SERVICE" ]]; then
+            local error_json
+            error_json=$(cat <<EOF
+{
+  "last_run": "$(date --iso-8601=seconds)",
+  "status": "failed",
+  "error": "Backup failed with exit code $exit_code",
+  "last_error_time": "$(date --iso-8601=seconds)"
+}
+EOF
+)
+            send_state "$FAILED_SERVICE" "failed"
+            send_attributes "$FAILED_SERVICE" "$error_json" || true
+        fi
+
+        # Mark overall as failed.
+        send_state "overall" "failed" || true
+    fi
+
+    # Remove staging directory.
+    if [[ -d "$BACKUP_TEMP_DIR" ]]; then
+        echo "Cleaning up $BACKUP_TEMP_DIR..."
+        rm -rf "$BACKUP_TEMP_DIR"
+    fi
+
+    unset RESTIC_PASSWORD_S3 MQTT_PASSWORD
+}
+
+trap cleanup EXIT
+
+# ============================================================================
+# Main
+# ============================================================================
+
+# Register overall sensor in HA.
+send_discovery "overall" "Overall"
+send_state "overall" "running"
+
+# Register per-service sensors and set initial state.
+for svc in $BACKUP_SERVICES; do
+    case "$svc" in
+        paperless) send_discovery "paperless" "Paperless-ngx" ;;
+        teslamate) send_discovery "teslamate" "Teslamate" ;;
+        *) echo "WARNING: Unknown service '$svc' — skipping discovery" ;;
+    esac
+    send_state "$svc" "running"
+done
+
+mkdir -p "$BACKUP_TEMP_DIR"
+
+# ── Back up each enabled service ─────────────────────────────────────────────
+
+TOTAL_FILES_NEW=0
+TOTAL_FILES_CHANGED=0
+
+for svc in $BACKUP_SERVICES; do
+    FAILED_SERVICE="$svc"
+    case "$svc" in
+        paperless) backup_paperless ;;
+        teslamate) backup_teslamate ;;
+        *) echo "WARNING: Unknown service '$svc' — skipping backup" ;;
+    esac
+    TOTAL_FILES_NEW=$((TOTAL_FILES_NEW   + ${LAST_FILES_NEW:-0}))
+    TOTAL_FILES_CHANGED=$((TOTAL_FILES_CHANGED + ${LAST_FILES_CHANGED:-0}))
+    FAILED_SERVICE=""
+done
+
+# ── S3 repository stats ───────────────────────────────────────────────────────
+
+echo ""
+echo "=========================================="
+echo "Repository Statistics"
+echo "=========================================="
+
+REPO_STATS=$(RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" \
+    restic -r "$RESTIC_REPO_S3" stats --mode raw-data --json 2>/dev/null || echo "{}")
+REPO_SIZE_BYTES=$(echo "$REPO_STATS" | jq -r '.total_size // 0')
+REPO_SIZE_GB=$(echo "scale=2; $REPO_SIZE_BYTES / 1024 / 1024 / 1024" | bc)
+SNAPSHOT_COUNT=$(RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" \
+    restic -r "$RESTIC_REPO_S3" snapshots --json 2>/dev/null | jq '. | length' || echo "0")
+
+echo "Repository size: ${REPO_SIZE_GB} GB — Snapshots: $SNAPSHOT_COUNT"
+
+# ── Finalize ──────────────────────────────────────────────────────────────────
+
+END_TIME=$(date +%s)
+DURATION=$((END_TIME - START_TIME))
+
+echo ""
+echo "=========================================="
+echo "Backup complete — ${DURATION}s"
+echo "=========================================="
+
+OVERALL_JSON=$(cat <<EOF
+{
+  "last_run": "$(date --iso-8601=seconds)",
+  "last_success_time": "$(date --iso-8601=seconds)",
+  "duration_seconds": $DURATION,
+  "files_new": $TOTAL_FILES_NEW,
+  "files_changed": $TOTAL_FILES_CHANGED,
+  "repository_size_gb": $REPO_SIZE_GB,
+  "snapshot_count": $SNAPSHOT_COUNT,
+  "services": "$BACKUP_SERVICES"
+}
+EOF
+)
+
+send_state "overall" "success"
+send_attributes "overall" "$OVERALL_JSON"
+
+echo "Backup script finished at $(date --iso-8601=ns)"

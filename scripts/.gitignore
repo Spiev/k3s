@@ -1,0 +1,4 @@
+# Actual credentials — never commit these
+backup.sh
+.restic.env
+.mqtt_credentials
