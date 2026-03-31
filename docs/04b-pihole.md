@@ -116,8 +116,6 @@ kubectl get svc -n pihole
 # pihole-dns sollte EXTERNAL-IP (IPv4 + IPv6) zeigen
 ```
 
-> **WLAN-Hinweis:** MetalLB ARP/NDP funktioniert nicht über WLAN (Fritz!Box blockiert Gratuitous ARP für IPs außerhalb DHCP). Mit `hostNetwork: true` im Deployment bindet Pi-hole direkt auf die Node-IP — Details und Ethernet-Migration: [02b-metallb.md](./02b-metallb.md).
-
 Die External-IPs des `pihole-dns`-Service notieren — werden in Schritt 6 benötigt:
 ```bash
 kubectl get svc -n pihole pihole-dns -o wide
@@ -142,13 +140,8 @@ Admin-UI → **Settings → Teleporter → Restore** → exportierte Datei hochl
 Erst testen bevor die Fritz!Box umgestellt wird:
 
 ```bash
-# Ethernet (MetalLB VIP)
 dig @<METALLB-IPV4-VIP> google.com
 dig @<METALLB-IPV6-VIP> google.com
-
-# WLAN (hostNetwork, Node-IP)
-dig @<NODE-IP> google.com
-dig @<NODE-IPV6-SLAAC> google.com
 ```
 
 Beide Anfragen sollten eine Antwort liefern. Wenn ja: Pi-hole funktioniert korrekt.
@@ -159,13 +152,8 @@ Beide Anfragen sollten eine Antwort liefern. Wenn ja: Pi-hole funktioniert korre
 
 In der **Fritz!Box** unter Heimnetz → Netzwerk → DNS:
 
-**Ethernet (MetalLB VIP — stabil, empfohlen):**
 - DNS-Server (IPv4): `<METALLB-IPV4-VIP>`
 - DNS-Server (IPv6): `<METALLB-IPV6-VIP>`
-
-**WLAN-Betrieb (hostNetwork, Node-IP):**
-- DNS-Server (IPv4): `<NODE-IP>`
-- DNS-Server (IPv6): `<NODE-IPV6-SLAAC>`
 
 Danach DHCP-Lease auf einem Client erneuern und prüfen:
 ```bash

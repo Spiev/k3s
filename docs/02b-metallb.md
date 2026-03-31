@@ -91,21 +91,7 @@ kubectl get l2advertisement -n metallb-system
 
 ---
 
-## Schritt 4 — UFW für externe Services öffnen
-
-MetalLB weist VIPs zu, aber UFW (Firewall auf dem Node) blockiert eingehenden Traffic standardmäßig. Für jeden Service der extern erreichbar sein muss, eine UFW-Regel hinzufügen.
-
-Beispiel Pi-hole DNS (Port 53):
-```bash
-sudo ufw allow from <HEIMNETZ-SUBNET> to any port 53
-sudo ufw allow from <ULA-PREFIX>::/64 to any port 53
-```
-
-> Nicht `ufw allow 53` ohne Quell-Einschränkung — das öffnet den Port für das gesamte Internet.
-
----
-
-## Schritt 5 — Verifizieren
+## Schritt 4 — Verifizieren
 
 Einen bestehenden LoadBalancer-Service prüfen (z.B. Pi-hole):
 ```bash
@@ -115,28 +101,6 @@ kubectl get svc -n pihole pihole-dns
 ```
 
 Falls der Service vorher schon lief (mit Klipper), bekommt er nach MetalLB-Installation automatisch eine neue VIP aus dem Pool zugewiesen.
-
----
-
-## Bekannte Einschränkung: MetalLB Layer 2 + WLAN
-
-MetalLB Layer 2 Modus kündigt VIPs per **Gratuitous ARP** (IPv4) und **NDP** (IPv6) an. Über WLAN blockiert der Fritz!Box-AP diese Ankündigungen für IPs außerhalb des DHCP-Bereichs — die VIP ist zwar zugewiesen, aber nicht erreichbar.
-
-**Workaround für WLAN-Betrieb:**
-
-`hostNetwork: true` im Deployment — der Pod bindet direkt auf alle Node-Interfaces (wie Docker `network_mode: host`). Der Service ist dann über die Node-IP erreichbar, nicht über die MetalLB-VIP.
-
-```yaml
-spec:
-  template:
-    spec:
-      hostNetwork: true   # Entfernen sobald Ethernet verfügbar
-```
-
-**Sobald Ethernet angeschlossen:**
-1. `hostNetwork: true` aus dem Deployment entfernen
-2. `kubectl apply -f apps/<service>/<service>.yaml`
-3. Fritz!Box DNS von Node-IP auf MetalLB-VIP umstellen
 
 ---
 
