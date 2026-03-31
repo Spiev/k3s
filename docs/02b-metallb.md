@@ -26,7 +26,7 @@ k3s und MetalLB können nicht gleichzeitig laufen — beide würden versuchen Lo
 
 Auf dem k3s-Node:
 ```bash
-sudo nano /etc/rancher/k3s/config.yaml
+sudo vim /etc/rancher/k3s/config.yaml
 ```
 
 Folgenden Block ergänzen (oder `disable`-Liste erweitern falls bereits vorhanden):
@@ -71,6 +71,14 @@ kubectl wait --namespace metallb-system \
 
 ## Schritt 3 — IP-Pool konfigurieren
 
+Vor dem Apply `infrastructure/metallb/metallb.yaml` anpassen — Platzhalter durch die eigenen Werte ersetzen:
+
+| Platzhalter | Bedeutung | Beispiel |
+|---|---|---|
+| `<METALLB-IPV4-START>` | Erste freie IP außerhalb DHCP-Bereich | erste IP nach DHCP-Ende |
+| `<METALLB-IPV4-END>` | Letzte IP des Pools | +19 IPs |
+| `<ULA-PREFIX>` | ULA-Prefix der Fritz!Box (ohne `::`) | aus Fritz!Box Netzwerk-Einstellungen |
+
 ```bash
 kubectl apply -f infrastructure/metallb/metallb.yaml
 ```
@@ -88,7 +96,7 @@ kubectl get l2advertisement -n metallb-system
 Einen bestehenden LoadBalancer-Service prüfen (z.B. Pi-hole):
 ```bash
 kubectl get svc -n pihole pihole-dns
-# → EXTERNAL-IP sollte jetzt eine IP aus dem MetalLB-Pool zeigen
+# → EXTERNAL-IP sollte jetzt eine IP aus dem konfigurierten Pool zeigen
 # → nicht mehr die Node-IP
 ```
 
@@ -98,16 +106,11 @@ Falls der Service vorher schon lief (mit Klipper), bekommt er nach MetalLB-Insta
 
 ## IP-Pool Übersicht
 
-| Bereich | Zweck |
-|---|---|
-| `<HEIMNETZ-SUBNET>.1-200` | Fritz!Box DHCP — nicht anfassen |
-| `<METALLB-IPV4-START>-<METALLB-IPV4-END>` | MetalLB Pool — dedizierte Service-VIPs |
-| `<ULA-PREFIX>::<RANGE-START>-::<RANGE-END>` | MetalLB Pool IPv6 |
+Eine Tabelle der vergebenen VIPs hilft den Überblick zu behalten:
 
-Vergebene VIPs:
-| Service | IPv4 | IPv6 |
+| Service | IPv4 VIP | IPv6 VIP |
 |---|---|---|
-| Pi-hole DNS | `<METALLB-IPV4-START>` | `<ULA-PREFIX>::<RANGE-START>` |
+| Pi-hole DNS | `<erste IP aus Pool>` | `<erste IPv6 aus Pool>` |
 
 > Diese Tabelle manuell aktuell halten wenn neue LoadBalancer-Services hinzukommen.
 
