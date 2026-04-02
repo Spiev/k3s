@@ -340,4 +340,4 @@ kubectl top nodes
 
 ---
 
-## Weiter: [03 — Longhorn Storage](./03-longhorn.md)
+## Weiter: [04 — Longhorn Storage](./04-longhorn.md)

@@ -138,7 +138,7 @@ Mit `Delete` (Longhorn-Default) wird ein Volume sofort gelöscht wenn sein PVC g
 
 ## 5. Verschlüsselte StorageClass einrichten
 
-Longhorn verschlüsselt Volumes auf Block-Ebene via LUKS — transparent für den Pod, kein Unterschied in der Nutzung. Der Encryption Key liegt als Secret im Cluster und muss **zusätzlich im Passwortmanager** gesichert werden (siehe [09 — Backup & Restore](./09-backup-restore.md)).
+Longhorn verschlüsselt Volumes auf Block-Ebene via LUKS — transparent für den Pod, kein Unterschied in der Nutzung. Der Encryption Key liegt als Secret im Cluster und muss **zusätzlich im Passwortmanager** gesichert werden (siehe [09 — Backup & Restore](../operations/backup-restore.md)).
 
 ### Crypto Secret anlegen
 
@@ -269,7 +269,7 @@ spec:
 
 Im Single-Node-Betrieb gibt es keine Replikation — Backup ist daher kritisch.
 
-Longhorn unterstützt Backups auf S3-kompatible Ziele. Als externes Backup-Ziel wird **Hetzner Object Storage** verwendet (S3-kompatibel, EU-Standorte). Die Einrichtung des Buckets und der Access Keys ist in [09 — Backup & Restore](./09-backup-restore.md) beschrieben.
+Longhorn unterstützt Backups auf S3-kompatible Ziele. Als externes Backup-Ziel wird **Hetzner Object Storage** verwendet (S3-kompatibel, EU-Standorte). Die Einrichtung des Buckets und der Access Keys ist in [09 — Backup & Restore](../operations/backup-restore.md) beschrieben.
 
 > **Wichtig:** Das Backup-Ziel muss vor einem k3s-Neuinstall konfiguriert und ein vollständiges Backup erstellt werden — danach sind die Volume-Daten extern gesichert und können nach dem Neuinstall wiederhergestellt werden.
 
@@ -405,4 +405,4 @@ STORAGE:.status.allocatable.ephemeral-storage
 
 ---
 
-## Weiter: [04a — FreshRSS deployen](./04a-freshrss.md)
+## Weiter: [04a — FreshRSS deployen](../services/freshrss.md)
