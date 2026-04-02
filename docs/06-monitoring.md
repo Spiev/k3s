@@ -228,4 +228,4 @@ kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
 
 ---
 
-## Weiter: [07 — Traefik & Ingress](./07-traefik.md)
+## Weiter: [09 — Backup & Restore](./09-backup-restore.md)

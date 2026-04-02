@@ -174,4 +174,4 @@ Das ist der einfachere Weg — und da Seafile noch nicht im docker-runtime liegt
 
 ---
 
-## Weiter: [06 — GitOps mit Flux CD](./06-gitops-flux.md)
+## Weiter: [Learning Path — Phase 5: GitOps mit Flux CD](./learning-path.md#phase-5--gitops-mit-flux-cd-woche-45)
