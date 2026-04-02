@@ -4,7 +4,7 @@ Dieser Guide beschreibt wie ein laufender Service von einem unverschlüsselten L
 
 **Hintergrund:** Longhorn kann ein unverschlüsseltes Backup nicht direkt als verschlüsseltes Volume restoren (die Rohdaten sind plain ext4, kein LUKS). Der korrekte Weg ist daher: erst unverschlüsselt restoren, dann per Migrations-Pod auf ein neues verschlüsseltes Volume kopieren.
 
-Voraussetzung: [03 — Longhorn](./03-longhorn.md) — verschlüsselte StorageClass (`longhorn-retain-encrypted`) und Crypto Secret eingerichtet.
+Voraussetzung: [04 — Longhorn](../platform/04-longhorn.md) — verschlüsselte StorageClass (`longhorn-retain-encrypted`) und Crypto Secret eingerichtet.
 
 ---
 
@@ -170,4 +170,4 @@ kubectl get pvc -n freshrss
 
 ---
 
-## Weiter: [04b — Pi-hole deployen](./04b-pihole.md)
+## Weiter: [04b — Pi-hole deployen](../services/pihole.md)

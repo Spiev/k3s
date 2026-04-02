@@ -1,6 +1,6 @@
 # 04c — Seafile deployen
 
-Voraussetzung: [04a — FreshRSS](./04a-freshrss.md) abgeschlossen. Sealed Secrets sollten vor diesem Schritt eingerichtet sein (Secrets für DB-Passwort und Seafile SECRET_KEY).
+Voraussetzung: [04a — FreshRSS](./freshrss.md) abgeschlossen. Sealed Secrets sollten vor diesem Schritt eingerichtet sein (Secrets für DB-Passwort und Seafile SECRET_KEY).
 
 Seafile ist der zweite Migrationskanditat und deutlich komplexer als FreshRSS: zwei Pods, zwei Volumes, Service-to-Service-Kommunikation und Secrets. Das macht es zum idealen Lernschritt vor GitOps.
 
@@ -174,4 +174,4 @@ Das ist der einfachere Weg — und da Seafile noch nicht im docker-runtime liegt
 
 ---
 
-## Weiter: [Learning Path — Phase 5: GitOps mit Flux CD](./learning-path.md#phase-5--gitops-mit-flux-cd-woche-45)
+## Weiter: [Learning Path — Phase 5: GitOps mit Flux CD](../learning-path.md#phase-5--gitops-mit-flux-cd-woche-45)

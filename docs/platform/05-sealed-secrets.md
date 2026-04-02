@@ -1,6 +1,6 @@
 # 04e — Sealed Secrets einrichten
 
-Voraussetzung: [03 — Longhorn](./03-longhorn.md) abgeschlossen.
+Voraussetzung: [04 — Longhorn](./04-longhorn.md) abgeschlossen.
 
 Sealed Secrets löst zwei Probleme gleichzeitig:
 - **Öffentliches Repo**: verschlüsselte Secrets können sicher committed werden — nur der Cluster kann sie entschlüsseln
@@ -161,4 +161,4 @@ Erst jetzt `kubectl apply -f apps/<service>/` — die SealedSecrets werden autom
 
 ---
 
-## Weiter: [04b — Pi-hole deployen](./04b-pihole.md)
+## Weiter: [04b — Pi-hole deployen](../services/pihole.md)

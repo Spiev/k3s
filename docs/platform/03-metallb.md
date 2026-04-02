@@ -116,4 +116,4 @@ Eine Tabelle der vergebenen VIPs hilft den Überblick zu behalten:
 
 ---
 
-## Weiter: [04b — Pi-hole deployen](./04b-pihole.md)
+## Weiter: [04b — Pi-hole deployen](../services/pihole.md)

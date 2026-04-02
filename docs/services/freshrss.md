@@ -1,6 +1,6 @@
 # 04 — FreshRSS deployen & migrieren
 
-Voraussetzung: [03 — Longhorn](./03-longhorn.md) abgeschlossen.
+Voraussetzung: [04 — Longhorn](../platform/04-longhorn.md) abgeschlossen.
 
 FreshRSS ist der erste Service der von Docker auf k3s migriert wird. Er hat ein einziges Volume (`/config`) und keine externe Datenbank — ideal zum Einstieg.
 
@@ -245,6 +245,6 @@ kubectl describe pvc -n freshrss freshrss-config
 ## Weiter
 
 Vor Pi-hole: FreshRSS-Volume auf verschlüsselten Storage migrieren:
-→ [10 — Volume-Migration: unverschlüsselt → verschlüsselt](./10-migrate-to-encrypted.md)
+→ [10 — Volume-Migration: unverschlüsselt → verschlüsselt](../operations/migrate-to-encrypted.md)
 
-Danach: [04b — Pi-hole deployen](./04b-pihole.md)
+Danach: [04b — Pi-hole deployen](./pihole.md)

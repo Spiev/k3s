@@ -241,7 +241,7 @@ Der `encrypted_json`-Export enthält alle Vault-Einträge verschlüsselt. Er ist
 bw import --format bitwardenencryptedJson vault_2026-03-28.json
 ```
 
-**Nicht im Export enthalten:** Dateianhänge (Attachments). Diese liegen im Longhorn-Volume und werden über das reguläre Longhorn-Backup gesichert (→ [09-backup-restore.md](09-backup-restore.md)).
+**Nicht im Export enthalten:** Dateianhänge (Attachments). Diese liegen im Longhorn-Volume und werden über das reguläre Longhorn-Backup gesichert (→ [backup-restore.md](../operations/backup-restore.md)).
 
 ---
 
@@ -325,7 +325,7 @@ Der Wegweiser ist public. Die eigentliche Anleitung liegt sicher in `tier0.age`.
 2. Restic-Credentials → Backup auf SSD/S3 mounten
 3. Vaultwarden-Export wiederherstellen → bw import
 4. Alle weiteren Credentials sind jetzt im Vault verfügbar
-5. K3s-Cluster neu aufsetzen (→ docs/09-backup-restore.md)
+5. K3s-Cluster neu aufsetzen (→ docs/operations/backup-restore.md)
 6. Longhorn-Volumes restoren
 7. Services deployen
 ```

@@ -12,24 +12,24 @@ Kubernetes-Infrastruktur auf einem Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migra
 
 | Dokument | Inhalt |
 |---|---|
-| [Architektur-Übersicht](docs/00-architecture.md) | Gesamtbild, Netzwerkfluss, Komponenten — guter Einstieg |
+| [Architektur-Übersicht](docs/architecture.md) | Gesamtbild, Netzwerkfluss, Komponenten — guter Einstieg |
 | [Learning Path](docs/learning-path.md) | Lernpfad und Architekturentscheidungen |
-| [01 — OS Setup](docs/01-os-setup.md) | Raspberry Pi OS auf NVMe, EEPROM, cgroups |
-| [02 — k3s installieren](docs/02-k3s-install.md) | k3s mit Dual-Stack (IPv4+IPv6), kubectl, Grundkonzepte |
-| [02b — MetalLB](docs/02b-metallb.md) | LoadBalancer-VIPs für Bare Metal (DNS, stabile Service-IPs) |
-| [03 — Longhorn](docs/03-longhorn.md) | Persistenter Storage, Verschlüsselung, Backup-Strategie |
+| [01 — OS Setup](docs/platform/01-os-setup.md) | Raspberry Pi OS auf NVMe, EEPROM, cgroups |
+| [02 — k3s installieren](docs/platform/02-k3s-install.md) | k3s mit Dual-Stack (IPv4+IPv6), kubectl, Grundkonzepte |
+| [03 — MetalLB](docs/platform/03-metallb.md) | LoadBalancer-VIPs für Bare Metal (DNS, stabile Service-IPs) |
+| [04 — Longhorn](docs/platform/04-longhorn.md) | Persistenter Storage, Verschlüsselung, Backup-Strategie |
 | **Service-Migrationen** | |
-| [04a — FreshRSS](docs/04a-freshrss.md) ✅ | Migration: FreshRSS deployen |
-| [04b — Pi-hole](docs/04b-pihole.md) ✅ | Migration: Pi-hole, DNS via LoadBalancer + Ingress |
-| [04c — Seafile](docs/04c-seafile.md) | Migration: Seafile, Multi-Container, Secrets |
-| [04d — Immich](docs/04d-immich.md) | Migration: Immich, Restic-Restore-Strategie (1.5 TB Library) |
-| [04e — Sealed Secrets](docs/04e-sealed-secrets.md) | Secrets verschlüsseln für öffentliches Git-Repo |
-| [11 — Vaultwarden](docs/11-vaultwarden.md) | Password Manager: Konzept, SSO, YubiKey, Backup, Tier-0-Notfallkonzept |
+| [04a — FreshRSS](docs/services/freshrss.md) ✅ | Migration: FreshRSS deployen |
+| [04b — Pi-hole](docs/services/pihole.md) ✅ | Migration: Pi-hole, DNS via LoadBalancer + Ingress |
+| [04c — Seafile](docs/services/seafile.md) | Migration: Seafile, Multi-Container, Secrets |
+| [04d — Immich](docs/services/immich.md) | Migration: Immich, Restic-Restore-Strategie (1.5 TB Library) |
+| [05 — Sealed Secrets](docs/platform/05-sealed-secrets.md) | Secrets verschlüsseln für öffentliches Git-Repo |
+| [11 — Vaultwarden](docs/services/vaultwarden.md) | Password Manager: Konzept, SSO, YubiKey, Backup, Tier-0-Notfallkonzept |
 | **Betrieb** | |
-| [06 — Monitoring](docs/06-monitoring.md) | kube-prometheus-stack, Grafana, Alertmanager |
-| [07 — Renovate](docs/07-renovate.md) | Automatische Dependency-Updates via GitHub Action |
-| [09 — Backup & Restore](docs/09-backup-restore.md) | Cluster-Rebuild, Longhorn-Restore, kritische Secrets |
-| [10 — Migration: unverschlüsselt → verschlüsselt](docs/10-migrate-to-encrypted.md) | Volume-Migration auf LUKS-verschlüsselte StorageClass |
+| [06 — Monitoring](docs/operations/monitoring.md) | kube-prometheus-stack, Grafana, Alertmanager |
+| [07 — Renovate](docs/operations/renovate.md) | Automatische Dependency-Updates via GitHub Action |
+| [09 — Backup & Restore](docs/operations/backup-restore.md) | Cluster-Rebuild, Longhorn-Restore, kritische Secrets |
+| [10 — Migration: unverschlüsselt → verschlüsselt](docs/operations/migrate-to-encrypted.md) | Volume-Migration auf LUKS-verschlüsselte StorageClass |
 
 ---
 

@@ -35,7 +35,7 @@ Next:
 - **Seafile** — 2 containers (`seafile-mc` + MariaDB), 2 PVCs, Secrets; sync-based so file blobs survive on clients even if cluster is down (DB metadata/history does not)
 
 Blocked on Agent-Node join:
-- **Immich** — 1.5 TB library, Restic restore strategy documented in `docs/04d-immich.md`
+- **Immich** — 1.5 TB library, Restic restore strategy documented in `docs/services/immich.md`
 - **Home Assistant** — requires `hostNetwork` + `nodeAffinity` for Zigbee dongle on Agent-Node
 
 ## Conventions
