@@ -1,4 +1,4 @@
-# 09 — Backup & Restore
+# Backup & Restore
 
 ## Überblick
 

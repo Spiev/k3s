@@ -1,4 +1,4 @@
-# 04b — Pi-hole deployen
+# Pi-hole deployen
 
 Voraussetzung: [04 — Longhorn](../platform/04-longhorn.md) abgeschlossen, [03 — MetalLB](../platform/03-metallb.md) eingerichtet, [05 — Sealed Secrets](../platform/05-sealed-secrets.md) eingerichtet, Dual-Stack-Cluster läuft (siehe [02 — k3s installieren](../platform/02-k3s-install.md)).
 
@@ -194,4 +194,4 @@ ssh stefan@k3s.fritz.box "ip addr | grep <ULA-PREFIX>"
 
 ---
 
-## Weiter: [04c — Seafile deployen](./seafile.md)
+## Weiter: [Seafile deployen](./seafile.md)

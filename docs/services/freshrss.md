@@ -1,4 +1,4 @@
-# 04 — FreshRSS deployen & migrieren
+# FreshRSS deployen & migrieren
 
 Voraussetzung: [04 — Longhorn](../platform/04-longhorn.md) abgeschlossen.
 
@@ -245,6 +245,6 @@ kubectl describe pvc -n freshrss freshrss-config
 ## Weiter
 
 Vor Pi-hole: FreshRSS-Volume auf verschlüsselten Storage migrieren:
-→ [10 — Volume-Migration: unverschlüsselt → verschlüsselt](../operations/migrate-to-encrypted.md)
+→ [Volume-Migration: unverschlüsselt → verschlüsselt](../operations/migrate-to-encrypted.md)
 
-Danach: [04b — Pi-hole deployen](./pihole.md)
+Danach: [Pi-hole deployen](./pihole.md)
