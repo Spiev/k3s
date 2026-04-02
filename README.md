@@ -26,6 +26,7 @@ Kubernetes-Infrastruktur auf einem Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migra
 | [Sealed Secrets](docs/platform/05-sealed-secrets.md) | Secrets verschlüsseln für öffentliches Git-Repo |
 | [Vaultwarden](docs/services/vaultwarden.md) | Password Manager: Konzept, SSO, YubiKey, Backup, Tier-0-Notfallkonzept |
 | **Betrieb** | |
+| [Shutdown & Startup](docs/operations/shutdown-startup.md) | Cluster sauber herunterfahren und hochfahren |
 | [Monitoring](docs/operations/monitoring.md) | kube-prometheus-stack, Grafana, Alertmanager |
 | [Renovate](docs/operations/renovate.md) | Automatische Dependency-Updates via GitHub Action |
 | [Backup & Restore](docs/operations/backup-restore.md) | Cluster-Rebuild, Longhorn-Restore, kritische Secrets |
