@@ -4,6 +4,7 @@ metadata:
   name: freshrss
   labels:
     app: freshrss
+    type: service
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

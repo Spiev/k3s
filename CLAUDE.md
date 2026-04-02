@@ -43,6 +43,7 @@ Blocked on Agent-Node join:
 - Commit messages: Conventional Commits (English)
 - YAML indentation: 2 spaces
 - All Kubernetes resources need `namespace` and `labels` set explicitly
+- Service Namespaces must have `type: service` label — enables `kubectl get ns -l type=service` for bulk operations (e.g. shutdown)
 - Secrets: always use Sealed Secrets (`kubeseal`), never plain `Secret` objects in git
 - Longhorn StorageClass: `longhorn-retain-encrypted` (default), `numberOfReplicas: "1"` until second node joins, then `"2"`
 - **No Kustomize** — single manifest file per service (e.g. `apps/freshrss/freshrss.yaml`), Ingress in separate `*-ingress.yaml` excluded via `.gitignore`; deploy with `kubectl apply -f apps/<service>/`
