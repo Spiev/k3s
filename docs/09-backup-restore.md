@@ -1,31 +1,59 @@
 # 09 — Backup & Restore
 
-Dieser Guide beschreibt die Einrichtung des externen Backup-Speichers, was vor einem Cluster-Rebuild gesichert werden muss, wie Services aus einem Longhorn-Backup wiederhergestellt werden, und welche Secrets außerhalb des Clusters aufbewahrt werden müssen.
+## Überblick
+
+Zwei Backup-Strategien parallel im Einsatz:
+
+| Strategie | Tool | Services | Restore-Granularität |
+|---|---|---|---|
+| Volume-Snapshot | Longhorn → S3 | FreshRSS (kein DB) | ganzes Volume |
+| Datei-Backup | Restic → Hetzner S3 | Paperless, Teslamate | einzelne Dateien, ganzer Service |
+
+> **Longhorn-Backups sind kein Ersatz für Restic bei DB-Services.** Longhorn sichert auf Block-Ebene (crash-consistent). Für Postgres-Datenbanken ist ein logischer Dump (`pg_dumpall`) zwingend — nur so ist ein konsistenter Restore garantiert. Siehe [Bekannte Limitierungen](#bekannte-limitierungen-longhorn).
 
 ---
 
-## Hetzner Object Storage einrichten
+## Kritische Secrets außerhalb des Clusters
 
-Longhorn-Backups auf demselben Node wie die Volumes zu speichern schützt nicht gegen Node-Ausfall oder Disk-Defekt. Ein externer S3-kompatibler Bucket trennt Backup-Storage sauber vom Cluster.
+Diese Werte können **nicht** aus dem Cluster wiederhergestellt werden wenn etcd weg ist. Im Passwortmanager aufbewahren — unabhängig vom Cluster-Zustand:
 
-> **Kein offizieller Terraform-Provider:** Hetzner Object Storage wird vom offiziellen `hcloud`-Provider nicht abgedeckt. Buckets werden daher manuell in der Hetzner Console angelegt.
+| Secret | Exportieren | Aufbewahren |
+|---|---|---|
+| Longhorn Crypto Key | siehe unten | Passwortmanager |
+| Sealed Secrets Key | `kubectl get secret -n kube-system -l sealedsecrets.bitnami.com/sealed-secrets-key -o yaml > sealed-secrets-key.yaml` | Passwortmanager |
+| Hetzner S3 Credentials | Hetzner Console | Passwortmanager |
+| Restic Repo-Passwort (S3) | aus `.restic.env` | Passwortmanager |
 
-### Schritt 1 — Bucket anlegen
+```bash
+# Longhorn Crypto Key exportieren:
+kubectl get secret longhorn-crypto-secret -n longhorn-system \
+  -o jsonpath='{.data.CRYPTO_KEY_VALUE}' | base64 -d
+```
 
-In der [Hetzner Cloud Console](https://console.hetzner.cloud):
+> `sealed-secrets-key.yaml` und den Crypto Key **nie ins Repo committen**.
 
-1. Projekt öffnen → **Object Storage** → **Bucket erstellen**
-2. Location wählen — verfügbar: `fsn1` (Falkenstein) | `nbg1` (Nuremberg) | `hel1` (Helsinki)
+---
+
+## Teil 1 — Longhorn Backup (FreshRSS)
+
+Longhorn erstellt täglich Volume-Snapshots und kopiert diese in den Hetzner S3 Bucket. Für FreshRSS (kein Datenbankprozess, nur Konfigurationsdateien) ist das ausreichend.
+
+### Hetzner Object Storage einrichten
+
+> Kein offizieller Terraform-Provider für Hetzner Object Storage — Bucket manuell anlegen.
+
+**Bucket anlegen** in der [Hetzner Cloud Console](https://console.hetzner.cloud):
+1. Projekt → **Object Storage** → **Bucket erstellen**
+2. Location: `nbg1` (Nuremberg) empfohlen
 3. Name: `bkp-home` (oder eigener Name)
 4. Sichtbarkeit: **Private**
 
-### Schritt 2 — Access Key erstellen
-
+**Access Key erstellen:**
 1. **Object Storage** → **Access Keys** → **Access Key erstellen**
 2. Name: `longhorn-backup`
-3. **Access Key ID** und **Secret Key** notieren — der Secret Key wird nur einmalig angezeigt
+3. Access Key ID und Secret Key notieren — Secret Key nur einmalig sichtbar
 
-### Schritt 3 — Longhorn Backup-Target konfigurieren
+**Longhorn Backup-Target konfigurieren:**
 
 ```bash
 kubectl create secret generic longhorn-backup-secret \
@@ -41,107 +69,239 @@ In der Longhorn UI unter **Settings → Backup**:
 
 Nach dem Speichern sollte **Backup Target Status: Available** erscheinen.
 
-### Schritt 4 — Backup-Plan einrichten
-
-In der Longhorn UI unter **Recurring Jobs**:
+**Backup-Plan einrichten** unter **Recurring Jobs**:
 
 ```
-Name:       daily-backup
-Task:       backup
-Cron:       0 2 * * *    (täglich 2:00 Uhr)
-Retain:     7            (7 Backups aufbewahren)
+Name:    daily-backup
+Task:    backup
+Cron:    0 2 * * *    (täglich 2:00 Uhr)
+Retain:  7
 ```
 
-Diesen Job dann als Default für alle Volumes setzen oder jedem Volume einzeln zuweisen.
+Job dem FreshRSS-Volume zuweisen (oder als Default für alle Volumes setzen).
+
+### Bekannte Limitierungen Longhorn
+
+**Crash-Consistency:** Longhorn sichert rohe LUKS-Blöcke — nicht den entschlüsselten Inhalt. Für Services mit laufenden Datenbankprozessen ist das nicht ausreichend.
+
+**Verschlüsselte Volumes:** Backup eines verschlüsselten Volumes enthält LUKS-Blöcke. Restore auf unverschlüsseltes Volume → nicht mountbar. Restore auf verschlüsseltes Volume → nur mit korrektem Crypto Key.
+
+**`fromBackup`-Annotation** funktioniert nicht mit verschlüsselten StorageClasses ([Longhorn Issue #9571](https://github.com/longhorn/longhorn/issues/9571)) — PVs immer manuell anlegen.
+
+**Silent Failures:** Longhorn meldet fehlgeschlagene S3-Backups nicht aktiv in der UI. Stand 2026: Issue [#3537](https://github.com/longhorn/longhorn/issues/3537) noch offen (Teilverbesserungen in v1.7.0 und v1.11.1).
 
 ---
 
-## Kritische Secrets außerhalb des Clusters
+## Teil 2 — Restic Backup (Paperless, Teslamate)
 
-Diese Werte können nicht aus dem Cluster wiederhergestellt werden wenn etcd weg ist. Sie müssen im Passwortmanager liegen — **unabhängig** vom Cluster-Zustand:
+### Funktionsweise
 
-| Secret | Exportieren | Aufbewahren |
-|---|---|---|
-| Longhorn Crypto Key | siehe unten | Passwortmanager |
-| Sealed Secrets Key | `kubectl get secret -n kube-system -l sealedsecrets.bitnami.com/sealed-secrets-key -o yaml > sealed-secrets-key.yaml` | Passwortmanager |
-| Hetzner S3 Credentials | Hetzner Console | Passwortmanager |
+Das Backup-Script läuft als Cron-Job direkt auf dem Pi-Node und:
+1. Verbindet sich per `kubectl exec` mit dem Datenbank-Pod und erstellt einen `pg_dumpall`-Dump
+2. Kopiert Applikationsdaten per `kubectl cp` aus dem App-Pod
+3. Sichert alles mit Restic in den Hetzner S3 Bucket
+4. Meldet Status pro Service via MQTT an Home Assistant
+
+Jeder Service bekommt einen eigenen HA-Sensor (`backup_paperless`, `backup_teslamate`, `backup_overall`).
+
+### Einrichten
+
+**Voraussetzung:** Hetzner S3 Bucket bereits vorhanden (aus Longhorn-Setup oder separater Bucket).
+
+**Restic auf dem Pi-Node installieren:**
 
 ```bash
-# Longhorn Crypto Key exportieren (Klartext-Wert):
-kubectl get secret longhorn-crypto-secret -n longhorn-system \
-  -o jsonpath='{.data.CRYPTO_KEY_VALUE}' | base64 -d
+# Aktuelle Version prüfen: https://github.com/restic/restic/releases
+RESTIC_VERSION="0.17.3"
+wget "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_arm64.bz2"
+bunzip2 "restic_${RESTIC_VERSION}_linux_arm64.bz2"
+sudo mv "restic_${RESTIC_VERSION}_linux_arm64" /usr/local/bin/restic
+sudo chmod +x /usr/local/bin/restic
+restic version
 ```
 
-> `sealed-secrets-key.yaml` und den Crypto Key **nie ins Git-Repo committen**.
-
----
-
-## Vor einem Cluster-Rebuild
-
-### 1. Longhorn-Backup sicherstellen
-
-In der Longhorn UI unter **Backup** prüfen dass ein aktuelles Backup aller Volumes vorhanden ist (State: Completed). Falls nicht, manuell ein Backup triggern bevor der Cluster abgerissen wird.
-
-### 2. Service-Daten per kubectl cp sichern (Fallback)
+**mosquitto-clients installieren** (für MQTT-Benachrichtigungen):
 
 ```bash
-# Daten sichern (Pod läuft noch)
-kubectl cp freshrss/$(kubectl get pod -n freshrss -o name | head -1 | cut -d/ -f2):/config ./freshrss-config-backup
-
-# Danach skalieren (verhindert Schreibzugriffe während des Backups)
-kubectl scale deployment freshrss -n freshrss --replicas=0
+sudo apt install mosquitto-clients
 ```
 
-### 3. Sealed-Secrets-Key exportieren
+**Script einrichten:**
 
 ```bash
-kubectl get secret -n kube-system \
-  -l sealedsecrets.bitnami.com/sealed-secrets-key \
-  -o yaml > sealed-secrets-key.yaml
+cd ~/workspace/priv/k3s/scripts
+
+cp backup.sh.example backup.sh
+chmod 700 backup.sh
+
+cp .restic.env.example .restic.env
+chmod 600 .restic.env
+# .restic.env mit eigenen Werten befüllen
+
+cp .mqtt_credentials.example .mqtt_credentials
+chmod 600 .mqtt_credentials
+# .mqtt_credentials mit MQTT_USER und MQTT_PASSWORD befüllen
 ```
 
-> Im Passwortmanager aufbewahren, nicht ins Repo committen.
+**Restic S3-Repo initialisieren** (einmalig):
+
+```bash
+source .restic.env
+RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" init
+```
+
+**Cron-Job einrichten:**
+
+```bash
+crontab -e
+```
+
+Eintrag:
+```
+30 2 * * * /home/stefan/workspace/priv/k3s/scripts/backup.sh >> /var/log/k3s-backup.log 2>&1
+```
+
+**Ersten Backup-Lauf testen:**
+
+```bash
+~/workspace/priv/k3s/scripts/backup.sh
+```
+
+Prüfen ob Snapshots vorhanden:
+```bash
+source ~/workspace/priv/k3s/scripts/.restic.env
+RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots
+```
+
+### Neuen Service hinzufügen
+
+Wenn ein weiterer Service zu k3s migriert wird:
+1. In `scripts/.restic.env` den Service zu `BACKUP_SERVICES` hinzufügen
+2. In `scripts/backup.sh` eine `backup_<service>()`-Funktion ergänzen (analog zu `backup_paperless`)
+3. Die Funktion im `case`-Block unten registrieren
+
+### Home Assistant Dashboard
+
+Für jeden Service und den Overall-Status erscheint automatisch ein Sensor in HA (via MQTT Discovery). Beispiel-Card für das Dashboard:
+
+```yaml
+type: entities
+title: Restic Backup
+entities:
+  - entity: sensor.backup_overall
+  - entity: sensor.backup_paperless
+  - entity: sensor.backup_teslamate
+```
 
 ---
 
-## Bekannte Limitierungen
+## Restore — Restic
 
-### Backups verschlüsselter Volumes sind ebenfalls verschlüsselt
+### Verfügbare Snapshots anzeigen
 
-Longhorn sichert die rohen LUKS-Blöcke — nicht die entschlüsselten Daten. Ein Backup eines verschlüsselten Volumes enthält also LUKS-verschlüsselte Blöcke. Das hat zwei Konsequenzen:
-
-- Restore eines verschlüsselten Backups auf ein **unverschlüsseltes** Volume → das Volume enthält LUKS-Blöcke, lässt sich nicht als normales Dateisystem mounten
-- Restore eines **unverschlüsselten** Backups auf ein verschlüsseltes Volume → das Volume enthält plain ext4, kein LUKS → Mount schlägt fehl
-
-**Faustregel:** `storageClassName` der Original-PVC (in `apps/<service>/<service>.yaml`) bestimmt den Restore-Pfad. Verschlüsselt → verschlüsselt restoren. Unverschlüsselt → unverschlüsselt restoren.
-
-> **Achtung:** Ohne den Longhorn Crypto Key sind Backups verschlüsselter Volumes **dauerhaft unlesbar**. Der Key muss im Passwortmanager liegen (siehe [Kritische Secrets](#kritische-secrets-außerhalb-des-clusters)).
-
-### `fromBackup`-Annotation funktioniert nicht mit verschlüsselten StorageClasses
-
-Die `longhorn.io/from-backup`-Annotation auf einem PVC funktioniert **nicht** mit verschlüsselten StorageClasses. Das ist ein bekanntes Kubernetes CSI Design-Problem ([Longhorn Issue #9571](https://github.com/longhorn/longhorn/issues/9571)): dynamisch provisionierte PVs erhalten keine `nodeStageSecretRef`/`nodePublishSecretRef` — der Kubelet kann das LUKS-Volume ohne diese Felder nicht entschlüsseln. Longhorn fällt stillschweigend auf ein leeres Volume zurück.
-
-Deshalb müssen PVs bei verschlüsselten Volumes **immer manuell** mit den Secret-Refs angelegt werden (siehe Restore-Prozedur unten).
-
-### Unverschlüsseltes Backup kann nicht direkt als verschlüsseltes Volume restoren
-
-Longhorn kopiert beim Restore die Rohdaten 1:1 zurück. Ein Backup von einem unverschlüsselten Volume enthält plain ext4 — kein LUKS. Wenn beim Restore in der Longhorn UI "Encrypted" angehakt wird, setzt Longhorn zwar das Flag, verschlüsselt die Daten aber nicht. Der anschließende Mount-Versuch schlägt fehl:
-
-```
-MountVolume.MountDevice failed: unsupported disk encryption format ext4
+```bash
+source ~/workspace/priv/k3s/scripts/.restic.env
+RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots
 ```
 
-Der korrekte Weg: erst unverschlüsselt restoren, dann in ein verschlüsseltes Volume migrieren (siehe unten).
+Mit Filter nach Service:
+```bash
+RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots --tag paperless
+RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots --tag teslamate
+```
+
+### Einzelne Datei / Verzeichnis wiederherstellen
+
+```bash
+# Snapshot-ID aus `restic snapshots` ermitteln, z.B. abc12345
+SNAPSHOT="abc12345"
+
+# Inhalt eines Snapshots auflisten
+RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
+  ls "$SNAPSHOT"
+
+# Einzelne Datei / Verzeichnis in /tmp restoren
+RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
+  restore "$SNAPSHOT" \
+  --include "/tmp/k3s-backup/paperless/media/documents/originals/2025/01/rechnung.pdf" \
+  --target /tmp/restore
+```
+
+### Ganzen Service wiederherstellen (Cluster läuft)
+
+**Schritt 1 — Staging-Verzeichnis aus Restic wiederherstellen:**
+
+```bash
+RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
+  restore latest \
+  --tag paperless \
+  --target /tmp/restore
+```
+
+Das staging-Verzeichnis liegt unter `/tmp/restore/tmp/k3s-backup/paperless/`.
+
+**Schritt 2 — DB-Dump in den laufenden DB-Pod einspielen:**
+
+```bash
+# Service stoppen (verhindert Schreibkonflikte während des Restores)
+kubectl scale deployment paperless -n paperless --replicas=0
+kubectl scale deployment paperless-db -n paperless --replicas=0
+
+# Warten bis Pods weg sind
+kubectl wait --for=delete pod -n paperless -l app=paperless --timeout=60s
+
+# DB-Pod wieder starten (ohne App)
+kubectl scale deployment paperless-db -n paperless --replicas=1
+kubectl wait --for=condition=Ready pod -n paperless -l app=paperless-db --timeout=60s
+
+# Dump einspielen
+DB_POD=$(kubectl get pod -n paperless -l app=paperless-db -o jsonpath='{.items[0].metadata.name}')
+zcat /tmp/restore/tmp/k3s-backup/paperless/paperless_db_*.sql.gz \
+  | kubectl exec -i -n paperless "$DB_POD" -- psql -U paperless
+```
+
+**Schritt 3 — Media-Dateien zurückkopieren:**
+
+```bash
+# App-Pod starten
+kubectl scale deployment paperless -n paperless --replicas=1
+kubectl wait --for=condition=Ready pod -n paperless -l app=paperless --timeout=90s
+
+APP_POD=$(kubectl get pod -n paperless -l app=paperless -o jsonpath='{.items[0].metadata.name}')
+
+# Media-Verzeichnis zurückkopieren
+kubectl cp /tmp/restore/tmp/k3s-backup/paperless/media \
+  "paperless/$APP_POD:/usr/src/paperless/media"
+```
+
+**Schritt 4 — Verifizieren:**
+
+Im Paperless-UI prüfen ob Dokumente und Tags korrekt sind.
+
+```bash
+# Aufräumen
+rm -rf /tmp/restore
+```
+
+### Ganzen Service wiederherstellen (nach Cluster-Neuinstall)
+
+Reihenfolge nach Neuinstall: **Longhorn → Sealed Secrets → Services → Restic Restore**
+
+1. Longhorn Backup-Target konfigurieren (siehe [Restore nach Cluster-Neuinstall](#restore-nach-cluster-neuinstall-longhorn))
+2. Sealed Secrets Controller + Key einspielen
+3. Service-Manifeste deployen: `kubectl apply -f apps/paperless/`
+4. Warten bis Pods laufen
+5. Restic Restore wie oben (Schritt 1–4)
 
 ---
 
-## Restore nach Cluster-Neuinstall
+## Restore — Longhorn (FreshRSS)
+
+### Restore nach Cluster-Neuinstall
 
 Reihenfolge: **Longhorn → Backup-Target → Crypto Key → Sealed Secrets → Services**
 
-### 1. Longhorn Backup-Target konfigurieren
-
-Nach dem Neuinstall kennt Longhorn den S3-Bucket nicht mehr:
+**Schritt 1 — Longhorn Backup-Target konfigurieren:**
 
 ```bash
 kubectl create secret generic longhorn-backup-secret \
@@ -153,12 +313,11 @@ kubectl create secret generic longhorn-backup-secret \
 
 In der Longhorn UI unter **Settings → Backup**:
 - `Backup Target`: `s3://bkp-home@nbg1/`
-  - `bkp-home` = Bucket-Name, `nbg1` = Location
 - `Backup Target Credential Secret`: `longhorn-backup-secret`
 
-Nach dem Speichern unter **Backup** prüfen ob die alten Backups erscheinen — Longhorn liest sie automatisch aus dem Bucket.
+Unter **Backup** prüfen ob die alten Backups erscheinen — Longhorn liest sie automatisch aus dem Bucket.
 
-### 2. Longhorn Crypto Key wiederherstellen
+**Schritt 2 — Longhorn Crypto Key wiederherstellen:**
 
 ```bash
 kubectl create secret generic longhorn-crypto-secret \
@@ -167,125 +326,40 @@ kubectl create secret generic longhorn-crypto-secret \
   --from-literal=CRYPTO_KEY_PROVIDER=secret
 ```
 
-### 3. Sealed Secrets Controller
+**Schritt 3 — Sealed Secrets Controller + Key:**
 
 ```bash
-# Aktuelle Version prüfen: https://github.com/bitnami-labs/sealed-secrets/releases
 kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/<version>/controller.yaml
 
-# Alten Schlüssel einspielen (VOR dem ersten SealedSecret-Deploy!)
+# Alten Schlüssel VOR dem ersten SealedSecret-Deploy einspielen
 kubectl apply -f sealed-secrets-key.yaml
-
-# Controller neu starten damit er den importierten Key lädt
 kubectl rollout restart deployment sealed-secrets-controller -n kube-system
 ```
 
-> Den Key **vor** dem Deployen von SealedSecrets einspielen — sonst generiert der Controller einen neuen Schlüssel und alle bestehenden Sealed Secrets sind nicht mehr entschlüsselbar.
+### FreshRSS aus Longhorn-Backup wiederherstellen
 
-### 4. Services wiederherstellen
+#### Variante A — Backup stammt von verschlüsseltem Volume (Normalfall)
 
-Der Restore läuft in zwei Phasen: erst unverschlüsselt restoren und verifizieren, dann in ein verschlüsseltes Volume migrieren.
-
-#### Phase 1 — Unverschlüsselt restoren und verifizieren
-
-**Schritt 1 — Longhorn UI: Backup restoren**
-
-Longhorn UI → **Backup** → Volume auswählen → Backup-Eintrag → **Restore**:
-- Volume-Name: `<service>-restored` (z.B. `freshrss-config-restored`)
-- **Encrypted: nicht angehakt** (auch wenn das Ziel später verschlüsselt werden soll)
-- Data Engine: `v1`
-- Access Mode: `ReadWriteOnce`
-
-Warten bis Status `Ready for workload` unter **Volumes**.
-
-> **Single-Node:** Longhorn setzt beim UI-Restore die Default-Replica-Anzahl (3). Da nur ein Node vorhanden ist, wird das Volume `Degraded`. Direkt nach dem Restore die Replica-Anzahl auf 1 setzen:
-> ```bash
-> kubectl patch volume <volume-name> -n longhorn-system \
->   --type=merge -p '{"spec":{"numberOfReplicas":1}}'
-> ```
-
-**Schritt 2 — PV manuell anlegen**
-
-```yaml
-# /tmp/<service>-pv-restore.yaml
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: freshrss-config-restored
-spec:
-  capacity:
-    storage: 5Gi
-  volumeMode: Filesystem
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: longhorn-retain
-  csi:
-    driver: driver.longhorn.io
-    fsType: ext4
-    volumeHandle: freshrss-config-restored
-```
-
-```bash
-kubectl apply -f /tmp/freshrss-pv-restore.yaml
-```
-
-**Schritt 3 — PVC anlegen die auf den PV zeigt**
-
-```yaml
-# /tmp/<service>-pvc-restore.yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: freshrss-config
-  namespace: freshrss
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: longhorn-retain
-  volumeName: freshrss-config-restored
-  resources:
-    requests:
-      storage: 5Gi
-```
-
-```bash
-kubectl apply -f apps/freshrss/base/namespace.yaml
-kubectl apply -f /tmp/freshrss-pvc-restore.yaml
-kubectl get pvc -n freshrss -w
-# STATUS muss Bound sein bevor weitergemacht wird
-```
-
-**Schritt 4 — Service deployen und Daten verifizieren**
-
-```bash
-kubectl apply -f apps/freshrss/
-kubectl get pods -n freshrss -w
-# Warten bis 1/1 Running
-```
-
-Daten im Browser prüfen — Feeds, Read-Status, Settings müssen vorhanden sein.
-
-#### Alternativ: Restore eines verschlüsselten Volumes (Backup kam von `longhorn-retain-encrypted`)
-
-Wenn das Backup von einem bereits verschlüsselten Volume stammt, kann direkt als verschlüsseltes Volume restoren werden — **kein unverschlüsselter Zwischenschritt nötig**.
-
-**Schritt 1 — Longhorn UI: Backup restoren**
-
-Longhorn UI → **Backup** → Volume auswählen → Backup-Eintrag → **Restore**:
-- Volume-Name: `<service>-restored` (z.B. `freshrss-config-restored`)
-- **Encrypted: angehakt**
+**Longhorn UI → Backup → freshrss-config → letztes Backup → Restore:**
+- Volume-Name: `freshrss-config-restored`
+- Encrypted: **angehakt**
 - Secret Namespace: `longhorn-system`
 - Secret Name: `longhorn-crypto-secret`
 - Data Engine: `v1`
 - Access Mode: `ReadWriteOnce`
 
-**Schritt 2 — PV manuell anlegen mit Secret-Refs**
+Warten bis Status `Ready for workload` unter **Volumes**.
 
-Der PV muss `nodeStageSecretRef` und `nodePublishSecretRef` enthalten — ohne diese Felder kann kubelet das LUKS-Volume nicht entschlüsseln ([Longhorn Issue #9571](https://github.com/longhorn/longhorn/issues/9571)):
+> **Single-Node:** Longhorn setzt beim UI-Restore die Default-Replica-Anzahl (3). Direkt danach auf 1 reduzieren:
+> ```bash
+> kubectl patch volume freshrss-config-restored -n longhorn-system \
+>   --type=merge -p '{"spec":{"numberOfReplicas":1}}'
+> ```
+
+**PV manuell anlegen** (mit Secret-Refs — ohne diese kann kubelet das LUKS-Volume nicht entschlüsseln):
 
 ```yaml
-# /tmp/<service>-pv-restore.yaml
+# /tmp/freshrss-pv-restore.yaml
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -310,25 +384,73 @@ spec:
       namespace: longhorn-system
 ```
 
-**Schritt 3 — PVC anlegen und Service deployen**
-
-Analog zur unverschlüsselten Variante, nur mit `storageClassName: longhorn-retain-encrypted`.
-
----
-
-#### Phase 2 — Migration auf verschlüsseltes Volume
-
-Sobald die Daten verifiziert sind, in ein verschlüsseltes Volume migrieren:
-
 ```bash
-# 1. Neues leeres verschlüsseltes PVC anlegen
-kubectl apply -f apps/freshrss/base/pvc.yaml
-# (pvc.yaml verwendet longhorn-retain-encrypted)
-# Warten bis das neue PVC einen anderen Namen hat — es ist noch nicht gebunden
+kubectl apply -f /tmp/freshrss-pv-restore.yaml
+```
+
+**PVC anlegen:**
+
+```yaml
+# /tmp/freshrss-pvc-restore.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: freshrss-config
+  namespace: freshrss
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn-retain-encrypted
+  volumeName: freshrss-config-restored
+  resources:
+    requests:
+      storage: 5Gi
 ```
 
 ```bash
-# 2. Migrations-Pod starten der beide Volumes mountet
+kubectl create namespace freshrss --save-config
+kubectl apply -f /tmp/freshrss-pvc-restore.yaml
+kubectl get pvc -n freshrss -w
+# Warten bis STATUS=Bound
+```
+
+**Service deployen und verifizieren:**
+
+```bash
+kubectl apply -f apps/freshrss/freshrss.yaml
+kubectl get pods -n freshrss -w
+# Warten bis 1/1 Running
+```
+
+Feeds, Read-Status und Settings im Browser prüfen.
+
+#### Variante B — Backup stammt von unverschlüsseltem Volume
+
+Selber Ablauf wie Variante A, aber:
+- Restore in Longhorn UI: **Encrypted nicht angehakt**
+- PV anlegen **ohne** Secret-Refs, `storageClassName: longhorn-retain`
+- PVC mit `storageClassName: longhorn-retain`
+
+Danach optional Migration auf verschlüsseltes Volume (siehe [Volume-Migration](#volume-migration-unveschlüsselt-→-verschlüsselt)).
+
+### Einzelnen Service wiederherstellen (Cluster läuft)
+
+```bash
+# 1. Deployment stoppen
+kubectl scale deployment freshrss -n freshrss --replicas=0
+
+# 2. PVC löschen (Longhorn-Volume bleibt wegen Retain-Policy erhalten)
+kubectl delete pvc freshrss-config -n freshrss
+```
+
+Danach den Restore-Prozess wie oben durchlaufen (Longhorn UI → PV → PVC → Deployment).
+
+### Volume-Migration: unverschlüsselt → verschlüsselt
+
+Nach einem Restore aus einem unverschlüsselten Backup die Daten in ein verschlüsseltes Volume migrieren:
+
+```bash
+# 1. Migrations-Pod starten der beide Volumes mountet
 ```
 
 ```yaml
@@ -341,7 +463,7 @@ metadata:
 spec:
   containers:
     - name: migration
-      image: alpine:3.19
+      image: alpine:3.21
       command: ["sh", "-c", "cp -av /source/. /dest/ && echo 'Migration done' && sleep 3600"]
       volumeMounts:
         - name: source
@@ -354,33 +476,86 @@ spec:
         claimName: freshrss-config          # unverschlüsselt (restored)
     - name: dest
       persistentVolumeClaim:
-        claimName: freshrss-config-encrypted  # neu, verschlüsselt
+        claimName: freshrss-config-encrypted  # neu, longhorn-retain-encrypted
 ```
 
 ```bash
-# 3. Migration beobachten
-kubectl logs -n freshrss freshrss-migration -f
-# "Migration done" abwarten
+# Neues verschlüsseltes PVC anlegen (aus dem Service-Manifest)
+kubectl apply -f apps/freshrss/freshrss.yaml  # legt freshrss-config-encrypted an
 
-# 4. Service auf verschlüsseltes Volume umstellen
+kubectl apply -f /tmp/freshrss-migration-pod.yaml
+kubectl logs -n freshrss freshrss-migration -f
+# Warten auf "Migration done"
+
+# 2. Service auf verschlüsseltes Volume umstellen
 kubectl scale deployment freshrss -n freshrss --replicas=0
 kubectl patch deployment freshrss -n freshrss \
   --type=json \
   -p='[{"op":"replace","path":"/spec/template/spec/volumes/0/persistentVolumeClaim/claimName","value":"freshrss-config-encrypted"}]'
 kubectl scale deployment freshrss -n freshrss --replicas=1
 
-# 5. Aufräumen
+# 3. Aufräumen
 kubectl delete pod freshrss-migration -n freshrss
-kubectl delete pvc freshrss-config -n freshrss      # unverschlüsselt
+kubectl delete pvc freshrss-config -n freshrss
 kubectl delete pv freshrss-config-restored
 # Longhorn UI: freshrss-config-restored Volume löschen
 ```
 
 ---
 
-## Hinweis: nginx resolver.conf bei Dual-Stack
+## Vor einem Cluster-Rebuild
 
-Das linuxserver.io FreshRSS-Image generiert `/config/nginx/resolver.conf` beim **ersten Start** aus `/etc/resolv.conf`. In einem Dual-Stack-Cluster enthält diese Datei beide Nameserver (IPv4 + IPv6). nginx akzeptiert IPv6-Adressen ohne eckige Klammern nicht:
+Checkliste bevor der Cluster abgerissen wird:
+
+```bash
+# 1. Longhorn: aktuellen Backup-Status prüfen
+#    Longhorn UI → Backup → alle Volumes müssen State: Completed haben
+#    Falls nicht: manuellen Backup-Job triggern
+
+# 2. Restic: letzten erfolgreichen Backup-Run prüfen
+source ~/workspace/priv/k3s/scripts/.restic.env
+RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots --last
+
+# 3. Sealed Secrets Key exportieren
+kubectl get secret -n kube-system \
+  -l sealedsecrets.bitnami.com/sealed-secrets-key \
+  -o yaml > sealed-secrets-key.yaml
+# → Im Passwortmanager sichern, nicht ins Repo committen
+
+# 4. Longhorn Crypto Key notieren (im Passwortmanager)
+kubectl get secret longhorn-crypto-secret -n longhorn-system \
+  -o jsonpath='{.data.CRYPTO_KEY_VALUE}' | base64 -d
+```
+
+---
+
+## Troubleshooting
+
+```bash
+# Restic: Snapshot-Details anzeigen
+source ~/workspace/priv/k3s/scripts/.restic.env
+RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots --verbose
+
+# Restic: Repository-Integrität prüfen
+RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" check
+
+# Restic: Stale Locks entfernen (nach abgebrochenem Backup)
+RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" unlock
+
+# kubectl exec funktioniert nicht?
+#   → kubectl muss auf dem Node als der Cron-User erreichbar sein
+#   → KUBECONFIG prüfen: echo $KUBECONFIG (oder Default /etc/rancher/k3s/k3s.yaml)
+kubectl get pods -n paperless
+
+# Backup-Log einsehen
+tail -100 /var/log/k3s-backup.log
+```
+
+---
+
+## Hinweis: nginx resolver.conf bei Dual-Stack (FreshRSS)
+
+Das linuxserver.io FreshRSS-Image generiert `/config/nginx/resolver.conf` beim ersten Start. In einem Dual-Stack-Cluster enthält diese Datei IPv6-Adressen ohne eckige Klammern — nginx lehnt das ab:
 
 ```
 invalid port in resolver "fd43::a"
@@ -394,20 +569,4 @@ kubectl exec -n freshrss <pod-name> -- sh -c \
 kubectl rollout restart deployment freshrss -n freshrss
 ```
 
-Da die Datei in `/config` (persistentes Volume) liegt und laut Image-Kommentar nur beim ersten Start generiert wird, ist dieser Fix dauerhaft.
-
----
-
-## Restore eines einzelnen Services (Cluster läuft)
-
-Falls ein Service ohne Cluster-Neuinstall wiederhergestellt werden muss:
-
-```bash
-# 1. Deployment stoppen
-kubectl scale deployment <service> -n <namespace> --replicas=0
-
-# 2. PVC löschen (Volume bleibt wegen Retain in Longhorn erhalten)
-kubectl delete pvc <pvc-name> -n <namespace>
-```
-
-Dann den gleichen Prozess wie oben durchführen (Longhorn UI → PV → PVC → Deployment), danach auf verschlüsseltes Volume migrieren.
+Da die Datei in `/config` (persistentes Volume) liegt und nur beim ersten Start generiert wird, ist dieser Fix dauerhaft.
