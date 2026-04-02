@@ -1,4 +1,4 @@
-# 02b — MetalLB einrichten
+# 03 — MetalLB einrichten
 
 Voraussetzung: [02 — k3s installieren](./02-k3s-install.md) abgeschlossen.
 
@@ -116,4 +116,4 @@ Eine Tabelle der vergebenen VIPs hilft den Überblick zu behalten:
 
 ---
 
-## Weiter: [04b — Pi-hole deployen](../services/pihole.md)
+## Weiter: [Pi-hole deployen](../services/pihole.md)

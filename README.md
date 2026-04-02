@@ -19,17 +19,17 @@ Kubernetes-Infrastruktur auf einem Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migra
 | [03 — MetalLB](docs/platform/03-metallb.md) | LoadBalancer-VIPs für Bare Metal (DNS, stabile Service-IPs) |
 | [04 — Longhorn](docs/platform/04-longhorn.md) | Persistenter Storage, Verschlüsselung, Backup-Strategie |
 | **Service-Migrationen** | |
-| [04a — FreshRSS](docs/services/freshrss.md) ✅ | Migration: FreshRSS deployen |
-| [04b — Pi-hole](docs/services/pihole.md) ✅ | Migration: Pi-hole, DNS via LoadBalancer + Ingress |
-| [04c — Seafile](docs/services/seafile.md) | Migration: Seafile, Multi-Container, Secrets |
-| [04d — Immich](docs/services/immich.md) | Migration: Immich, Restic-Restore-Strategie (1.5 TB Library) |
-| [05 — Sealed Secrets](docs/platform/05-sealed-secrets.md) | Secrets verschlüsseln für öffentliches Git-Repo |
-| [11 — Vaultwarden](docs/services/vaultwarden.md) | Password Manager: Konzept, SSO, YubiKey, Backup, Tier-0-Notfallkonzept |
+| [FreshRSS](docs/services/freshrss.md) ✅ | Migration: FreshRSS deployen |
+| [Pi-hole](docs/services/pihole.md) ✅ | Migration: Pi-hole, DNS via LoadBalancer + Ingress |
+| [Seafile](docs/services/seafile.md) | Migration: Seafile, Multi-Container, Secrets |
+| [Immich](docs/services/immich.md) | Migration: Immich, Restic-Restore-Strategie (1.5 TB Library) |
+| [Sealed Secrets](docs/platform/05-sealed-secrets.md) | Secrets verschlüsseln für öffentliches Git-Repo |
+| [Vaultwarden](docs/services/vaultwarden.md) | Password Manager: Konzept, SSO, YubiKey, Backup, Tier-0-Notfallkonzept |
 | **Betrieb** | |
-| [06 — Monitoring](docs/operations/monitoring.md) | kube-prometheus-stack, Grafana, Alertmanager |
-| [07 — Renovate](docs/operations/renovate.md) | Automatische Dependency-Updates via GitHub Action |
-| [09 — Backup & Restore](docs/operations/backup-restore.md) | Cluster-Rebuild, Longhorn-Restore, kritische Secrets |
-| [10 — Migration: unverschlüsselt → verschlüsselt](docs/operations/migrate-to-encrypted.md) | Volume-Migration auf LUKS-verschlüsselte StorageClass |
+| [Monitoring](docs/operations/monitoring.md) | kube-prometheus-stack, Grafana, Alertmanager |
+| [Renovate](docs/operations/renovate.md) | Automatische Dependency-Updates via GitHub Action |
+| [Backup & Restore](docs/operations/backup-restore.md) | Cluster-Rebuild, Longhorn-Restore, kritische Secrets |
+| [Volume-Migration: unverschlüsselt → verschlüsselt](docs/operations/migrate-to-encrypted.md) | Volume-Migration auf LUKS-verschlüsselte StorageClass |
 
 ---
 

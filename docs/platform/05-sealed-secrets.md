@@ -1,4 +1,4 @@
-# 04e — Sealed Secrets einrichten
+# 05 — Sealed Secrets einrichten
 
 Voraussetzung: [04 — Longhorn](./04-longhorn.md) abgeschlossen.
 
@@ -161,4 +161,4 @@ Erst jetzt `kubectl apply -f apps/<service>/` — die SealedSecrets werden autom
 
 ---
 
-## Weiter: [04b — Pi-hole deployen](../services/pihole.md)
+## Weiter: [Pi-hole deployen](../services/pihole.md)

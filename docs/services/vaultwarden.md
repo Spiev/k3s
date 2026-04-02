@@ -1,4 +1,4 @@
-# 11 — Vaultwarden (Password Manager)
+# Vaultwarden (Password Manager)
 
 Dieses Dokument beschreibt das Konzept und die Umsetzung eines selbst gehosteten Passwort-Managers auf Basis von Vaultwarden — inklusive Sicherheitsarchitektur, Backup-Strategie und Tier-0-Notfallkonzept.
 

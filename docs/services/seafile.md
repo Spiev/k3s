@@ -1,6 +1,6 @@
-# 04c — Seafile deployen
+# Seafile deployen
 
-Voraussetzung: [04a — FreshRSS](./freshrss.md) abgeschlossen. Sealed Secrets sollten vor diesem Schritt eingerichtet sein (Secrets für DB-Passwort und Seafile SECRET_KEY).
+Voraussetzung: [FreshRSS](./freshrss.md) abgeschlossen. Sealed Secrets sollten vor diesem Schritt eingerichtet sein (Secrets für DB-Passwort und Seafile SECRET_KEY).
 
 Seafile ist der zweite Migrationskanditat und deutlich komplexer als FreshRSS: zwei Pods, zwei Volumes, Service-to-Service-Kommunikation und Secrets. Das macht es zum idealen Lernschritt vor GitOps.
 

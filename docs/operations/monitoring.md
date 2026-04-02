@@ -1,4 +1,4 @@
-# 06 — Monitoring
+# Monitoring
 
 Voraussetzung: [04 — Longhorn Storage](../platform/04-longhorn.md) abgeschlossen, Cluster läuft stabil.
 
@@ -228,4 +228,4 @@ kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
 
 ---
 
-## Weiter: [09 — Backup & Restore](./backup-restore.md)
+## Weiter: [Backup & Restore](./backup-restore.md)
