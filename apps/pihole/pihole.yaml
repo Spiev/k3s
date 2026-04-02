@@ -4,6 +4,7 @@ metadata:
   name: pihole
   labels:
     app: pihole
+    type: service
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
