@@ -1,4 +1,4 @@
-# 10 — Volume-Migration: Unverschlüsselt → Verschlüsselt
+# Volume-Migration: Unverschlüsselt → Verschlüsselt
 
 Dieser Guide beschreibt wie ein laufender Service von einem unverschlüsselten Longhorn-Volume auf ein verschlüsseltes Volume migriert wird, ohne Datenverlust.
 
@@ -170,4 +170,4 @@ kubectl get pvc -n freshrss
 
 ---
 
-## Weiter: [04b — Pi-hole deployen](../services/pihole.md)
+## Weiter: [Pi-hole deployen](../services/pihole.md)

@@ -1,4 +1,4 @@
-# 07 — Renovate (automatische Dependency-Updates)
+# Renovate (automatische Dependency-Updates)
 
 Renovate überwacht alle gepinnten Versionen im Repo (Container-Images, GitHub Actions) und erstellt automatisch PRs wenn Updates verfügbar sind. Minor- und Patch-Updates werden automatisch gemergt, Major-Updates erfordern manuelle Bestätigung.
 
