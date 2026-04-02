@@ -58,8 +58,8 @@ Immich deployment in k3s
 ### Phase 2 — Agent-Node neu aufsetzen
 
 1. Raspberry Pi OS Lite (64-bit, Bookworm) auf NVMe flashen
-2. cgroups aktivieren, Swap deaktivieren (→ [01-os-setup.md](./01-os-setup.md))
-3. k3s Agent installieren und dem Cluster joinen (→ [learning-path.md Phase 8](./learning-path.md))
+2. cgroups aktivieren, Swap deaktivieren (→ [01-os-setup.md](../platform/01-os-setup.md))
+3. k3s Agent installieren und dem Cluster joinen (→ [learning-path.md Phase 8](../learning-path.md))
 4. Longhorn erkennt den neuen Node automatisch
 
 ### Phase 3 — Longhorn PVC anlegen

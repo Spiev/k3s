@@ -1,9 +1,9 @@
 # 04b — Pi-hole deployen
 
-Voraussetzung: [03 — Longhorn](./03-longhorn.md) abgeschlossen, [02b — MetalLB](./02b-metallb.md) eingerichtet, [04e — Sealed Secrets](./04e-sealed-secrets.md) eingerichtet, Dual-Stack-Cluster läuft (siehe [02 — k3s installieren](./02-k3s-install.md)).
+Voraussetzung: [04 — Longhorn](../platform/04-longhorn.md) abgeschlossen, [03 — MetalLB](../platform/03-metallb.md) eingerichtet, [05 — Sealed Secrets](../platform/05-sealed-secrets.md) eingerichtet, Dual-Stack-Cluster läuft (siehe [02 — k3s installieren](../platform/02-k3s-install.md)).
 
 > [!NOTE]
-> MetalLB ist für Pi-hole **keine Voraussetzung mehr**. Klipper/ServiceLB (k3s-Standard) bindet Port 53 direkt auf der Node-IP — das reicht für DNS. MetalLB bringt hier nur dann einen Vorteil, wenn der Node per Ethernet angebunden ist (stabile VIP unabhängig von der Node-IP). Siehe [02b — MetalLB](./02b-metallb.md).
+> MetalLB ist für Pi-hole **keine Voraussetzung mehr**. Klipper/ServiceLB (k3s-Standard) bindet Port 53 direkt auf der Node-IP — das reicht für DNS. MetalLB bringt hier nur dann einen Vorteil, wenn der Node per Ethernet angebunden ist (stabile VIP unabhängig von der Node-IP). Siehe [03 — MetalLB](../platform/03-metallb.md).
 
 Pi-hole läuft als DNS-Resolver für das gesamte Heimnetz. Da es ein Neudeploy ist (keine komplexen Daten zu migrieren), geht das Volume direkt auf `longhorn-retain-encrypted`.
 
@@ -194,4 +194,4 @@ ssh stefan@k3s.fritz.box "ip addr | grep <ULA-PREFIX>"
 
 ---
 
-## Weiter: [04c — Seafile deployen](./04c-seafile.md)
+## Weiter: [04c — Seafile deployen](./seafile.md)

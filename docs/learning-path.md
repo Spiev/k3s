@@ -2,7 +2,7 @@
 
 Ziel: Schrittweiser Einstieg in Kubernetes mit k3s auf zwei Raspberry Pi 5 (je 8 GB RAM). Server-Node: 256 GB NVMe, Agent-Node (nach Migration): 2 TB NVMe. Vollständige Migration aller Docker-Services angestrebt.
 
-→ [Architektur-Übersicht](./00-architecture.md) — Gesamtbild, Netzwerkfluss, Komponenten
+→ [Architektur-Übersicht](./architecture.md) — Gesamtbild, Netzwerkfluss, Komponenten
 
 ---
 
@@ -47,7 +47,7 @@ Bringt alle Hardware-Tools nativ mit (`raspi-config`, `vcgencmd`, `rpi-eeprom-up
 2. Erster Boot: EEPROM aktualisieren (`sudo rpi-eeprom-update -a`)
 3. cgroups in `/boot/firmware/cmdline.txt` aktivieren, Swap deaktivieren
 
-Details: [docs/01-os-setup.md](./01-os-setup.md)
+Details: [docs/01-os-setup.md](./platform/01-os-setup.md)
 
 **Warum NVMe wichtig ist:**
 Kubernetes schreibt ständig auf Disk (Etcd, Longhorn, Logs). SD-Karten sterben dabei nach Wochen. NVMe ist hier keine Kür.
@@ -238,7 +238,7 @@ Longhorn Volume Snapshot → Longhorn Backup → Hetzner Object Storage (bkp-hom
 
 Longhorn-native Backups sind die empfohlene Variante, da sie inkrementell und snapshot-basiert arbeiten und direkt über die Longhorn-UI geplant werden können.
 
-Details zu Backup & Restore (inkl. Hetzner Object Storage einrichten): [docs/09-backup-restore.md](./09-backup-restore.md)
+Details zu Backup & Restore (inkl. Hetzner Object Storage einrichten): [docs/operations/backup-restore.md](./operations/backup-restore.md)
 
 ### Weg zum zweiten Node
 
@@ -445,7 +445,7 @@ kubectl create secret generic pihole-secret \
 
 Das resultierende `SealedSecret` kann gefahrlos in das öffentliche Repo committed werden. Nur der Cluster kann es entschlüsseln.
 
-> **Wichtig:** Den Controller-Schlüssel sofort nach der Installation sichern — Details und vollständige Recovery-Prozedur: [docs/04e-sealed-secrets.md](./04e-sealed-secrets.md)
+> **Wichtig:** Den Controller-Schlüssel sofort nach der Installation sichern — Details und vollständige Recovery-Prozedur: [docs/platform/05-sealed-secrets.md](./platform/05-sealed-secrets.md)
 
 ---
 
@@ -457,7 +457,7 @@ Raspberry Pi Hardware-Metriken (CPU-Temperatur etc.) liefert `node_exporter`, de
 
 Optional: Prometheus-Integration mit Home Assistant für Automationen auf Basis von Cluster-Metriken.
 
-Details: [docs/06-monitoring.md](./06-monitoring.md)
+Details: [docs/operations/monitoring.md](./operations/monitoring.md)
 
 ---
 
@@ -499,15 +499,15 @@ curl -sfL https://get.k3s.io | K3S_URL=https://<raspi5-ip>:6443 \
 
 ## Reihenfolge der Dokumente
 
-1. `docs/01-os-setup.md` — NVMe-Boot, Raspberry Pi OS, cgroups
-2. `docs/02-k3s-install.md` — k3s mit Dual-Stack (IPv4+IPv6), kubectl (lokal + remote), erste Schritte
-3. `docs/02b-metallb.md` — MetalLB einrichten (LoadBalancer-VIPs für Bare Metal)
-4. `docs/03-longhorn.md` — Storage einrichten, Verschlüsselung, Backup-Strategie
-5. `docs/04a-freshrss.md` — FreshRSS migrieren
-6. `docs/04e-sealed-secrets.md` — Sealed Secrets einrichten (Voraussetzung für alle weiteren Secrets)
-7. `docs/04b-pihole.md` — Pi-hole: DNS via LoadBalancer
-8. `docs/04c-seafile.md` — Seafile migrieren (Multi-Container, Secrets)
-9. `docs/04d-immich.md` — Immich migrieren (Restic-Restore-Strategie, großes Volume)
-10. `docs/06-monitoring.md` — Prometheus + Grafana
-11. `docs/09-backup-restore.md` — Backup & Restore, kritische Secrets
-12. `docs/10-migrate-to-encrypted.md` — Volume-Migration auf verschlüsselte StorageClass
+1. `docs/platform/01-os-setup.md` — NVMe-Boot, Raspberry Pi OS, cgroups
+2. `docs/platform/02-k3s-install.md` — k3s mit Dual-Stack (IPv4+IPv6), kubectl (lokal + remote), erste Schritte
+3. `docs/platform/03-metallb.md` — MetalLB einrichten (LoadBalancer-VIPs für Bare Metal)
+4. `docs/platform/04-longhorn.md` — Storage einrichten, Verschlüsselung, Backup-Strategie
+5. `docs/services/freshrss.md` — FreshRSS migrieren
+6. `docs/platform/05-sealed-secrets.md` — Sealed Secrets einrichten (Voraussetzung für alle weiteren Secrets)
+7. `docs/services/pihole.md` — Pi-hole: DNS via LoadBalancer
+8. `docs/services/seafile.md` — Seafile migrieren (Multi-Container, Secrets)
+9. `docs/services/immich.md` — Immich migrieren (Restic-Restore-Strategie, großes Volume)
+10. `docs/operations/monitoring.md` — Prometheus + Grafana
+11. `docs/operations/backup-restore.md` — Backup & Restore, kritische Secrets
+12. `docs/operations/migrate-to-encrypted.md` — Volume-Migration auf verschlüsselte StorageClass
