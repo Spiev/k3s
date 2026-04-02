@@ -9,9 +9,9 @@
 # Pushes to Mosquitto on raspberrypi.fritz.box.
 #
 # Setup:
-#   1. cp scripts/.mqtt_credentials.example scripts/.mqtt_credentials
-#   2. chmod 600 scripts/.mqtt_credentials
-#   3. Fill in MQTT_USER and MQTT_PASSWORD
+#   1. cp scripts/.mqtt.env.example scripts/.mqtt.env
+#   2. chmod 600 scripts/.mqtt.env
+#   3. Fill in MQTT_HOST, MQTT_PORT, MQTT_USER and MQTT_PASSWORD
 #   4. Add to crontab: */5 * * * * /path/to/scripts/k3s-monitor.sh >> /path/to/logs/k3s-monitor.log 2>&1
 #
 # Dependencies: mosquitto-clients, kubectl (kubeconfig at ~/.kube/config)
@@ -34,24 +34,24 @@ KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
 # Load Credentials & Environment Config
 # ============================================================================
 
-CREDENTIALS_FILE="$SCRIPT_DIR/.credentials"
+MQTT_ENV="$SCRIPT_DIR/.mqtt.env"
 
-if [[ ! -f "$CREDENTIALS_FILE" ]]; then
-    echo "ERROR: MQTT credentials file not found at $CREDENTIALS_FILE" >&2
-    echo "Please create it from .credentials.example" >&2
+if [[ ! -f "$MQTT_ENV" ]]; then
+    echo "ERROR: MQTT config not found at $MQTT_ENV" >&2
+    echo "Please create it from .mqtt.env.example" >&2
     exit 1
 fi
 
-PERMS=$(stat -c %a "$CREDENTIALS_FILE")
+PERMS=$(stat -c %a "$MQTT_ENV")
 if [[ "$PERMS" != "600" ]]; then
-    echo "WARNING: Insecure permissions on $CREDENTIALS_FILE (found: $PERMS, expected: 600)" >&2
+    echo "WARNING: Insecure permissions on $MQTT_ENV (found: $PERMS, expected: 600)" >&2
 fi
 
-source "$CREDENTIALS_FILE"
+source "$MQTT_ENV"
 
 if [[ -z "${MQTT_HOST:-}" ]] || [[ -z "${MQTT_PORT:-}" ]] || \
    [[ -z "${MQTT_USER:-}" ]] || [[ -z "${MQTT_PASSWORD:-}" ]]; then
-    echo "ERROR: MQTT_HOST, MQTT_PORT, MQTT_USER or MQTT_PASSWORD not set in $CREDENTIALS_FILE" >&2
+    echo "ERROR: MQTT_HOST, MQTT_PORT, MQTT_USER or MQTT_PASSWORD not set in $MQTT_ENV" >&2
     exit 1
 fi
 
