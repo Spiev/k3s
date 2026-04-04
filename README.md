@@ -31,6 +31,7 @@ Kubernetes-Infrastruktur auf einem Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migra
 | [Renovate](docs/operations/renovate.md) | Automatische Dependency-Updates via GitHub Action |
 | [Backup & Restore](docs/operations/backup-restore.md) | Cluster-Rebuild, Longhorn-Restore, kritische Secrets |
 | [Volume-Migration: unverschlüsselt → verschlüsselt](docs/operations/migrate-to-encrypted.md) | Volume-Migration auf LUKS-verschlüsselte StorageClass |
+| [Image Updates](docs/operations/update-images.md) | Manuelles Image-Update, crictl pre-pull bei RWO-PVCs |
 
 ---
 
