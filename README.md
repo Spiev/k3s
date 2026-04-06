@@ -4,7 +4,7 @@ Kubernetes-Infrastruktur auf einem Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migra
 
 **Hardware:** 2× Raspberry Pi 5 (8 GB RAM) — Server-Node 256 GB NVMe, Agent-Node 2 TB NVMe
 
-**Stack:** k3s · Longhorn · Traefik · Flux CD · Sealed Secrets
+**Stack:** k3s · local-path · Traefik · Flux CD · Sealed Secrets
 
 ---
 
@@ -17,7 +17,7 @@ Kubernetes-Infrastruktur auf einem Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migra
 | [01 — OS Setup](docs/platform/01-os-setup.md) | Raspberry Pi OS auf NVMe, EEPROM, cgroups |
 | [02 — k3s installieren](docs/platform/02-k3s-install.md) | k3s mit Dual-Stack (IPv4+IPv6), kubectl, Grundkonzepte |
 | [03 — MetalLB](docs/platform/03-metallb.md) | LoadBalancer-VIPs für Bare Metal (DNS, stabile Service-IPs) |
-| [04 — Longhorn](docs/platform/04-longhorn.md) | Persistenter Storage, Verschlüsselung, Backup-Strategie |
+| [Storage-Entscheidung](docs/decisions/storage.md) | local-path statt Longhorn — Begründung und Trade-offs |
 | **Service-Migrationen** | |
 | [FreshRSS](docs/services/freshrss.md) ✅ | Migration: FreshRSS deployen |
 | [Pi-hole](docs/services/pihole.md) ✅ | Migration: Pi-hole, DNS via LoadBalancer + Ingress |
@@ -29,7 +29,7 @@ Kubernetes-Infrastruktur auf einem Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migra
 | [Shutdown & Startup](docs/operations/shutdown-startup.md) | Cluster sauber herunterfahren und hochfahren |
 | [Monitoring](docs/operations/monitoring.md) | kube-prometheus-stack, Grafana, Alertmanager |
 | [Renovate](docs/operations/renovate.md) | Automatische Dependency-Updates via GitHub Action |
-| [Backup & Restore](docs/operations/backup-restore.md) | Cluster-Rebuild, Longhorn-Restore, kritische Secrets |
+| [Backup & Restore](docs/operations/backup-restore.md) | Cluster-Rebuild, Volume-Restore, kritische Secrets |
 | [Volume-Migration: unverschlüsselt → verschlüsselt](docs/operations/migrate-to-encrypted.md) | Volume-Migration auf LUKS-verschlüsselte StorageClass |
 | [Image Updates](docs/operations/update-images.md) | Manuelles Image-Update, crictl pre-pull bei RWO-PVCs |
 
@@ -45,7 +45,7 @@ apps/           Kubernetes-Manifeste je Service
 
 docs/           Anleitungen und Architektur-Dokumentation
 
-infrastructure/ Cluster-Infrastruktur (Longhorn, Traefik-Config)
+infrastructure/ Cluster-Infrastruktur (Monitoring, Traefik-Config)
                 → wird mit Flux CD eingerichtet
 
 clusters/       Flux CD Konfiguration
