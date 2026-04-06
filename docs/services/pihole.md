@@ -1,11 +1,11 @@
 # Pi-hole deployen
 
-Voraussetzung: [04 — Longhorn](../platform/04-longhorn.md) abgeschlossen, [03 — MetalLB](../platform/03-metallb.md) eingerichtet, [05 — Sealed Secrets](../platform/05-sealed-secrets.md) eingerichtet, Dual-Stack-Cluster läuft (siehe [02 — k3s installieren](../platform/02-k3s-install.md)).
+Voraussetzung: [03 — MetalLB](../platform/03-metallb.md) eingerichtet, [05 — Sealed Secrets](../platform/05-sealed-secrets.md) eingerichtet, Dual-Stack-Cluster läuft (siehe [02 — k3s installieren](../platform/02-k3s-install.md)).
 
 > [!NOTE]
 > MetalLB ist für Pi-hole **keine Voraussetzung mehr**. Klipper/ServiceLB (k3s-Standard) bindet Port 53 direkt auf der Node-IP — das reicht für DNS. MetalLB bringt hier nur dann einen Vorteil, wenn der Node per Ethernet angebunden ist (stabile VIP unabhängig von der Node-IP). Siehe [03 — MetalLB](../platform/03-metallb.md).
 
-Pi-hole läuft als DNS-Resolver für das gesamte Heimnetz. Da es ein Neudeploy ist (keine komplexen Daten zu migrieren), geht das Volume direkt auf `longhorn-retain-encrypted`.
+Pi-hole läuft als DNS-Resolver für das gesamte Heimnetz. Da es ein Neudeploy ist (keine komplexen Daten zu migrieren), wird das Volume direkt mit `local-path` bereitgestellt.
 
 > **Hinweis: Netzwerkverbindung**
 > Pi-hole ist DNS für das gesamte Heimnetz. WLAN funktioniert für den Einstieg, solange die Verbindung stabil ist. Ethernet ist empfohlen für dauerhaften Produktionsbetrieb — kann jederzeit nachgerüstet werden ohne Pi-hole neu deployen zu müssen.

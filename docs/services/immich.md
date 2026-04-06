@@ -16,13 +16,13 @@ NVMe (1.8T gesamt):  ~1.6T belegt, ~200G frei
 Externe SSD:         ~393G frei  (zu wenig für 1.5T)
 ```
 
-Ein klassischer Migration-Pod (altes Volume → neues Longhorn-PVC kopieren) scheidet aus — dafür fehlt ~1.5 TB freier Speicher auf derselben Platte.
+Ein klassischer Migration-Pod (altes Volume → neues PVC kopieren) scheidet aus — dafür fehlt ~1.5 TB freier Speicher auf derselben Platte.
 
 ---
 
 ## Strategie: Restic-Restore nach Neuinstall
 
-Der Agent-Node wird neu installiert (NVMe wird dabei gewischt). Danach stehen ~1.8 TB frei zur Verfügung — genug für das Longhorn-PVC + Restore der Immich-Bibliothek aus dem Restic-Backup.
+Der Agent-Node wird neu installiert (NVMe wird dabei gewischt). Danach stehen ~1.8 TB frei zur Verfügung — genug für das local-path-PVC + Restore der Immich-Bibliothek aus dem Restic-Backup.
 
 Das Restic-Backup enthält:
 - Immich library (Fotos/Videos)
@@ -34,7 +34,7 @@ Externe SSD (Restic-Repo)
         │  restic restore
         ▼
 Frisch installierter Agent-Node
-  └── Longhorn PVC (1.6T+, auf NVMe)
+  └── local-path PVC (1.6T+, auf NVMe)
         │
         ▼
 Immich deployment in k3s
@@ -60,19 +60,16 @@ Immich deployment in k3s
 1. Raspberry Pi OS Lite (64-bit, Bookworm) auf NVMe flashen
 2. cgroups aktivieren, Swap deaktivieren (→ [01-os-setup.md](../platform/01-os-setup.md))
 3. k3s Agent installieren und dem Cluster joinen (→ [learning-path.md Phase 8](../learning-path.md))
-4. Longhorn erkennt den neuen Node automatisch
 
-### Phase 3 — Longhorn PVC anlegen
+### Phase 3 — local-path PVC anlegen
 
-PVC auf dem Agent-Node platzieren (via Node-Selector / Longhorn-Tag):
+PVC wird automatisch auf dem Node erstellt, auf dem der Pod läuft. Node via `nodeSelector` festlegen:
 
 ```yaml
 # In apps/immich/immich.yaml
-# PVC mit nodeSelector auf Agent-Node
-# Größe: mindestens aktuelle Library-Größe + Puffer (z.B. 1800Gi)
+# Deployment mit nodeSelector auf Agent-Node
+# PVC Größe: mindestens aktuelle Library-Größe + Puffer (z.B. 1800Gi)
 ```
-
-> Solange Single-Node: `numberOfReplicas: "1"`, nach zweitem Node: `"2"`
 
 ### Phase 4 — Restore aus Restic
 
@@ -136,7 +133,7 @@ restic -r /backup/restic-repo restore latest \
 | Restic-Restore schlägt fehl | `restic check --read-data` vorher + S3-Offsite als zweite Kopie |
 | Restore unvollständig | Test-Restore eines Ordners vor dem Wipe |
 | Postgres-Dump fehlt/veraltet | Immich-Backup-Job im UI prüfen: Admin → Jobs → "Database Backup" |
-| Longhorn PVC zu klein | Aktuellen Verbrauch vor Migration messen: `du -sh ~/docker/immich/library` |
+| PVC zu klein | Aktuellen Verbrauch vor Migration messen: `du -sh ~/docker/immich/library` |
 
 ---
 

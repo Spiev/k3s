@@ -8,8 +8,6 @@ Anleitung für sauberes Herunterfahren und Hochfahren des k3s-Clusters.
 
 ### 1. Service-Pods herunterskalieren
 
-Alle eigenen Services sauber beenden, damit Longhorn die Volumes vor dem Drain detachen kann:
-
 ```bash
 kubectl get ns -l type=service -o name | sed 's|namespace/||' \
   | xargs -I{} kubectl scale deployments --all -n {} --replicas=0
@@ -37,9 +35,9 @@ kubectl get nodes --selector='node-role.kubernetes.io/control-plane' -o name \
   | xargs kubectl drain --ignore-daemonsets --delete-emptydir-data --disable-eviction
 ```
 
-> **`--disable-eviction`** ist nötig, weil Longhornss `instance-manager` ein PodDisruptionBudget hat das den drain sonst dauerhaft blockiert. Beim vollständigen Herunterfahren ist das sicher — es gibt nichts zu schützen.
+> **`--disable-eviction`** verhindert, dass PodDisruptionBudgets den drain blockieren. Beim vollständigen Herunterfahren ist das sicher.
 >
-> **`--ignore-daemonsets`** ist nötig, weil Longhorn-Pods als DaemonSet laufen und nicht evicted werden können — das ist normal.
+> **`--ignore-daemonsets`** ist nötig, weil DaemonSet-Pods nicht evicted werden können — das ist normal.
 
 ### 4. k3s stoppen und herunterfahren
 
@@ -53,27 +51,13 @@ sudo systemctl stop k3s && sudo shutdown -h now
 
 ### 1. Node hochfahren
 
-k3s startet automatisch via systemd. Nach dem Boot ca. **2–3 Minuten warten** bevor weitergemacht wird.
+k3s startet automatisch via systemd. Nach dem Boot ca. **1–2 Minuten warten** bevor weitergemacht wird.
 
-### 2. Longhorn vollständig abwarten
+### 2. Cluster-Status prüfen
 
 ```bash
-# Warten bis alle Longhorn-Pods Running sind
-kubectl get pods -n longhorn-system --watch
+kubectl get pods --all-namespaces
 ```
-
-Alle Pods müssen `Running` sein — insbesondere:
-- `longhorn-manager`
-- `longhorn-admission-webhook`
-- `longhorn-csi-plugin`
-- `csi-attacher`, `csi-provisioner`, `csi-resizer`, `csi-snapshotter`
-
-> **Bekannte Race Condition:** Beim Kaltstart starten alle Longhorn-Pods gleichzeitig. Der `longhorn-manager` wartet max. 2 Minuten auf den `admission-webhook` — klappt das nicht rechtzeitig, crasht er und startet neu (bis zu 8×). Dabei kann der `longhorn-csi-plugin` in einem CrashLoopBackOff hängenbleiben, weil der Manager zwischenzeitlich nicht erreichbar war.
->
-> Falls `longhorn-csi-plugin` nach dem Stabilisieren des Managers nicht selbst recovered:
-> ```bash
-> kubectl delete pod -n longhorn-system -l app=longhorn-csi-plugin
-> ```
 
 ### 3. Node uncordonen
 
@@ -94,4 +78,4 @@ kubectl get ns -l type=service -o name | sed 's|namespace/||' \
 kubectl get pods --all-namespaces
 ```
 
-Alle Service-Pods sollten `1/1 Running` erreichen. Longhorn braucht nach dem Volume-Attach noch ~30 Sekunden bis der Pod `Ready` ist.
+Alle Service-Pods sollten `1/1 Running` erreichen.

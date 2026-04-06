@@ -9,7 +9,7 @@ Private k3s (lightweight Kubernetes) infrastructure repository. Target hardware:
 - **OS**: Raspberry Pi OS Lite (64-bit, Bookworm) — keeps native hardware tools (`raspi-config`, `vcgencmd`, `rpi-eeprom-update`)
 - **Hardware**: 2× Raspberry Pi 5 (8 GB RAM) — Server-Node 256 GB NVMe, Agent-Node 2 TB NVMe (currently Docker, joins k3s after full migration)
 - **k3s** single-node to start; Agent-Node joins when all Docker services are migrated
-- **Longhorn** for hyperconverged persistent storage (replicates across nodes)
+- **local-path-provisioner** (k3s built-in) for persistent storage — files stored directly on node filesystem
 - **Traefik** (k3s built-in) as ingress controller with cert-manager for Let's Encrypt
 - **Flux CD** for GitOps (pull-based, bootstrapped from this repo)
 - **Sealed Secrets** for encrypting secrets that can be committed to this public repo
@@ -19,7 +19,7 @@ Private k3s (lightweight Kubernetes) infrastructure repository. Target hardware:
 ```
 clusters/raspi/     ← Flux entrypoint for the cluster
 apps/               ← per-service Kubernetes manifests (Deployments, PVCs, IngressRoutes, Secrets)
-infrastructure/     ← shared infrastructure (Longhorn, cert-manager, Traefik config)
+infrastructure/     ← shared infrastructure (cert-manager, Traefik config)
 docs/               ← learning path and setup guides
 ```
 
@@ -45,5 +45,5 @@ Blocked on Agent-Node join:
 - All Kubernetes resources need `namespace` and `labels` set explicitly
 - Service Namespaces must have `type: service` label — enables `kubectl get ns -l type=service` for bulk operations (e.g. shutdown)
 - Secrets: always use Sealed Secrets (`kubeseal`), never plain `Secret` objects in git
-- Longhorn StorageClass: `longhorn-retain-encrypted` (default), `numberOfReplicas: "1"` until second node joins, then `"2"`
+- Storage: `storageClassName: local-path` in all PVCs — files at `/var/lib/rancher/k3s/storage/<pvc-name>/`
 - **No Kustomize** — single manifest file per service (e.g. `apps/freshrss/freshrss.yaml`), Ingress in separate `*-ingress.yaml` excluded via `.gitignore`; deploy with `kubectl apply -f apps/<service>/`

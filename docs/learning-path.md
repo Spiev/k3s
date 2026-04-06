@@ -13,21 +13,14 @@ Ziel: Schrittweiser Einstieg in Kubernetes mit k3s auf zwei Raspberry Pi 5 (je 8
 - Produktionsreif, aber deutlich einfacher als "full" Kubernetes
 - Einfache Multi-Node-Erweiterung: Agent einfach joinen lassen
 
-### Warum Longhorn als Storage von Anfang an?
-Deine Services sind "bedingt stateless" — sie brauchen persistente Volumes. Die Frage ist: welche Storage-Lösung wächst mit?
+### Warum local-path als Storage?
 
-| Option | Replikation | ARM64 | Komplexität | Empfehlung |
-|---|---|---|---|---|
-| `local-path-provisioner` (k3s built-in) | ❌ | ✅ | minimal | Nur für Tests |
-| NFS | ❌ (SPOF) | ✅ | niedrig | Nein |
-| Rook/Ceph | ✅ | ✅ | sehr hoch | Overkill für 2 Nodes |
-| **Longhorn** | **✅** | **✅** | **mittel** | **✅ Empfehlung** |
+`local-path-provisioner` ist k3s built-in und die richtige Wahl für dieses Setup:
+- Daten liegen direkt auf dem Node-Filesystem — wie Docker-Volumes, direkt les- und sicherbar
+- Services sind sowieso fest einem Node zugeordnet (Hardware/Speicherplatz) → kein Vorteil durch Replikation
+- Backup via Restic direkt aus dem Filesystem, kein Snapshot-Overhead
 
-Longhorn ist das Storage-System, das von Rancher (k3s-Macher) für genau diesen Use Case entwickelt wurde:
-- Hyperconverged: Daten liegen auf den Nodes selbst (NVMe)
-- Zweiten Node joinen → Longhorn repliziert automatisch
-- Web-UI für Volume-Management
-- Snapshots, Backups nach S3 möglich
+→ Vollständige Begründung: [`docs/decisions/storage.md`](decisions/storage.md)
 
 ### Warum Flux CD als GitOps?
 - Leichter als ArgoCD (passt besser auf einen Raspi)
@@ -50,7 +43,7 @@ Bringt alle Hardware-Tools nativ mit (`raspi-config`, `vcgencmd`, `rpi-eeprom-up
 Details: [docs/01-os-setup.md](./platform/01-os-setup.md)
 
 **Warum NVMe wichtig ist:**
-Kubernetes schreibt ständig auf Disk (Etcd, Longhorn, Logs). SD-Karten sterben dabei nach Wochen. NVMe ist hier keine Kür.
+Kubernetes schreibt ständig auf Disk (Etcd, Logs, Volumes). SD-Karten sterben dabei nach Wochen. NVMe ist hier keine Kür.
 
 ---
 
@@ -70,7 +63,7 @@ sudo chown $USER:$USER ~/.kube/config
 - **Traefik** — Ingress Controller (HTTP/HTTPS-Routing in den Cluster)
 - **CoreDNS** — Cluster-internes DNS (`service.namespace.svc.cluster.local`)
 - **Flannel** — Netzwerk zwischen Pods
-- **local-path-provisioner** — einfacher Storage (nur für erste Tests, kein Longhorn-Ersatz)
+- **local-path-provisioner** — Storage direkt auf dem Node-Filesystem (produktiv genutzt)
 - **Etcd** — Cluster-State-Datenbank (läuft embedded)
 
 ### Grundkonzepte lernen
@@ -174,39 +167,11 @@ cert-manager kommt erst ins Spiel wenn entschieden wird, ob Traefik nginx als ex
 
 ---
 
-## Phase 3 — Storage mit Longhorn (Woche 2)
+## Phase 3 — Storage: local-path (Woche 2)
 
-### Voraussetzungen auf dem Node
-```bash
-sudo apt install -y open-iscsi nfs-common util-linux
-sudo systemctl enable --now iscsid
-```
-
-### Longhorn installieren
-```bash
-kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.10.2/deploy/longhorn.yaml
-```
-
-Longhorn-UI ist dann erreichbar über einen Port-Forward:
-```bash
-kubectl port-forward -n longhorn-system svc/longhorn-frontend 8080:80
-```
+k3s bringt den `local-path-provisioner` bereits mit — keine Installation nötig.
 
 ### Konzepte
-
-```yaml
-# StorageClass (Longhorn als default setzen)
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: longhorn
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
-provisioner: driver.longhorn.io
-parameters:
-  numberOfReplicas: "1"   # → 2 sobald zweiter Node da ist
-  staleReplicaTimeout: "2880"
-```
 
 ```yaml
 # PersistentVolumeClaim — so beantragen Pods ihren Speicher
@@ -218,36 +183,31 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: longhorn
+  storageClassName: local-path
   resources:
     requests:
       storage: 5Gi
 ```
 
-### Single-Node-Betrieb: Backup statt Replikation
+Daten landen unter `/var/lib/rancher/k3s/storage/<pvc-name>/` auf dem Node — direkt lesbar, direkt sicherbar mit Restic.
 
-**Wichtig:** Solange der alte Raspi noch produktiv Docker-Services betreibt, kann er nicht gleichzeitig k3s Agent-Node sein. Das sind zwei unvereinbare Rollen. `numberOfReplicas: "1"` bleibt also so lange gesetzt, bis der alte Raspi vollständig aus dem Docker-Betrieb herausgenommen wurde.
-
-Das bedeutet: **Im Single-Node-Betrieb ersetzt Backup die Replikation.**
-
-Longhorn hat dafür eine native Lösung — Backups auf ein S3-kompatibles Ziel:
+### Backup
 
 ```
-Longhorn Volume Snapshot → Longhorn Backup → Hetzner Object Storage (bkp-home, nbg1)
+/var/lib/rancher/k3s/storage/<pvc-name>/
+       │  direkt lesbar
+       ▼
+  Restic → Hetzner S3
 ```
 
-Longhorn-native Backups sind die empfohlene Variante, da sie inkrementell und snapshot-basiert arbeiten und direkt über die Longhorn-UI geplant werden können.
-
-Details zu Backup & Restore (inkl. Hetzner Object Storage einrichten): [docs/operations/backup-restore.md](./operations/backup-restore.md)
+Details: [docs/operations/backup-restore.md](./operations/backup-restore.md)
 
 ### Weg zum zweiten Node
 
 Wenn irgendwann alle Services auf k3s laufen und der alte Raspi aus dem Docker-Betrieb geht:
 1. Docker stoppen, Daten sichern
-2. Ubuntu neu aufsetzen (oder bestehendes OS nutzen)
-3. k3s Agent installieren und dem Cluster joinen
-4. `numberOfReplicas: "2"` in der Longhorn StorageClass setzen
-5. Longhorn repliziert automatisch alle Volumes auf beide Nodes
+2. k3s Agent installieren und dem Cluster joinen
+3. Services explizit via `nodeSelector` auf die gewünschten Nodes pinnen
 
 ---
 
@@ -262,13 +222,13 @@ FreshRSS ist ideal als erster Kandidat:
 
 ```
 1. FreshRSS in k3s deployen (leeres Volume)
-2. Daten aus Docker-Volume nach Longhorn-PVC kopieren
+2. Daten aus Docker-Volume in local-path-PVC kopieren
 3. Testen (parallel zum alten Container)
 4. DNS/Traefik auf k3s umschalten
 5. Docker-Container stoppen
 ```
 
-### Daten-Migration (Docker → Longhorn PVC)
+### Daten-Migration (Docker → local-path PVC)
 
 ```bash
 # Temporärer Pod, der das PVC mountet
@@ -346,7 +306,6 @@ k3s/
 │       └── apps.yaml       ← zeigt auf apps/
 ├── apps/
 │   ├── freshrss/           ← FreshRSS Manifeste
-│   ├── longhorn/           ← Longhorn-Konfiguration
 │   └── cert-manager/
 ├── infrastructure/
 │   └── traefik/            ← Traefik-Konfiguration
@@ -481,7 +440,7 @@ curl -sfL https://get.k3s.io | K3S_URL=https://<raspi5-ip>:6443 \
   K3S_TOKEN=<token> sh -
 ```
 
-3. In der Longhorn StorageClass `numberOfReplicas: "2"` setzen → Longhorn repliziert alle Volumes automatisch auf beide Nodes.
+3. Services via `nodeSelector` auf die gewünschten Nodes pinnen.
 
 **Node-Rollen:**
 - **Server-Node** (Raspi 5): Control-Plane, API-Server, Scheduler, Etcd
@@ -492,7 +451,7 @@ curl -sfL https://get.k3s.io | K3S_URL=https://<raspi5-ip>:6443 \
 ## Nicht-Ziele (bewusst ausgelassen)
 
 - **High-Availability Control Plane**: Sinnvoll erst ab 3 Nodes. Für 2 Nodes reicht Single-Server-Setup.
-- **Kubernetes-Dashboard**: Longhorn-UI und Grafana decken den Bedarf besser ab.
+- **Kubernetes-Dashboard**: Grafana deckt den Bedarf besser ab.
 - **Multi-Cluster-Setups**: Nicht für diesen Use Case.
 
 ---
@@ -502,12 +461,10 @@ curl -sfL https://get.k3s.io | K3S_URL=https://<raspi5-ip>:6443 \
 1. `docs/platform/01-os-setup.md` — NVMe-Boot, Raspberry Pi OS, cgroups
 2. `docs/platform/02-k3s-install.md` — k3s mit Dual-Stack (IPv4+IPv6), kubectl (lokal + remote), erste Schritte
 3. `docs/platform/03-metallb.md` — MetalLB einrichten (LoadBalancer-VIPs für Bare Metal)
-4. `docs/platform/04-longhorn.md` — Storage einrichten, Verschlüsselung, Backup-Strategie
-5. `docs/services/freshrss.md` — FreshRSS migrieren
-6. `docs/platform/05-sealed-secrets.md` — Sealed Secrets einrichten (Voraussetzung für alle weiteren Secrets)
-7. `docs/services/pihole.md` — Pi-hole: DNS via LoadBalancer
-8. `docs/services/seafile.md` — Seafile migrieren (Multi-Container, Secrets)
-9. `docs/services/immich.md` — Immich migrieren (Restic-Restore-Strategie, großes Volume)
-10. `docs/operations/monitoring.md` — Prometheus + Grafana
-11. `docs/operations/backup-restore.md` — Backup & Restore, kritische Secrets
-12. `docs/operations/migrate-to-encrypted.md` — Volume-Migration auf verschlüsselte StorageClass
+4. `docs/services/freshrss.md` — FreshRSS migrieren
+5. `docs/platform/05-sealed-secrets.md` — Sealed Secrets einrichten (Voraussetzung für alle weiteren Secrets)
+6. `docs/services/pihole.md` — Pi-hole: DNS via LoadBalancer
+7. `docs/services/seafile.md` — Seafile migrieren (Multi-Container, Secrets)
+8. `docs/services/immich.md` — Immich migrieren (Restic-Restore-Strategie, großes Volume)
+9. `docs/operations/monitoring.md` — Prometheus + Grafana
+10. `docs/operations/backup-restore.md` — Backup & Restore, kritische Secrets

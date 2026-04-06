@@ -162,7 +162,7 @@ sudo ufw allow 10250/tcp   # kubelet metrics
 sudo ufw enable
 ```
 
-> Longhorn benötigt zusätzliche Ports sobald ein zweiter Node hinzukommt — das kommt in einem späteren Schritt.
+> Sobald ein zweiter Node hinzukommt, müssen ggf. weitere Ports geöffnet werden (k3s Agent-Kommunikation: 6443, 8472/UDP für Flannel).
 
 ---
 
