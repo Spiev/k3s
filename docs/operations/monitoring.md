@@ -1,72 +1,72 @@
 # Monitoring
 
-Voraussetzung: Cluster läuft stabil.
+Prerequisite: cluster is running stably.
 
-## Strategie
+## Strategy
 
-**Primär: Home Assistant Integration** — die wichtigsten Node- und Cluster-Metriken werden per MQTT-Script in HA eingespeist. HA dient als zentrales Dashboard für Smarthome und Infrastruktur.
+**Primary: Home Assistant integration** — the most important node and cluster metrics are pushed into HA via an MQTT script. HA serves as the central dashboard for smart home and infrastructure.
 
-**Optional/explorativ: kube-prometheus-stack** — der vollständige Prometheus/Grafana-Stack für tiefgehende Kubernetes-Metriken. Sinnvoll zum Lernen, aber kein dauerhafter Betrieb geplant (separater Stack mit eigenem Ressourcenbedarf).
+**Optional/exploratory: kube-prometheus-stack** — the full Prometheus/Grafana stack for deep Kubernetes metrics. Useful for learning, but no permanent operation planned (separate stack with its own resource footprint).
 
 ---
 
-## 1. Home Assistant Integration via MQTT
+## 1. Home Assistant integration via MQTT
 
-Das Script `scripts/k3s-monitor.sh` läuft auf dem k3s Server-Node, sammelt Metriken und pusht sie via MQTT Discovery zu Home Assistant — genau wie das bestehende `check_raspi_update.sh` auf dem Docker-Host.
+The script `scripts/k3s-monitor.sh` runs on the k3s server node, collects metrics, and pushes them via MQTT Discovery to Home Assistant — exactly like the existing `check_raspi_update.sh` on the Docker host.
 
-### Was wird gemonitort
+### What is monitored
 
-**Node-Metriken (Linux):**
+**Node metrics (Linux):**
 
-| Sensor | Quelle | HA-Entity |
+| Sensor | Source | HA entity |
 |---|---|---|
 | CPU Usage | `/proc/stat` | `sensor.cpu_usage` |
 | RAM Usage | `/proc/meminfo` | `sensor.ram_usage` |
 | NVMe Disk Usage | `df /` | `sensor.nvme_usage` |
-| CPU Temperatur | `hwmon` (`cpu_thermal`) | `sensor.cpu_temperature` |
-| NVMe Temperatur | `hwmon` (`nvme`) | `sensor.nvme_temperature` |
-| Lüfter RPM | `hwmon` (`pwmfan/fan1_input`) | `sensor.fan_speed` |
-| Lüfter PWM | `hwmon` (`pwmfan/pwm1`) | `sensor.fan_pwm` |
-| Unterspannung | `hwmon` (`rpi_volt`) | `binary_sensor.k3s_undervoltage` |
+| CPU Temperature | `hwmon` (`cpu_thermal`) | `sensor.cpu_temperature` |
+| NVMe Temperature | `hwmon` (`nvme`) | `sensor.nvme_temperature` |
+| Fan RPM | `hwmon` (`pwmfan/fan1_input`) | `sensor.fan_speed` |
+| Fan PWM | `hwmon` (`pwmfan/pwm1`) | `sensor.fan_pwm` |
+| Undervoltage | `hwmon` (`rpi_volt`) | `binary_sensor.k3s_undervoltage` |
 
-**k3s Cluster-Status:**
+**k3s cluster status:**
 
-| Sensor | Quelle | HA-Entity |
+| Sensor | Source | HA entity |
 |---|---|---|
 | Node Ready | `kubectl get nodes` | `binary_sensor.k3s_node_ready` |
 | Unhealthy Pods | `kubectl get pods -A` | `sensor.k3s_unhealthy_pods` |
 | Unbound PVCs | `kubectl get pvc -A` | `sensor.k3s_unbound_pvcs` |
 
-> Die hwmon-Pfade (`hwmon0`, `hwmon1` etc.) werden dynamisch per Name aufgelöst — kein Hardcoding, bleibt stabil über Reboots.
+> hwmon paths (`hwmon0`, `hwmon1` etc.) are resolved dynamically by name — no hardcoding, stays stable across reboots.
 
-### Voraussetzungen
+### Prerequisites
 
 ```bash
-# Auf dem k3s Server-Node
+# On the k3s server node
 sudo apt install -y mosquitto-clients
 ```
 
-`kubectl` ist bereits vorhanden, Kubeconfig liegt unter `~/.kube/config`.
+`kubectl` is already present, kubeconfig is at `~/.kube/config`.
 
 ### Setup
 
 ```bash
-# 1. Credentials & Umgebungskonfiguration anlegen
+# 1. Create credentials & environment config
 cp scripts/.mqtt_credentials.example scripts/.mqtt_credentials
 chmod 600 scripts/.mqtt_credentials
-# MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_PASSWORD eintragen
-# (MQTT_HOST = Hostname des Mosquitto-Brokers, Zugangsdaten wie check_raspi_update.sh)
+# Fill in MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_PASSWORD
+# (MQTT_HOST = hostname of the Mosquitto broker, credentials like check_raspi_update.sh)
 
-# 2. Script ausführbar machen
+# 2. Make script executable
 chmod +x scripts/k3s-monitor.sh
 
-# 3. Einmalig testen
+# 3. Test once
 bash scripts/k3s-monitor.sh
-# Ausgabe prüfen — alle Werte sollten plausibel sein
-# In HA: Einstellungen → Geräte & Dienste → MQTT → "k3s Server Node" erscheint automatisch
+# Check output — all values should be plausible
+# In HA: Settings → Devices & Services → MQTT → "k3s Server Node" appears automatically
 ```
 
-### Cron einrichten
+### Set up cron
 
 ```bash
 crontab -e
@@ -76,86 +76,86 @@ crontab -e
 */5 * * * * /home/stefan/k3s/scripts/k3s-monitor.sh >> /home/stefan/logs/k3s-monitor.log 2>&1
 ```
 
-Log-Verzeichnis anlegen falls nötig:
+Create the log directory if needed:
 
 ```bash
 mkdir -p ~/logs
 ```
 
-### Ergebnis in Home Assistant
+### Result in Home Assistant
 
-Nach dem ersten Lauf erscheint automatisch das Gerät **"k3s Server Node"** in HA (MQTT Discovery). Alle Sensoren sind sofort verfügbar — kein manuelles Anlegen nötig.
+After the first run, the device **"k3s Server Node"** appears automatically in HA (MQTT Discovery). All sensors are immediately available — no manual setup needed.
 
-Empfohlene HA-Automationen:
-- Benachrichtigung wenn `binary_sensor.k3s_node_ready` auf `OFF` wechselt
-- Benachrichtigung wenn `sensor.k3s_unhealthy_pods` > 0
-- Benachrichtigung bei `binary_sensor.k3s_undervoltage` = `ON`
-- Warnung wenn CPU-Temperatur > 75 °C oder NVMe-Temperatur > 60 °C
+Recommended HA automations:
+- Notification when `binary_sensor.k3s_node_ready` switches to `OFF`
+- Notification when `sensor.k3s_unhealthy_pods` > 0
+- Notification when `binary_sensor.k3s_undervoltage` = `ON`
+- Warning when CPU temperature > 75 °C or NVMe temperature > 60 °C
 
 ---
 
-## 2. kube-prometheus-stack (optional/explorativ)
+## 2. kube-prometheus-stack (optional/exploratory)
 
-Der Standard-Stack für Kubernetes-Monitoring: **Prometheus + Grafana + Alertmanager**, installiert über das **kube-prometheus-stack** Helm-Chart.
+The standard Kubernetes monitoring stack: **Prometheus + Grafana + Alertmanager**, installed via the **kube-prometheus-stack** Helm chart.
 
 ```
-Node Exporter        → Metriken vom Raspi-Host (CPU, RAM, Disk, Temperatur)
-kube-state-metrics   → Metriken über K8s-Objekte (Pods, Deployments, PVCs)
-Prometheus           → sammelt und speichert alle Metriken (Zeitreihendatenbank)
-Alertmanager         → verarbeitet Alerts von Prometheus
-Grafana              → Dashboards und Visualisierung
+Node Exporter        → metrics from the Raspi host (CPU, RAM, disk, temperature)
+kube-state-metrics   → metrics about K8s objects (pods, deployments, PVCs)
+Prometheus           → collects and stores all metrics (time-series database)
+Alertmanager         → processes alerts from Prometheus
+Grafana              → dashboards and visualisation
 ```
 
-### 2.1 Helm installieren
+### 2.1 Install Helm
 
-Helm ist der Paketmanager für Kubernetes — ähnlich wie `apt` für Debian.
+Helm is the package manager for Kubernetes — similar to `apt` for Debian.
 
 ```bash
-# Arch Linux (Laptop)
+# Arch Linux (laptop)
 sudo pacman -S helm
 
-# Auf dem Raspi (falls Helm dort gebraucht wird)
+# On the Raspi (if Helm is needed there)
 curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 ```
 
 ---
 
-### 2.2 kube-prometheus-stack installieren
+### 2.2 Install kube-prometheus-stack
 
 ```bash
-# Helm-Repository hinzufügen
+# Add Helm repository
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
 
-# Stack im Namespace monitoring installieren
+# Install stack in the monitoring namespace
 helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
   --namespace monitoring \
   --create-namespace \
-  --set grafana.adminPassword=<passwort-setzen>
+  --set grafana.adminPassword=<set-password>
 ```
 
-Die Installation dauert 2–3 Minuten. Fortschritt beobachten:
+Installation takes 2–3 minutes. Monitor progress:
 
 ```bash
 kubectl get pods -n monitoring -w
-# Alle Pods müssen Running erreichen
+# All pods must reach Running
 ```
 
-Was installiert wird:
+What gets installed:
 
-| Pod | Funktion |
+| Pod | Function |
 |---|---|
-| `prometheus-*` | Metriken-Datenbank |
-| `grafana-*` | Dashboard-UI |
-| `alertmanager-*` | Alert-Verarbeitung |
-| `node-exporter-*` (DaemonSet) | Host-Metriken je Node |
-| `kube-state-metrics-*` | K8s-Objekt-Metriken |
+| `prometheus-*` | Metrics database |
+| `grafana-*` | Dashboard UI |
+| `alertmanager-*` | Alert processing |
+| `node-exporter-*` (DaemonSet) | Host metrics per node |
+| `kube-state-metrics-*` | K8s object metrics |
 
 ---
 
-### 2.3 Grafana aufrufen
+### 2.3 Access Grafana
 
-Port-Forward für den ersten Zugriff:
+Port-forward for first access:
 
 ```bash
 kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
@@ -163,37 +163,37 @@ kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
 
 Browser: `http://localhost:3000`
 
-- Benutzername: `admin`
-- Passwort: das bei der Installation gesetzte Passwort
+- Username: `admin`
+- Password: the password set during installation
 
-Von einem anderen Rechner im Netzwerk:
+From another machine on the network:
 ```bash
 ssh -L 3000:localhost:3000 <user>@<raspi-hostname>
-# Dann: http://localhost:3000 im Browser auf dem Laptop
+# Then: http://localhost:3000 in the browser on the laptop
 ```
 
-> Später wird Grafana über Traefik dauerhaft erreichbar gemacht (mit Auth). Für jetzt reicht Port-Forward.
+> Grafana will later be made permanently accessible via Traefik (with auth). Port-forward is sufficient for now.
 
 ---
 
-### 2.4 Vorgefertigte Dashboards
+### 2.4 Pre-built dashboards
 
-kube-prometheus-stack liefert viele Dashboards out-of-the-box. Die wichtigsten für dieses Setup:
+kube-prometheus-stack ships many dashboards out of the box. The most relevant for this setup:
 
-| Dashboard | Inhalt |
+| Dashboard | Content |
 |---|---|
-| **Kubernetes / Nodes** | CPU, RAM, Disk, Netzwerk pro Node |
-| **Kubernetes / Pods** | Ressourcenverbrauch pro Pod |
-| **Kubernetes / Persistent Volumes** | PVC-Status und Speichernutzung |
-| **Node Exporter Full** | Detaillierte Host-Metriken inkl. Temperatur |
+| **Kubernetes / Nodes** | CPU, RAM, disk, network per node |
+| **Kubernetes / Pods** | Resource usage per pod |
+| **Kubernetes / Persistent Volumes** | PVC status and storage usage |
+| **Node Exporter Full** | Detailed host metrics including temperature |
 
-Raspberry Pi CPU-Temperatur ist unter **Node Exporter Full → Hardware → Thermal** zu finden (`node_thermal_zone_temp`).
+Raspberry Pi CPU temperature is found under **Node Exporter Full → Hardware → Thermal** (`node_thermal_zone_temp`).
 
 ---
 
-### 2.5 Persistenz konfigurieren
+### 2.5 Configure persistence
 
-Standardmäßig speichert Prometheus Metriken nur im Arbeitsspeicher — nach einem Pod-Neustart sind sie weg. Persistenz wird über eine Helm-Values-Datei konfiguriert (alle Einstellungen für Prometheus, Grafana und Alertmanager gebündelt):
+By default Prometheus stores metrics only in memory — they are gone after a pod restart. Persistence is configured via a Helm values file (all settings for Prometheus, Grafana, and Alertmanager in one place):
 
 ```bash
 helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack \
@@ -201,31 +201,31 @@ helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack \
   --values infrastructure/monitoring/values.yaml
 ```
 
-Die Values-Datei `infrastructure/monitoring/values.yaml` konfiguriert:
-- Prometheus: 10 Gi, `local-path`, 30 Tage Retention
+The values file `infrastructure/monitoring/values.yaml` configures:
+- Prometheus: 10 Gi, `local-path`, 30 days retention
 - Grafana: 2 Gi, `local-path`
 - Alertmanager: 1 Gi, `local-path`
 
-local-path legt die PVCs automatisch an — keine separate PVC-YAML nötig.
+local-path provisions the PVCs automatically — no separate PVC YAML needed.
 
 ---
 
-### 2.6 Abschluss-Check
+### 2.6 Final check
 
 ```bash
-# Alle Monitoring-Pods laufen
+# All monitoring pods running
 kubectl get pods -n monitoring
 
-# Prometheus Targets — werden alle Metriken gescrapt?
-# Port-Forward auf Prometheus:
+# Prometheus Targets — are all metrics being scraped?
+# Port-forward to Prometheus:
 kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090:9090
-# Browser: http://localhost:9090/targets → alle Targets sollten "UP" sein
+# Browser: http://localhost:9090/targets → all targets should be "UP"
 
-# Grafana erreichbar
+# Grafana reachable
 kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
-# Browser: http://localhost:3000 → Dashboards vorhanden
+# Browser: http://localhost:3000 → dashboards present
 ```
 
 ---
 
-## Weiter: [Backup & Restore](./backup-restore.md)
+## Next: [Backup & Restore](./backup-restore.md)

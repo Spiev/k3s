@@ -1,63 +1,63 @@
-# 03 — MetalLB einrichten
+# 03 — Set up MetalLB
 
-Voraussetzung: [02 — k3s installieren](./02-k3s-install.md) abgeschlossen.
+Prerequisite: [02 — Install k3s](./02-k3s-install.md) completed.
 
-MetalLB ist ein Load Balancer für Bare-Metal-Kubernetes. k3s bringt einen eingebauten LoadBalancer (Klipper/ServiceLB) mit, der Services einfach an die Node-IP bindet. MetalLB ersetzt Klipper und weist stattdessen dedizierte virtuelle IPs (VIPs) zu — stabil, unabhängig von der Node-IP, und bei Multi-Node failover-fähig.
+MetalLB is a load balancer for bare-metal Kubernetes. k3s includes a built-in load balancer (Klipper/ServiceLB) that simply binds services to the node IP. MetalLB replaces Klipper and assigns dedicated virtual IPs (VIPs) instead — stable, independent of the node IP, and failover-capable in multi-node setups.
 
-**Wann wird MetalLB gebraucht?**
-Immer wenn ein Service nicht über HTTP/HTTPS läuft und deshalb nicht durch Traefik geroutet werden kann. Pi-hole DNS (Port 53) ist der erste solche Service.
+**When is MetalLB needed?**
+Whenever a service does not run over HTTP/HTTPS and therefore cannot be routed through Traefik. Pi-hole DNS (port 53) is the first such service.
 
 > [!WARNING]
-> **MetalLB funktioniert nur mit Ethernet — nicht über WLAN.**
+> **MetalLB only works over Ethernet — not over Wi-Fi.**
 >
-> MetalLB im Layer-2-Modus nutzt ARP (IPv4) bzw. NDP (IPv6) um VIPs im Netzwerk bekannt zu machen. Die meisten WLAN-Access-Points und Router leiten ARP-Announcements zwischen WLAN-Clients nicht weiter — die VIP ist dann im Netzwerk schlicht nicht erreichbar.
+> MetalLB in Layer-2 mode uses ARP (IPv4) and NDP (IPv6) to announce VIPs on the network. Most Wi-Fi access points and routers do not forward ARP announcements between Wi-Fi clients — the VIP is simply unreachable on the network.
 >
-> Symptome: `kubectl get svc` zeigt eine EXTERNAL-IP, aber Verbindungen zu dieser IP hängen (Timeout). `curl <VIP>` hängt bei "Trying...".
+> Symptoms: `kubectl get svc` shows an EXTERNAL-IP, but connections to that IP hang (timeout). `curl <VIP>` hangs at "Trying...".
 >
-> **Klipper/ServiceLB** (der k3s-Standard) bindet Ports direkt auf allen Node-Interfaces (inkl. WLAN) und ist für WLAN-Setups die richtige Wahl. MetalLB erst einrichten wenn der Node per Ethernet angebunden ist.
+> **Klipper/ServiceLB** (the k3s default) binds ports directly on all node interfaces (including Wi-Fi) and is the right choice for Wi-Fi setups. Set up MetalLB only when the node is connected via Ethernet.
 >
-> Weitere Details: [metallb.universe.tf — Layer 2 Limitations](https://metallb.universe.tf/concepts/layer2/#limitations)
+> More details: [metallb.universe.tf — Layer 2 Limitations](https://metallb.universe.tf/concepts/layer2/#limitations)
 
 ---
 
-## Schritt 1 — k3s ServiceLB deaktivieren
+## Step 1 — Disable k3s ServiceLB
 
-k3s und MetalLB können nicht gleichzeitig laufen — beide würden versuchen LoadBalancer-Services zu bedienen.
+k3s and MetalLB cannot run simultaneously — both would try to serve LoadBalancer services.
 
-Auf dem k3s-Node:
+On the k3s node:
 ```bash
 sudo vim /etc/rancher/k3s/config.yaml
 ```
 
-Folgenden Block ergänzen (oder `disable`-Liste erweitern falls bereits vorhanden):
+Add the following block (or extend the existing `disable` list):
 ```yaml
 disable:
   - servicelb
 ```
 
-k3s neu starten:
+Restart k3s:
 ```bash
 sudo systemctl restart k3s
 ```
 
-Prüfen ob Klipper-Pods weg sind:
+Verify the Klipper pods are gone:
 ```bash
 kubectl get pods -n kube-system | grep svclb
-# → keine Ausgabe mehr
+# → no output
 ```
 
 ---
 
-## Schritt 2 — MetalLB Controller installieren
+## Step 2 — Install MetalLB Controller
 
 ```bash
-# Aktuelle Version prüfen: https://github.com/metallb/metallb/releases
+# Check current version: https://github.com/metallb/metallb/releases
 METALLB_VERSION="v0.14.9"
 
 kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/${METALLB_VERSION}/config/manifests/metallb-native.yaml
 ```
 
-Warten bis MetalLB bereit ist:
+Wait until MetalLB is ready:
 ```bash
 kubectl wait --namespace metallb-system \
   --for=condition=ready pod \
@@ -65,25 +65,25 @@ kubectl wait --namespace metallb-system \
   --timeout=90s
 ```
 
-> **GitOps-Hinweis:** Das Laden des Manifests direkt aus dem Internet ist für den manuellen Setup pragmatisch. Sobald Flux CD eingerichtet ist, gehört das Manifest ins Repo (`infrastructure/metallb/controller.yaml`).
+> **GitOps note:** Loading the manifest directly from the internet is pragmatic for a manual setup. Once Flux CD is configured, the manifest belongs in the repo (`infrastructure/metallb/controller.yaml`).
 
 ---
 
-## Schritt 3 — IP-Pool konfigurieren
+## Step 3 — Configure IP Pool
 
-Vor dem Apply `infrastructure/metallb/metallb.yaml` anpassen — Platzhalter durch die eigenen Werte ersetzen:
+Before applying, edit `infrastructure/metallb/metallb.yaml` — replace the placeholders with your own values:
 
-| Platzhalter | Bedeutung | Beispiel |
+| Placeholder | Meaning | Example |
 |---|---|---|
-| `<METALLB-IPV4-START>` | Erste freie IP außerhalb DHCP-Bereich | erste IP nach DHCP-Ende |
-| `<METALLB-IPV4-END>` | Letzte IP des Pools | +19 IPs |
-| `<ULA-PREFIX>` | ULA-Prefix der Fritz!Box (ohne `::`) | aus Fritz!Box Netzwerk-Einstellungen |
+| `<METALLB-IPV4-START>` | First free IP outside the DHCP range | first IP after DHCP end |
+| `<METALLB-IPV4-END>` | Last IP of the pool | +19 IPs |
+| `<ULA-PREFIX>` | ULA prefix of the Fritz!Box (without `::`) | from Fritz!Box network settings |
 
 ```bash
 kubectl apply -f infrastructure/metallb/metallb.yaml
 ```
 
-Prüfen ob Pool und Advertisement angelegt wurden:
+Verify the pool and advertisement were created:
 ```bash
 kubectl get ipaddresspool -n metallb-system
 kubectl get l2advertisement -n metallb-system
@@ -91,29 +91,29 @@ kubectl get l2advertisement -n metallb-system
 
 ---
 
-## Schritt 4 — Verifizieren
+## Step 4 — Verify
 
-Einen bestehenden LoadBalancer-Service prüfen (z.B. Pi-hole):
+Check an existing LoadBalancer service (e.g. Pi-hole):
 ```bash
 kubectl get svc -n pihole pihole-dns
-# → EXTERNAL-IP sollte jetzt eine IP aus dem konfigurierten Pool zeigen
-# → nicht mehr die Node-IP
+# → EXTERNAL-IP should now show an IP from the configured pool
+# → no longer the node IP
 ```
 
-Falls der Service vorher schon lief (mit Klipper), bekommt er nach MetalLB-Installation automatisch eine neue VIP aus dem Pool zugewiesen.
+If the service was already running (with Klipper), it automatically gets a new VIP from the pool after MetalLB is installed.
 
 ---
 
-## IP-Pool Übersicht
+## IP Pool Overview
 
-Eine Tabelle der vergebenen VIPs hilft den Überblick zu behalten:
+A table of assigned VIPs helps keep track:
 
 | Service | IPv4 VIP | IPv6 VIP |
 |---|---|---|
-| Pi-hole DNS | `<erste IP aus Pool>` | `<erste IPv6 aus Pool>` |
+| Pi-hole DNS | `<first IP from pool>` | `<first IPv6 from pool>` |
 
-> Diese Tabelle manuell aktuell halten wenn neue LoadBalancer-Services hinzukommen.
+> Keep this table up to date manually when new LoadBalancer services are added.
 
 ---
 
-## Weiter: [Pi-hole deployen](../services/pihole.md)
+## Next: [Deploy Pi-hole](../services/pihole.md)

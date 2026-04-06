@@ -1,20 +1,20 @@
 # Image Updates
 
-Anleitung für das manuelle Aktualisieren von Container-Images.
+Guide for manually updating container images.
 
 ---
 
-## Manuelles Update eines Images
+## Manual Image Update
 
-Den neuen Tag im Manifest eintragen und anwenden:
+Update the tag in the manifest and apply:
 
 ```bash
 kubectl apply -f apps/<service>/<service>.yaml
 ```
 
-Kubernetes erkennt die Änderung und startet einen Rolling Update automatisch.
+Kubernetes detects the change and triggers a rolling update automatically.
 
-Fortschritt beobachten:
+Monitor progress:
 
 ```bash
 kubectl rollout status deployment/<name> -n <namespace>
@@ -22,22 +22,22 @@ kubectl rollout status deployment/<name> -n <namespace>
 
 ---
 
-## Sonderfall: Services mit RWO-PVC (z.B. Pi-hole)
+## Special Case: Services with RWO PVC (e.g. Pi-hole)
 
-Services die eine RWO-PVC (ReadWriteOnce) nutzen, verwenden `strategy: Recreate` — der alte Pod wird
-zuerst beendet, bevor der neue startet. Beim Image-Pull wird dann DNS (oder ein anderer kritischer
-Service) kurzzeitig unterbrochen.
+Services using a RWO (ReadWriteOnce) PVC use `strategy: Recreate` — the old pod is terminated
+before the new one starts. During image pull, DNS (or another critical service) will be briefly
+unavailable.
 
-**Lösung: Image vorher manuell pullen** (`crictl` ist bei k3s bereits enthalten):
+**Solution: pre-pull the image manually** (`crictl` is included with k3s):
 
 ```bash
 sudo crictl pull <image>:<tag>
 ```
 
-Danach ist das Image lokal gecacht und der Recreate-Downtime reduziert sich auf wenige Sekunden
-(kein Pull-Delay mehr).
+The image is then cached locally and Recreate downtime is reduced to a few seconds
+(no pull delay).
 
-### Beispiel Pi-hole
+### Example: Pi-hole
 
 ```bash
 sudo crictl pull pihole/pihole:2026.04.0
@@ -45,5 +45,5 @@ kubectl apply -f apps/pihole/pihole.yaml
 kubectl rollout status deployment/pihole -n pihole
 ```
 
-> **Hinweis:** Dieses Problem entfällt sobald Pi-hole als HA-Setup mit zwei Instanzen hinter
-> MetalLB betrieben wird (eine Instanz pro Node). Dann sind Rolling Updates ohne Downtime möglich.
+> **Note:** This issue goes away once Pi-hole runs as an HA setup with two instances behind
+> MetalLB (one per node). Rolling updates without downtime are then possible.

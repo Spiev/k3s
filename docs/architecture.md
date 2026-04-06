@@ -1,19 +1,19 @@
-# Architektur-Übersicht
+# Architecture Overview
 
 ---
 
 ## Hardware
 
-| Node | Rolle | RAM | NVMe | Status |
+| Node | Role | RAM | NVMe | Status |
 |---|---|---|---|---|
-| Raspi 5 "neu" | k3s Server-Node (Control Plane) | 8 GB | 256 GB | k3s |
-| Raspi 5 "alt" | k3s Agent-Node (Workloads + Storage) | 8 GB | 2 TB | Docker → k3s (nach Migration) |
+| Raspi 5 "new" | k3s Server-Node (Control Plane) | 8 GB | 256 GB | k3s |
+| Raspi 5 "old" | k3s Agent-Node (Workloads + Storage) | 8 GB | 2 TB | Docker → k3s (after migration) |
 
-Beide Nodes sind baugleich (Raspberry Pi 5, 8 GB RAM). Der alte Raspi hat dank 2 TB NVMe deutlich mehr Speicher — er wird der primäre Workload-Node für große Volumes (Immich, Paperless).
+Both nodes are identical hardware (Raspberry Pi 5, 8 GB RAM). The old Raspi has significantly more storage thanks to its 2 TB NVMe — it will be the primary workload node for large volumes (Immich, Paperless).
 
 ---
 
-## Gesamtbild (Zielzustand)
+## Big picture (target state)
 
 ```
                            Internet
@@ -27,7 +27,7 @@ Beide Nodes sind baugleich (Raspberry Pi 5, 8 GB RAM). Der alte Raspi hat dank 2
                │                                                      │
                │  ┌─────────────────────┐  ┌──────────────────────┐   │
                │  │  Server-Node        │  │  Agent-Node          │   │
-               │  │  Raspi 5 "neu"      │  │  Raspi 5 "alt"       │   │
+               │  │  Raspi 5 "new"      │  │  Raspi 5 "old"       │   │
                │  │  256 GB NVMe        │  │  2 TB NVMe           │   │
                │  │                     │  │                      │   │
                │  │  Control Plane      │  │  [freshrss]          │   │
@@ -41,97 +41,97 @@ Beide Nodes sind baugleich (Raspberry Pi 5, 8 GB RAM). Der alte Raspi hat dank 2
                │                                                      │
                └──────────────────────────────────────────────────────┘
                                                     │
-                                            Zigbee USB-Dongle
-                                            steckt am Agent-Node
+                                            Zigbee USB dongle
+                                            plugged into Agent-Node
 ```
 
 ---
 
-## Netzwerk: Wie eine Anfrage durch den Cluster fließt
+## Network: how a request flows through the cluster
 
-### Während der Migration (Übergangsphase)
+### During migration (transition phase)
 
-nginx bleibt der externe Einstiegspunkt — er kennt die öffentliche IP, hat die Zertifikate, und alle Docker-Services laufen noch dahinter. Für k3s-Services leitet nginx einfach an den neuen Raspi weiter:
+nginx remains the external entry point — it knows the public IP, holds the certificates, and all Docker services still run behind it. For k3s services, nginx simply forwards to the new Raspi:
 
 ```
 Browser: https://freshrss.example.com
          │
          ▼
-    Router → nginx (alter Raspi, :443)
-         │  TLS-Terminierung, Rate Limiting, Security Headers, Fail2ban
+    Router → nginx (old Raspi, :443)
+         │  TLS termination, rate limiting, security headers, Fail2ban
          │  proxy_pass → http://raspi5-ip:80
          ▼
-    Traefik (neuer Raspi, :80)
-         │  prüft: welche Domain? → IngressRoute-Regeln
+    Traefik (new Raspi, :80)
+         │  checks: which domain? → IngressRoute rules
          ▼
-    Service "freshrss" (ClusterIP, cluster-intern)
+    Service "freshrss" (ClusterIP, cluster-internal)
          │
          ▼
     Pod "freshrss-xxxx"
          │
          ▼
-    PVC → local-path Volume → NVMe
+    PVC → local-path volume → NVMe
 ```
 
-Zwei Proxy-Hops, aber saubere Aufgabenteilung: nginx = externe Sicherheitsschicht, Traefik = internes Kubernetes-Routing. Kein DNS-Wechsel nötig, beide Raspis laufen unabhängig.
+Two proxy hops, but clean separation of concerns: nginx = external security layer, Traefik = internal Kubernetes routing. No DNS change needed, both Raspis run independently.
 
-### Nach vollständiger Migration (Zielzustand)
+### After full migration (target state)
 
-Wenn alle Services auf k3s laufen, kann nginx konsolidiert werden:
+Once all services run on k3s, nginx can be consolidated:
 
 ```
 Browser: https://freshrss.example.com
          │
          ▼
-    Router → Traefik (neuer Raspi, :443)
+    Router → Traefik (new Raspi, :443)
          │  TLS via cert-manager (Let's Encrypt)
-         │  Rate Limiting + Security Headers via Traefik Middleware
+         │  rate limiting + security headers via Traefik Middleware
          ▼
     Service → Pod → local-path → NVMe
 ```
 
-Traefik übernimmt dann alles was nginx heute tut. Fail2ban kann als DaemonSet im Cluster laufen oder entfällt zugunsten von Traefik-nativen Rate Limits.
+Traefik then takes over everything nginx does today. Fail2ban can run as a DaemonSet in the cluster or be replaced by Traefik-native rate limits.
 
-**Diese Entscheidung muss jetzt nicht getroffen werden.** Erst wenn alle Services migriert sind, macht ein Vergleich Sinn: nginx ist battle-tested und konfiguriert, Traefik ist k8s-nativer.
+**This decision does not need to be made now.** Only once all services are migrated does a comparison make sense: nginx is battle-tested and configured, Traefik is more k8s-native.
 
 ---
 
-## Kubernetes-Objekte je Service
+## Kubernetes objects per service
 
-Jeder migrierte Service besteht aus denselben Bausteinen:
+Every migrated service consists of the same building blocks:
 
 ```
 Namespace
-  ├── Deployment          ← "Starte N Kopien dieses Containers"
-  │     └── Pod(s)        ← der eigentliche Container
-  ├── Service             ← stabiler interner Netzwerkendpunkt
-  ├── PersistentVolumeClaim (PVC)  ← "Ich brauche X GB Storage"
-  │     └── PersistentVolume (PV)  ← von local-path bereitgestellt
-  ├── ConfigMap           ← Konfiguration (kein Secret)
-  ├── SealedSecret        ← verschlüsseltes Secret (im Git speicherbar)
-  └── IngressRoute        ← "Diese Domain geht zu diesem Service"
+  ├── Deployment          ← "run N copies of this container"
+  │     └── Pod(s)        ← the actual container
+  ├── Service             ← stable internal network endpoint
+  ├── PersistentVolumeClaim (PVC)  ← "I need X GB of storage"
+  │     └── PersistentVolume (PV)  ← provisioned by local-path
+  ├── ConfigMap           ← configuration (not a secret)
+  ├── SealedSecret        ← encrypted secret (safe to commit to Git)
+  └── IngressRoute        ← "this domain goes to this service"
 ```
 
-Beispiel FreshRSS (einfachster Fall, 1 Container):
+Example FreshRSS (simplest case, 1 container):
 ```
 Namespace: freshrss
-  ├── Deployment: freshrss (1 Pod, Image: lscr.io/linuxserver/freshrss)
-  ├── Service: freshrss (ClusterIP → Port 80)
+  ├── Deployment: freshrss (1 pod, image: lscr.io/linuxserver/freshrss)
+  ├── Service: freshrss (ClusterIP → port 80)
   ├── PVC: freshrss-config (5Gi, local-path)
   └── IngressRoute: freshrss.example.com → Service freshrss
 ```
 
-Beispiel Seafile (2 Container, Service-to-Service):
+Example Seafile (2 containers, service-to-service):
 ```
 Namespace: seafile
   ├── Deployment: seafile (seafileltd/seafile-mc)
-  │     └── spricht MariaDB an via: mariadb.seafile.svc.cluster.local
+  │     └── talks to MariaDB via: mariadb.seafile.svc.cluster.local
   ├── Deployment: mariadb
   ├── Service: seafile (ClusterIP)
-  ├── Service: mariadb (ClusterIP, nur cluster-intern)
+  ├── Service: mariadb (ClusterIP, cluster-internal only)
   ├── PVC: seafile-data
   ├── PVC: mariadb-data
-  ├── SealedSecret: seafile-secrets (DB-Passwort, SECRET_KEY)
+  ├── SealedSecret: seafile-secrets (DB password, SECRET_KEY)
   └── IngressRoute: seafile.example.com → Service seafile
 ```
 
@@ -139,78 +139,78 @@ Namespace: seafile
 
 ## Storage: local-path
 
-k3s bringt den `local-path-provisioner` built-in mit. Daten liegen direkt auf dem Node-Filesystem:
+k3s ships with the `local-path-provisioner` built in. Data lives directly on the node filesystem:
 
 ```
-Pod schreibt Daten
+Pod writes data
        │
        ▼
-  PVC (Anforderung: "5Gi, ReadWriteOnce")
-       │  local-path erfüllt die Anforderung
+  PVC (request: "5Gi, ReadWriteOnce")
+       │  local-path fulfils the request
        ▼
-  /var/lib/rancher/k3s/storage/<pvc-name>/   ← direkt auf der NVMe
+  /var/lib/rancher/k3s/storage/<pvc-name>/   ← directly on the NVMe
 ```
 
-PVCs erhalten automatisch eine `nodeAffinity` auf den Node, auf dem sie erstellt wurden. Das erzwingt technisch, was bei diesem Setup sowieso gewollt ist: Services sind fest einem Node zugeordnet (wegen Hardware oder Speicherplatz).
+PVCs automatically receive a `nodeAffinity` for the node on which they were created. This technically enforces what is already intended in this setup: services are pinned to a fixed node (due to hardware or storage capacity).
 
-**Storage-Planung mit 2 Nodes:**
-Große Volumes (Immich-Bibliothek, Paperless-Dokumente) kommen auf den Agent-Node mit 2 TB NVMe — via explizites `nodeSelector` im Deployment. Kleine Volumes (FreshRSS, Seafile) auf den Server-Node.
+**Storage planning with 2 nodes:**
+Large volumes (Immich library, Paperless documents) go on the Agent-Node with 2 TB NVMe — via an explicit `nodeSelector` in the Deployment. Small volumes (FreshRSS, Seafile) go on the Server-Node.
 
-→ Migrationsstrategie für Immich (1,5 TB Bibliothek): [`docs/services/immich.md`](services/immich.md)
+→ Migration strategy for Immich (1.5 TB library): [`docs/services/immich.md`](services/immich.md)
 
-**Backup-Strategie:**
+**Backup strategy:**
 ```
 /var/lib/rancher/k3s/storage/<pvc-name>/
-       │  direkt lesbar (wie Docker-Volumes)
+       │  directly readable (like Docker volumes)
        ▼
   Restic → Hetzner S3
 ```
 
-→ Entscheidung gegen Longhorn: [`docs/decisions/storage.md`](decisions/storage.md)
+→ Decision against Longhorn: [`docs/decisions/storage.md`](decisions/storage.md)
 
 ---
 
-## GitOps: Wie Änderungen in den Cluster kommen
+## GitOps: how changes reach the cluster
 
 ```
-  Lokaler Laptop
+  Local laptop
        │  git push
        ▼
-  GitHub Repository (dieses Repo)
+  GitHub repository (this repo)
        │
-       │  Flux CD (läuft im Cluster) pollt alle 1 Minute
+       │  Flux CD (running in the cluster) polls every 1 minute
        ▼
-  Flux erkennt Änderung → wendet Manifeste an
+  Flux detects change → applies manifests
        │
        ▼
-  k3s Cluster (Zielzustand = Git-Zustand)
+  k3s cluster (target state = Git state)
 ```
 
-Kein Webhook nötig. Flux pulled aktiv — funktioniert auch hinter NAT ohne öffentliche IP für den Cluster-Eingang.
+No webhook needed. Flux pulls actively — works behind NAT without a public IP for the cluster ingress.
 
-**Sealed Secrets im GitOps-Flow:**
+**Sealed Secrets in the GitOps flow:**
 ```
 Laptop: kubectl create secret ... | kubeseal → SealedSecret.yaml
         git commit + push
         ↓
-Flux deployed SealedSecret in den Cluster
+Flux deploys SealedSecret into the cluster
         ↓
-Sealed Secrets Controller entschlüsselt → echtes Secret im Cluster
+Sealed Secrets controller decrypts → real secret in the cluster
         ↓
-Pod liest Secret (Passwort, API-Key etc.)
+Pod reads secret (password, API key etc.)
 ```
 
 ---
 
-## Aktueller Stand vs. Zielzustand
+## Current state vs. target state
 
 ```
-Heute                               Ziel (nach Migration)
+Today                               Target (after migration)
 ──────────────────────────────      ──────────────────────────────────────
-Raspi 5 "neu" (256 GB)              Raspi 5 "neu": k3s Server-Node
-  └── k3s (leer)                      └── Control Plane, Traefik, CoreDNS
+Raspi 5 "new" (256 GB)              Raspi 5 "new": k3s Server-Node
+  └── k3s (empty)                     └── Control Plane, Traefik, CoreDNS
 
-Raspi 5 "alt" (2 TB)                Raspi 5 "alt": k3s Agent-Node
+Raspi 5 "old" (2 TB)                Raspi 5 "old": k3s Agent-Node
   └── Docker                           └── FreshRSS
         └── FreshRSS                   └── Seafile
         └── Immich                     └── Immich        (2 TB NVMe)
@@ -223,22 +223,22 @@ Raspi 5 "alt" (2 TB)                Raspi 5 "alt": k3s Agent-Node
         └── Matter Hub
 ```
 
-Beide Pis sind baugleich (Raspi 5, 8 GB RAM) — eine vollständige Migration auf k3s ist realistisch. Home Assistant läuft auf dem Agent-Node mit `hostNetwork: true` und `nodeAffinity` für den Zigbee-Dongle. nginx bleibt vorerst als externer Proxy, kann später durch Traefik abgelöst werden.
+Both Pis are identical hardware (Raspi 5, 8 GB RAM) — a full migration to k3s is realistic. Home Assistant runs on the Agent-Node with `hostNetwork: true` and `nodeAffinity` for the Zigbee dongle — no re-plugging needed. nginx stays as the external proxy for now, and can be replaced by Traefik later.
 
 ---
 
-## Komponentenübersicht
+## Component overview
 
-| Komponente | Typ | Zweck | Wo |
+| Component | Type | Purpose | Where |
 |---|---|---|---|
-| k3s | Kubernetes-Distribution | Cluster-Steuerung | Raspi 5 |
-| nginx | Reverse Proxy | Externer Einstieg, TLS, Fail2ban (läuft auf altem Raspi) | Docker |
-| Traefik | Ingress Controller | Internes k8s-Routing (später ggf. nginx ablösen) | k3s built-in |
-| CoreDNS | DNS | Cluster-internes DNS | k3s built-in |
-| Flannel | CNI | Pod-Netzwerk | k3s built-in |
-| MetalLB | Load Balancer | Externe IPs für Services auf Bare Metal (ersetzt k3s ServiceLB) | Installiert via kubectl |
-| local-path-provisioner | Storage | Persistente Volumes direkt auf dem Node-Filesystem | k3s built-in |
-| cert-manager | Controller | Let's Encrypt TLS — erst nötig wenn Traefik nginx ablöst | Später |
-| Flux CD | GitOps | Automatisches Deployment | Installiert via flux CLI |
-| Sealed Secrets | Controller | Secret-Verschlüsselung | Installiert via kubectl |
-| Prometheus + Grafana | Monitoring | Metriken & Dashboards | kube-prometheus-stack |
+| k3s | Kubernetes distribution | Cluster orchestration | Raspi 5 |
+| nginx | Reverse proxy | External entry point, TLS, Fail2ban (runs on old Raspi) | Docker |
+| Traefik | Ingress Controller | Internal k8s routing (may replace nginx later) | k3s built-in |
+| CoreDNS | DNS | Cluster-internal DNS | k3s built-in |
+| Flannel | CNI | Pod networking | k3s built-in |
+| MetalLB | Load Balancer | External IPs for services on bare metal (replaces k3s ServiceLB) | Installed via kubectl |
+| local-path-provisioner | Storage | Persistent volumes directly on node filesystem | k3s built-in |
+| cert-manager | Controller | Let's Encrypt TLS — only needed when Traefik replaces nginx | Later |
+| Flux CD | GitOps | Automated deployment | Installed via flux CLI |
+| Sealed Secrets | Controller | Secret encryption | Installed via kubectl |
+| Prometheus + Grafana | Monitoring | Metrics & dashboards | kube-prometheus-stack |

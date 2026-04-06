@@ -1,40 +1,40 @@
-# 05 — Sealed Secrets einrichten
+# 05 — Set up Sealed Secrets
 
-Voraussetzung: [03 — MetalLB](./03-metallb.md) abgeschlossen, Cluster läuft.
+Prerequisite: [03 — MetalLB](./03-metallb.md) completed, cluster is running.
 
-Sealed Secrets löst zwei Probleme gleichzeitig:
-- **Öffentliches Repo**: verschlüsselte Secrets können sicher committed werden — nur der Cluster kann sie entschlüsseln
-- **Disaster Recovery**: `kubectl apply -f apps/<service>/` deployed alle Secrets automatisch mit, kein manuelles Wiederherstellen
+Sealed Secrets solves two problems at once:
+- **Public repo**: encrypted secrets can be safely committed — only the cluster can decrypt them
+- **Disaster recovery**: `kubectl apply -f apps/<service>/` deploys all secrets automatically, no manual restoration needed
 
 ---
 
-## Schritt 1 — Controller im Cluster installieren
+## Step 1 — Install the controller in the cluster
 
 ```bash
-# Aktuelle Version prüfen: https://github.com/bitnami-labs/sealed-secrets/releases
+# Check current version: https://github.com/bitnami-labs/sealed-secrets/releases
 SEALED_SECRETS_VERSION="v0.27.1"
 
 kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/${SEALED_SECRETS_VERSION}/controller.yaml
 ```
 
-> **GitOps-Hinweis:** Das Laden des Manifests direkt aus dem Internet ist für den manuellen Setup-Schritt pragmatisch in Ordnung. Sobald Flux CD eingerichtet ist, gehört `controller.yaml` ins Repo (`infrastructure/sealed-secrets/controller.yaml`) — dann deployed Flux es deterministisch aus dem Repo, kein Internetzugriff beim Deploy nötig, und Renovate kann Updates als PR vorschlagen.
+> **GitOps note:** Loading the manifest directly from the internet is pragmatic for this manual setup step. Once Flux CD is configured, `controller.yaml` belongs in the repo (`infrastructure/sealed-secrets/controller.yaml`) — Flux then deploys it deterministically from the repo, no internet access required at deploy time, and Renovate can propose updates as PRs.
 
-Controller-Status prüfen:
+Check controller status:
 ```bash
 kubectl get pods -n kube-system -l name=sealed-secrets-controller -w
-# Warten bis 1/1 Running
+# Wait until 1/1 Running
 ```
 
 ---
 
-## Schritt 2 — kubeseal CLI auf dem Laptop installieren
+## Step 2 — Install the kubeseal CLI on your laptop
 
-kubeseal läuft auf dem **Laptop** (nicht auf dem Pi) — dort wo du Secrets erstellst und ins Repo committed.
+kubeseal runs on the **laptop** (not on the Pi) — where you create secrets and commit them to the repo.
 
 ```bash
 # Arch Linux (x86_64)
 SEALED_SECRETS_VERSION="v0.27.1"
-KUBESEAL_VERSION="${SEALED_SECRETS_VERSION#v}"   # ohne führendes "v"
+KUBESEAL_VERSION="${SEALED_SECRETS_VERSION#v}"   # without leading "v"
 
 curl -L "https://github.com/bitnami-labs/sealed-secrets/releases/download/${SEALED_SECRETS_VERSION}/kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz" \
   | tar xz kubeseal
@@ -42,17 +42,17 @@ curl -L "https://github.com/bitnami-labs/sealed-secrets/releases/download/${SEAL
 sudo install -m 755 kubeseal /usr/local/bin/kubeseal
 rm kubeseal
 
-# Prüfen
+# Verify
 kubeseal --version
 ```
 
-> Alternativ über AUR: `paru -S kubeseal` oder `yay -S kubeseal`
+> Alternatively via AUR: `paru -S kubeseal` or `yay -S kubeseal`
 
 ---
 
-## Schritt 3 — Schlüssel SOFORT sichern
+## Step 3 — Back up the key IMMEDIATELY
 
-Der Controller generiert beim ersten Start ein asymmetrisches Schlüsselpaar. **Dieses Schlüsselpaar ist der einzige Weg, bestehende SealedSecrets zu entschlüsseln.** Geht es verloren, sind alle Sealed Secrets im Repo wertlos.
+The controller generates an asymmetric key pair on first start. **This key pair is the only way to decrypt existing SealedSecrets.** If it is lost, all Sealed Secrets in the repo become worthless.
 
 ```bash
 kubectl get secret -n kube-system \
@@ -60,105 +60,105 @@ kubectl get secret -n kube-system \
   -o yaml > sealed-secrets-key.yaml
 ```
 
-**Im Passwortmanager ablegen. Nicht ins Repo committen.**
+**Store in your password manager. Do not commit to the repo.**
 
-Prüfen ob die Datei Inhalt hat:
+Verify the file has content:
 ```bash
 grep "tls.crt" sealed-secrets-key.yaml
-# → Sollte eine lange base64-Zeile zeigen
+# → should show a long base64 line
 ```
 
-Danach die lokale Datei löschen:
+Then delete the local file:
 ```bash
 rm sealed-secrets-key.yaml
 ```
 
 ---
 
-## Schritt 4 — Erstes SealedSecret erstellen (Beispiel: Pi-hole)
+## Step 4 — Create your first SealedSecret (example: Pi-hole)
 
-Der Workflow ist immer gleich: Plain Secret auf stdout erzeugen → durch kubeseal pipen → SealedSecret ins Repo schreiben.
+The workflow is always the same: generate a plain Secret to stdout → pipe through kubeseal → write the SealedSecret to the repo.
 
 ```bash
-# 1. SealedSecret erzeugen (ersetze <dein-passwort>)
+# 1. Generate SealedSecret (replace <your-password>)
 kubectl create secret generic pihole-secret \
   --namespace pihole \
-  --from-literal=FTLCONF_webserver_api_password="<dein-passwort>" \
+  --from-literal=FTLCONF_webserver_api_password="<your-password>" \
   --dry-run=client -o yaml \
   | kubeseal --format yaml > apps/pihole/pihole-sealed-secret.yaml
 
-# 2. Prüfen: die Datei enthält verschlüsselte Daten, kein Klartext
+# 2. Verify: the file contains encrypted data, no plaintext
 cat apps/pihole/pihole-sealed-secret.yaml
-# → spec.encryptedData.WEBPASSWORD ist ein langer base64-String — kein Passwort sichtbar
+# → spec.encryptedData.WEBPASSWORD is a long base64 string — no password visible
 
-# 3. In den Cluster deployen
+# 3. Deploy to the cluster
 kubectl apply -f apps/pihole/pihole-sealed-secret.yaml
 
-# 4. Prüfen ob das echte Secret erzeugt wurde
+# 4. Verify the real secret was created
 kubectl get secret pihole-secret -n pihole
 ```
 
-Die `pihole-sealed-secret.yaml` kann sicher ins Repo committed werden:
+The `pihole-sealed-secret.yaml` can safely be committed to the repo:
 ```bash
 git add apps/pihole/pihole-sealed-secret.yaml
 git commit -m "feat(pihole): add sealed secret for admin password"
 ```
 
-> **Namespace-Bindung:** SealedSecrets sind standardmäßig an Namespace + Name gebunden. Ein SealedSecret für `namespace: pihole` lässt sich nicht in einem anderen Namespace entschlüsseln — das ist gewollt.
+> **Namespace binding:** SealedSecrets are bound to namespace + name by default. A SealedSecret for `namespace: pihole` cannot be decrypted in another namespace — this is intentional.
 
 ---
 
-## Schritt 5 — .gitignore anpassen
+## Step 5 — Update .gitignore
 
-Die alten Plain-Secret-Dateien können jetzt aus der `.gitignore` entfernt werden — oder bleiben drin als Sicherheitsnetz. Das `*-sealed-secret.yaml` hingegen gehört **ins Repo**:
+The old plain secret files can now be removed from `.gitignore` — or kept as a safety net. The `*-sealed-secret.yaml` files, however, **belong in the repo**:
 
 ```bash
-# apps/pihole/.gitignore — pihole-secret.yaml bleibt gitignored (lokales Arbeitsfile)
-# pihole-sealed-secret.yaml wird NICHT gitignored → committen
+# apps/pihole/.gitignore — pihole-secret.yaml stays gitignored (local working file)
+# pihole-sealed-secret.yaml is NOT gitignored → commit it
 ```
 
 ---
 
-## Recovery nach Cluster-Neuinstall
+## Recovery after cluster reinstall
 
-**Reihenfolge ist kritisch:** Der alte Schlüssel muss eingelesen sein, bevor Services mit SealedSecrets deployed werden. Sonst generiert der Controller einen neuen Schlüssel und alle bestehenden SealedSecrets sind nicht mehr entschlüsselbar.
+**Order is critical:** The old key must be imported before any services with SealedSecrets are deployed. Otherwise the controller generates a new key and all existing SealedSecrets can no longer be decrypted.
 
-### 1. Controller installieren
+### 1. Install the controller
 
 ```bash
 SEALED_SECRETS_VERSION="v0.27.1"
 kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/${SEALED_SECRETS_VERSION}/controller.yaml
 ```
 
-### 2. Alten Schlüssel einspielen (VOR dem ersten Service-Deploy!)
+### 2. Import the old key (BEFORE the first service deployment!)
 
-Den Schlüssel aus dem Passwortmanager holen und in eine temporäre Datei speichern:
+Retrieve the key from the password manager and save it to a temporary file:
 
 ```bash
-# Schlüssel einspielen
+# Import the key
 kubectl apply -f sealed-secrets-key.yaml
 
-# Controller neu starten damit er den importierten Key lädt
+# Restart the controller so it loads the imported key
 kubectl rollout restart deployment sealed-secrets-controller -n kube-system
 kubectl rollout status deployment sealed-secrets-controller -n kube-system
-# Warten bis "successfully rolled out"
+# Wait until "successfully rolled out"
 
-# Temporäre Datei löschen
+# Delete the temporary file
 rm sealed-secrets-key.yaml
 ```
 
-### 3. Verifizieren
+### 3. Verify
 
 ```bash
-# Prüfen: Controller nutzt den importierten Key (nicht einen neuen)
+# Verify: controller is using the imported key (not a new one)
 kubectl get secret -n kube-system -l sealedsecrets.bitnami.com/sealed-secrets-key
-# → Erstellungsdatum des Keys sollte aus der Vergangenheit stammen (nicht "just now")
+# → creation date of the key should be from the past (not "just now")
 ```
 
-### 4. Services deployen
+### 4. Deploy services
 
-Erst jetzt `kubectl apply -f apps/<service>/` — die SealedSecrets werden automatisch entschlüsselt.
+Only now run `kubectl apply -f apps/<service>/` — the SealedSecrets will be decrypted automatically.
 
 ---
 
-## Weiter: [Pi-hole deployen](../services/pihole.md)
+## Next: [Deploy Pi-hole](../services/pihole.md)

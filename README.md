@@ -1,6 +1,6 @@
 # k3s Homelab
 
-Kubernetes-Infrastruktur auf einem Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration der bestehenden Docker-Services aus [docker-runtime](../docker-runtime).
+Kubernetes infrastructure on a Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration of existing Docker services from [docker-runtime](../docker-runtime).
 
 **Hardware:** 2× Raspberry Pi 5 (8 GB RAM) — Server-Node 256 GB NVMe, Agent-Node 2 TB NVMe
 
@@ -8,61 +8,61 @@ Kubernetes-Infrastruktur auf einem Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migra
 
 ---
 
-## Dokumentation
+## Documentation
 
-| Dokument | Inhalt |
+| Document | Content |
 |---|---|
-| [Architektur-Übersicht](docs/architecture.md) | Gesamtbild, Netzwerkfluss, Komponenten — guter Einstieg |
-| [Learning Path](docs/learning-path.md) | Lernpfad und Architekturentscheidungen |
-| [01 — OS Setup](docs/platform/01-os-setup.md) | Raspberry Pi OS auf NVMe, EEPROM, cgroups |
-| [02 — k3s installieren](docs/platform/02-k3s-install.md) | k3s mit Dual-Stack (IPv4+IPv6), kubectl, Grundkonzepte |
-| [03 — MetalLB](docs/platform/03-metallb.md) | LoadBalancer-VIPs für Bare Metal (DNS, stabile Service-IPs) |
-| [Storage-Entscheidung](docs/decisions/storage.md) | local-path statt Longhorn — Begründung und Trade-offs |
-| **Service-Migrationen** | |
-| [FreshRSS](docs/services/freshrss.md) ✅ | Migration: FreshRSS deployen |
+| [Architecture Overview](docs/architecture.md) | Big picture, network flow, components — good starting point |
+| [Learning Path](docs/learning-path.md) | Learning path and architecture decisions |
+| [01 — OS Setup](docs/platform/01-os-setup.md) | Raspberry Pi OS on NVMe, EEPROM, cgroups |
+| [02 — Install k3s](docs/platform/02-k3s-install.md) | k3s with Dual-Stack (IPv4+IPv6), kubectl, core concepts |
+| [03 — MetalLB](docs/platform/03-metallb.md) | LoadBalancer VIPs for Bare Metal (DNS, stable service IPs) |
+| [Storage Decision](docs/decisions/storage.md) | local-path instead of Longhorn — rationale and trade-offs |
+| **Service Migrations** | |
+| [FreshRSS](docs/services/freshrss.md) ✅ | Migration: deploying FreshRSS |
 | [Pi-hole](docs/services/pihole.md) ✅ | Migration: Pi-hole, DNS via LoadBalancer + Ingress |
-| [Seafile](docs/services/seafile.md) | Migration: Seafile, Multi-Container, Secrets |
-| [Immich](docs/services/immich.md) | Migration: Immich, Restic-Restore-Strategie (1.5 TB Library) |
-| [Sealed Secrets](docs/platform/05-sealed-secrets.md) | Secrets verschlüsseln für öffentliches Git-Repo |
-| [Vaultwarden](docs/services/vaultwarden.md) | Password Manager: Konzept, SSO, YubiKey, Backup, Tier-0-Notfallkonzept |
-| **Betrieb** | |
-| [Shutdown & Startup](docs/operations/shutdown-startup.md) | Cluster sauber herunterfahren und hochfahren |
+| [Seafile](docs/services/seafile.md) | Migration: Seafile, multi-container, Secrets |
+| [Immich](docs/services/immich.md) | Migration: Immich, Restic restore strategy (1.5 TB library) |
+| [Sealed Secrets](docs/platform/05-sealed-secrets.md) | Encrypting secrets for a public Git repo |
+| [Vaultwarden](docs/services/vaultwarden.md) | Password manager: concept, SSO, YubiKey, backup, Tier-0 emergency plan |
+| **Operations** | |
+| [Shutdown & Startup](docs/operations/shutdown-startup.md) | Gracefully shutting down and starting up the cluster |
 | [Monitoring](docs/operations/monitoring.md) | kube-prometheus-stack, Grafana, Alertmanager |
-| [Renovate](docs/operations/renovate.md) | Automatische Dependency-Updates via GitHub Action |
-| [Backup & Restore](docs/operations/backup-restore.md) | Cluster-Rebuild, Volume-Restore, kritische Secrets |
-| [Volume-Migration: unverschlüsselt → verschlüsselt](docs/operations/migrate-to-encrypted.md) | Volume-Migration auf LUKS-verschlüsselte StorageClass |
-| [Image Updates](docs/operations/update-images.md) | Manuelles Image-Update, crictl pre-pull bei RWO-PVCs |
+| [Renovate](docs/operations/renovate.md) | Automated dependency updates via GitHub Action |
+| [Backup & Restore](docs/operations/backup-restore.md) | Cluster rebuild, volume restore, critical secrets |
+| [Volume Migration: unencrypted → encrypted](docs/operations/migrate-to-encrypted.md) | Volume migration to LUKS-encrypted StorageClass |
+| [Image Updates](docs/operations/update-images.md) | Manual image update, crictl pre-pull for RWO PVCs |
 
 ---
 
-## Struktur
+## Structure
 
 ```
-apps/           Kubernetes-Manifeste je Service
+apps/           Kubernetes manifests per service
   freshrss/     Namespace, PVC, Deployment, Service, Ingress
   pihole/       Namespace, Deployment, Service (LoadBalancer + Ingress)
-  seafile/      (in Planung)
+  seafile/      (planned)
 
-docs/           Anleitungen und Architektur-Dokumentation
+docs/           Guides and architecture documentation
 
-infrastructure/ Cluster-Infrastruktur (Monitoring, Traefik-Config)
-                → wird mit Flux CD eingerichtet
+infrastructure/ Cluster infrastructure (Monitoring, Traefik config)
+                → managed by Flux CD
 
-clusters/       Flux CD Konfiguration
-  raspi/        Einstiegspunkt für den Cluster
+clusters/       Flux CD configuration
+  raspi/        Cluster entrypoint
 ```
 
 ---
 
-## Migrationsstatus
+## Migration Status
 
-| Service | Status | Anmerkung |
+| Service | Status | Notes |
 |---|---|---|
-| FreshRSS | ✅ Migriert | Läuft auf k3s, Volume-Migration auf encrypted ausstehend |
-| Pi-hole | ✅ Migriert | DNS via LoadBalancer + Ingress |
-| Seafile | Planung | Direkt in k3s neu aufsetzen |
-| Immich | Offen | Restic-Restore-Strategie (kein Platz zum Kopieren) — erst nach Agent-Node-Join |
-| Paperless | Offen | |
-| Teslamate | Offen | |
-| Home Assistant | Geplant (Agent-Node) | `hostNetwork` + `nodeAffinity` für Zigbee-Dongle |
-| Vaultwarden | Konzept | Google SSO (OIDC-Fork), YubiKey 2FA — erst nach YubiKey-Beschaffung |
+| FreshRSS | ✅ Migrated | Running on k3s, volume migration to encrypted pending |
+| Pi-hole | ✅ Migrated | DNS via LoadBalancer + Ingress |
+| Seafile | Planning | Set up directly in k3s |
+| Immich | Open | Restic restore strategy (no space to copy) — after Agent-Node join |
+| Paperless | Open | |
+| Teslamate | Open | |
+| Home Assistant | Planned (Agent-Node) | `hostNetwork` + `nodeAffinity` for Zigbee dongle |
+| Vaultwarden | Concept | Google SSO (OIDC fork), YubiKey 2FA — after YubiKey procurement |

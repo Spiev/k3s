@@ -1,197 +1,197 @@
-# Pi-hole deployen
+# Deploy Pi-hole
 
-Voraussetzung: [03 — MetalLB](../platform/03-metallb.md) eingerichtet, [05 — Sealed Secrets](../platform/05-sealed-secrets.md) eingerichtet, Dual-Stack-Cluster läuft (siehe [02 — k3s installieren](../platform/02-k3s-install.md)).
+Prerequisite: [03 — MetalLB](../platform/03-metallb.md) set up, [05 — Sealed Secrets](../platform/05-sealed-secrets.md) set up, Dual-Stack cluster running (see [02 — Install k3s](../platform/02-k3s-install.md)).
 
 > [!NOTE]
-> MetalLB ist für Pi-hole **keine Voraussetzung mehr**. Klipper/ServiceLB (k3s-Standard) bindet Port 53 direkt auf der Node-IP — das reicht für DNS. MetalLB bringt hier nur dann einen Vorteil, wenn der Node per Ethernet angebunden ist (stabile VIP unabhängig von der Node-IP). Siehe [03 — MetalLB](../platform/03-metallb.md).
+> MetalLB is **no longer a hard prerequisite** for Pi-hole. Klipper/ServiceLB (the k3s default) binds port 53 directly to the node IP — that is sufficient for DNS. MetalLB only adds value here when the node is connected via Ethernet (stable VIP independent of the node IP). See [03 — MetalLB](../platform/03-metallb.md).
 
-Pi-hole läuft als DNS-Resolver für das gesamte Heimnetz. Da es ein Neudeploy ist (keine komplexen Daten zu migrieren), wird das Volume direkt mit `local-path` bereitgestellt.
+Pi-hole runs as the DNS resolver for the entire home network. Since this is a fresh deployment (no complex data to migrate), the volume is provisioned directly with `local-path`.
 
-> **Hinweis: Netzwerkverbindung**
-> Pi-hole ist DNS für das gesamte Heimnetz. WLAN funktioniert für den Einstieg, solange die Verbindung stabil ist. Ethernet ist empfohlen für dauerhaften Produktionsbetrieb — kann jederzeit nachgerüstet werden ohne Pi-hole neu deployen zu müssen.
+> **Network connection note:**
+> Pi-hole is DNS for the entire home network. Wi-Fi works for getting started, as long as the connection is stable. Ethernet is recommended for permanent production use — it can be switched at any time without redeploying Pi-hole.
 
 ---
 
-## Besonderheiten gegenüber FreshRSS
+## Differences from FreshRSS
 
-| Thema | Detail |
+| Topic | Detail |
 |---|---|
-| Port 53 TCP+UDP | Kein HTTP-Routing — LoadBalancer direkt auf Port 53 |
-| Dual-Stack DNS | Pi-hole muss auf IPv4 + IPv6 antworten |
-| Statische ULA | Node braucht feste IPv6 damit DNS-IP stabil bleibt |
-| `NET_ADMIN` | Capability für DNS-Listener (und optional DHCP) |
-| Admin-Passwort | Aus gitignoriertem Secret-File (bis Sealed Secrets eingerichtet) |
-| Custom DNS | Wenige Hostnamen — manuell übertragen |
+| Port 53 TCP+UDP | No HTTP routing — LoadBalancer directly on port 53 |
+| Dual-Stack DNS | Pi-hole must respond on IPv4 + IPv6 |
+| Static ULA | Node needs a fixed IPv6 so the DNS IP stays stable |
+| `NET_ADMIN` | Capability required for the DNS listener (and optionally DHCP) |
+| Admin password | From a gitignored secret file (until Sealed Secrets is set up) |
+| Custom DNS | A few hostnames — transferred manually |
 
 ---
 
-## Schritt 1 — Statische ULA-Adresse auf dem k3s-Node einrichten
+## Step 1 — Set up a static ULA address on the k3s node
 
-Der k3s-Node bekommt eine feste IPv6-Adresse aus dem ULA-Prefix der Fritz!Box (`<ULA-PREFIX>/64`). ULA-Adressen ändern sich nie — unabhängig vom ISP-Prefix. Eine freie Adresse aus dem ULA-Bereich wählen, z.B. `<ULA-PREFIX>::1`.
+The k3s node gets a fixed IPv6 address from the Fritz!Box ULA prefix (`<ULA-PREFIX>/64`). ULA addresses never change — independent of the ISP prefix. Choose a free address from the ULA range, e.g. `<ULA-PREFIX>::1`.
 
 ```bash
-# Auf dem k3s-Node: aktive Verbindung und Interface ermitteln
+# On the k3s node: find active connection and interface
 nmcli connection show --active
-# → Name und DEVICE notieren (z.B. "preconfigured" / wlan0, oder "Wired connection 1" / eth0)
+# → note Name and DEVICE (e.g. "preconfigured" / wlan0, or "Wired connection 1" / eth0)
 
-# Statische IPv6 zur aktiven Verbindung hinzufügen (Connection-Name anpassen)
+# Add static IPv6 to the active connection (adjust connection name)
 sudo nmcli connection modify "preconfigured" \
   ipv6.addresses "<ULA-PREFIX>::1/64" \
-  ipv6.method "auto"        # SLAAC bleibt aktiv, ULA wird zusätzlich gesetzt
+  ipv6.method "auto"        # SLAAC stays active, ULA is added additionally
 
 sudo nmcli connection up "preconfigured"
 
-# Prüfen (Interface-Name aus nmcli-Ausgabe verwenden, z.B. wlan0 oder eth0)
+# Verify (use interface name from nmcli output, e.g. wlan0 or eth0)
 ip addr show wlan0
-# → <ULA-PREFIX>::1/64 sollte erscheinen
+# → <ULA-PREFIX>::1/64 should appear
 ```
 
-> `ipv6.method auto` behält SLAAC (für globale IPv6-Erreichbarkeit) und fügt die ULA als zusätzliche Adresse hinzu. Pi-hole antwortet auf beide.
+> `ipv6.method auto` keeps SLAAC (for global IPv6 reachability) and adds the ULA as an additional address. Pi-hole responds on both.
 
 ---
 
-## Schritt 2 — Übersicht der Manifeste
+## Step 2 — Manifest overview
 
 ```
 apps/pihole/
-├── pihole.yaml                  ← ins Repo (Namespace, PVC, Deployment, Services)
+├── pihole.yaml                  ← in repo (Namespace, PVC, Deployment, Services)
 ├── pihole-secret.yaml           ← .gitignore (WEBPASSWORD)
-├── pihole-secret.yaml.example   ← ins Repo (Template)
-├── pihole-ingress.yaml          ← .gitignore (Admin-UI Hostname)
-└── pihole-ingress.yaml.example  ← ins Repo (Template)
+├── pihole-secret.yaml.example   ← in repo (template)
+├── pihole-ingress.yaml          ← .gitignore (admin UI hostname)
+└── pihole-ingress.yaml.example  ← in repo (template)
 ```
 
 ---
 
-## Schritt 3 — Secret für Admin-Passwort anlegen
+## Step 3 — Create secret for admin password
 
 ```bash
-# SealedSecret erzeugen (ersetze <dein-passwort>)
+# Generate SealedSecret (replace <your-password>)
 kubectl create secret generic pihole-secret \
   --namespace pihole \
-  --from-literal=FTLCONF_webserver_api_password="<dein-passwort>" \
+  --from-literal=FTLCONF_webserver_api_password="<your-password>" \
   --dry-run=client -o yaml \
   | kubeseal --format yaml > apps/pihole/pihole-sealed-secret.yaml
 
-# Ins Repo committen
+# Commit to the repo
 git add apps/pihole/pihole-sealed-secret.yaml
 git commit -m "feat(pihole): add sealed secret for admin password"
 ```
 
-> Das SealedSecret wird erst in Schritt 4 deployed — der Namespace muss zuerst existieren.
+> The SealedSecret is deployed in Step 4 — the namespace must exist first.
 
 ---
 
-## Schritt 4 — Manifeste deployen
+## Step 4 — Deploy manifests
 
-Reihenfolge ist wichtig: erst Namespace, dann Secret, dann den Rest — so startet der Pod direkt ohne Fehler-Zwischenzustand.
+Order matters: namespace first, then secret, then the rest — so the pod starts without an error intermediate state.
 
 ```bash
-# 1. Namespace anlegen (--save-config verhindert Warning beim späteren kubectl apply)
+# 1. Create namespace (--save-config prevents a warning on later kubectl apply)
 kubectl create namespace pihole --save-config
 
-# 2. SealedSecret deployen — Controller legt das echte Secret sofort an
+# 2. Deploy SealedSecret — controller creates the real secret immediately
 kubectl apply -f apps/pihole/pihole-sealed-secret.yaml
 
-# 3. PVC, Deployment und Services deployen
+# 3. Deploy PVC, Deployment and Services
 kubectl apply -f apps/pihole/pihole.yaml
 ```
 
-> `kubectl apply -f apps/pihole/` würde auch die `.example`-Dateien anwenden — daher explizit die Dateien benennen.
+> `kubectl apply -f apps/pihole/` would also apply the `.example` files — so explicitly name the files.
 
-Status beobachten:
+Monitor status:
 ```bash
 kubectl get pods -n pihole -w
-# Warten bis 1/1 Running
+# Wait until 1/1 Running
 
 kubectl get svc -n pihole
-# pihole-dns sollte EXTERNAL-IP (IPv4 + IPv6) zeigen
+# pihole-dns should show EXTERNAL-IP (IPv4 + IPv6)
 ```
 
-Die External-IPs des `pihole-dns`-Service notieren — werden in Schritt 6 benötigt:
+Note the External IPs of the `pihole-dns` service — needed in Step 6:
 ```bash
 kubectl get svc -n pihole pihole-dns -o wide
 ```
 
 ---
 
-## Schritt 5 — Konfiguration übertragen (Teleporter)
+## Step 5 — Transfer configuration (Teleporter)
 
-Pi-hole hat eine eingebaute Import/Export-Funktion die alle Einstellungen auf einmal überträgt: DNS-Einträge, CNAMEs, Blocklisten, Whitelists, Einstellungen.
+Pi-hole has a built-in import/export function that transfers all settings at once: DNS entries, CNAMEs, block lists, whitelists, settings.
 
-**Export auf dem alten Pi-hole:**
-Admin-UI → **Settings → Teleporter → Backup**
+**Export on the old Pi-hole:**
+Admin UI → **Settings → Teleporter → Backup**
 
-**Import auf dem neuen Pi-hole:**
-Admin-UI → **Settings → Teleporter → Restore** → exportierte Datei hochladen
+**Import on the new Pi-hole:**
+Admin UI → **Settings → Teleporter → Restore** → upload the exported file
 
 ---
 
-## Schritt 6 — Pi-hole testen (vor der Umstellung)
+## Step 6 — Test Pi-hole (before switching)
 
-Erst testen bevor die Fritz!Box umgestellt wird:
+Test before updating the Fritz!Box:
 
 ```bash
 dig @<METALLB-IPV4-VIP> google.com
 dig @<METALLB-IPV6-VIP> google.com
 ```
 
-Beide Anfragen sollten eine Antwort liefern. Wenn ja: Pi-hole funktioniert korrekt.
+Both queries should return a response. If so: Pi-hole is working correctly.
 
 ---
 
-## Schritt 7 — Fritz!Box umstellen
+## Step 7 — Update Fritz!Box
 
-In der **Fritz!Box** unter Heimnetz → Netzwerk → DNS:
+In the **Fritz!Box** under Home Network → Network → DNS:
 
-- DNS-Server (IPv4): `<METALLB-IPV4-VIP>`
-- DNS-Server (IPv6): `<METALLB-IPV6-VIP>`
+- DNS server (IPv4): `<METALLB-IPV4-VIP>`
+- DNS server (IPv6): `<METALLB-IPV6-VIP>`
 
-Danach DHCP-Lease auf einem Client erneuern und prüfen:
+Then renew the DHCP lease on a client and verify:
 ```bash
 # Linux
 sudo dhclient -r && sudo dhclient
 
-# Oder einfach WLAN kurz aus/ein
+# Or simply toggle Wi-Fi off/on
 ```
 
 ---
 
-## Schritt 8 — Alten Pi-hole stoppen
+## Step 8 — Stop the old Pi-hole
 
-Erst wenn DNS auf allen Geräten korrekt funktioniert:
+Only once DNS is working correctly on all devices:
 
 ```bash
-# Auf dem alten Raspi
-cd ~/docker   # oder wo dein docker-compose.yml liegt
+# On the old Raspi
+cd ~/docker   # or wherever your docker-compose.yml is
 docker compose stop pihole
 ```
 
-Den alten Pi-hole noch einige Tage laufen lassen (aber gestoppt) bevor er entfernt wird — als Fallback falls etwas nicht stimmt.
+Leave the old Pi-hole running (but stopped) for a few days before removing it — as a fallback in case something is wrong.
 
 ---
 
 ## Troubleshooting
 
 ```bash
-# Pi-hole Pod startet nicht?
+# Pi-hole pod not starting?
 kubectl describe pod -n pihole -l app=pihole
 kubectl logs -n pihole -l app=pihole
 
-# DNS-Service hat keine External-IP?
+# DNS service has no External-IP?
 kubectl describe svc -n pihole pihole-dns
-# → Events prüfen ob MetalLB eine IP aus dem Pool zugewiesen hat
-# → Ohne MetalLB: klipper-lb (k3s built-in ServiceLB) übernimmt — dann bindet der Service an die Node-IP
+# → check Events to see if MetalLB assigned an IP from the pool
+# → without MetalLB: klipper-lb (k3s built-in ServiceLB) takes over — service binds to node IP
 
-# Port 53 bereits belegt auf dem Node?
+# Port 53 already in use on the node?
 ssh stefan@k3s.fritz.box "sudo ss -tulpn | grep :53"
-# → systemd-resolved hört auf 127.0.0.53, nicht auf dem Netzwerk-Interface → kein Konflikt
+# → systemd-resolved listens on 127.0.0.53, not on the network interface → no conflict
 
-# IPv6 DNS antwortet nicht?
+# IPv6 DNS not responding?
 ssh stefan@k3s.fritz.box "ip addr | grep <ULA-PREFIX>"
-# → ULA-Adresse <ULA-PREFIX>::1/64 muss vorhanden sein (auf wlan0 oder eth0)
+# → ULA address <ULA-PREFIX>::1/64 must be present (on wlan0 or eth0)
 ```
 
 ---
 
-## Weiter: [Seafile deployen](./seafile.md)
+## Next: [Deploy Seafile](./seafile.md)
