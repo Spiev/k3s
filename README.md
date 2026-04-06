@@ -30,7 +30,6 @@ Kubernetes infrastructure on a Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration
 | [Monitoring](docs/operations/monitoring.md) | kube-prometheus-stack, Grafana, Alertmanager |
 | [Renovate](docs/operations/renovate.md) | Automated dependency updates via GitHub Action |
 | [Backup & Restore](docs/operations/backup-restore.md) | Cluster rebuild, volume restore, critical secrets |
-| [Volume Migration: unencrypted → encrypted](docs/operations/migrate-to-encrypted.md) | Volume migration to LUKS-encrypted StorageClass |
 | [Image Updates](docs/operations/update-images.md) | Manual image update, crictl pre-pull for RWO PVCs |
 
 ---
