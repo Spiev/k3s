@@ -1,6 +1,6 @@
 # FreshRSS deployen & migrieren
 
-Voraussetzung: [04 — Longhorn](../platform/04-longhorn.md) abgeschlossen.
+Voraussetzung: [02 — k3s installieren](../platform/02-k3s-install.md) abgeschlossen, Cluster läuft.
 
 FreshRSS ist der erste Service der von Docker auf k3s migriert wird. Er hat ein einziges Volume (`/config`) und keine externe Datenbank — ideal zum Einstieg.
 
@@ -40,7 +40,7 @@ kubectl get all -n freshrss
 # Pod sollte nach ~30 Sekunden Running und Ready 1/1 sein
 
 kubectl get pvc -n freshrss
-# STATUS = Bound → Longhorn hat das Volume bereitgestellt
+# STATUS = Bound → local-path hat das Volume bereitgestellt
 
 kubectl get ingress -n freshrss
 # Zeigt die konfigurierte Domain und die Node-IP
@@ -79,7 +79,7 @@ git add apps/freshrss/feeds.opml
 git commit -m "chore(freshrss): add opml feed export pre-migration"
 ```
 
-Die OPML-Datei nach jeder größeren Änderung an den Abonnements aktuell halten — sie dient langfristig als lesbares Backup der Feed-Liste, unabhängig vom Longhorn-Volume.
+Die OPML-Datei nach jeder größeren Änderung an den Abonnements aktuell halten — sie dient langfristig als lesbares Backup der Feed-Liste, unabhängig vom PVC.
 
 **Im Notfall** (Volume verloren, Neustart von Null): FreshRSS neu aufsetzen, OPML importieren → alle Feeds sind sofort wieder da. Gelesener Status und gecachte Artikel wären weg, die Feeds selbst nicht.
 
@@ -92,7 +92,7 @@ Die OPML-Datei nach jeder größeren Änderung an den Abonnements aktuell halten
 ```
 Docker FreshRSS stoppen
   → config-Verzeichnis auf den neuen Raspi kopieren
-    → in das Longhorn-PVC einspielen
+    → in das local-path-PVC einspielen
       → nginx auf neuen Raspi umleiten
         → Docker-Container entfernen
 ```
@@ -232,9 +232,8 @@ kubectl logs -n freshrss -l app=freshrss
 # Ingress greift nicht?
 kubectl describe ingress -n freshrss freshrss
 
-# Longhorn Volume-Status
+# PVC-Status prüfen
 kubectl describe pvc -n freshrss freshrss-config
-# → in der Longhorn UI nachschauen ob das Volume Attached ist
 
 # FreshRSS zeigt falsche URLs (http statt https)?
 # nginx muss X-Forwarded-Proto: https setzen — in proxy-headers.conf prüfen
@@ -242,9 +241,4 @@ kubectl describe pvc -n freshrss freshrss-config
 
 ---
 
-## Weiter
-
-Vor Pi-hole: FreshRSS-Volume auf verschlüsselten Storage migrieren:
-→ [Volume-Migration: unverschlüsselt → verschlüsselt](../operations/migrate-to-encrypted.md)
-
-Danach: [Pi-hole deployen](./pihole.md)
+## Weiter: [Pi-hole deployen](./pihole.md)

@@ -25,8 +25,6 @@ sudo mkdir -p /etc/rancher/k3s
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
 tls-san:
   - k3s.fritz.box
-disable:
-  - local-storage
 cluster-cidr: "10.42.0.0/16,fd42::/56"
 service-cidr: "10.43.0.0/16,fd43::/112"
 EOF
@@ -35,7 +33,6 @@ EOF
 | Parameter | Wert | Bedeutung |
 |---|---|---|
 | `tls-san` | `k3s.fritz.box` | Hostname im TLS-Zertifikat — ermöglicht Remote-kubectl |
-| `disable: local-storage` | — | Verhindert zwei gleichzeitige Default-StorageClasses (Longhorn übernimmt) |
 | `cluster-cidr` | `10.42.0.0/16,fd42::/56` | Pod-Netz (IPv4 + IPv6) |
 | `service-cidr` | `10.43.0.0/16,fd43::/112` | Service-ClusterIPs (IPv4 + IPv6) |
 
@@ -168,7 +165,7 @@ Secret
   └── für Passwörter, API-Keys etc. → später: Sealed Secrets
 
 PersistentVolume (PV)
-  └── tatsächlicher Speicher (von Longhorn oder anderem Provisioner bereitgestellt)
+  └── tatsächlicher Speicher (von local-path-provisioner bereitgestellt)
 
 PersistentVolumeClaim (PVC)
   └── Pods "beantragen" Speicher über PVCs
@@ -340,4 +337,4 @@ kubectl top nodes
 
 ---
 
-## Weiter: [04 — Longhorn Storage](./04-longhorn.md)
+## Weiter: [03 — MetalLB](./03-metallb.md)
