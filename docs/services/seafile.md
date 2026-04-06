@@ -20,7 +20,7 @@ Seafile ist der zweite Migrationskanditat und deutlich komplexer als FreshRSS: z
                               ┌─────────────────┘
                               ▼
                     [PVC: mariadb-data]   [PVC: seafile-data]
-                    (Longhorn)            (Longhorn)
+                    (local-path)          (local-path)
 ```
 
 `seafile-mc` (das offizielle Image) enthält Seafile, Seahub **und** memcached in einem Container. Dadurch bleibt es bei zwei Pods statt vier.

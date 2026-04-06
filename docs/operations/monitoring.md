@@ -1,6 +1,6 @@
 # Monitoring
 
-Voraussetzung: [04 — Longhorn Storage](../platform/04-longhorn.md) abgeschlossen, Cluster läuft stabil.
+Voraussetzung: Cluster läuft stabil.
 
 ## Strategie
 
@@ -202,11 +202,11 @@ helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack \
 ```
 
 Die Values-Datei `infrastructure/monitoring/values.yaml` konfiguriert:
-- Prometheus: 10 Gi, `longhorn-retain`, 30 Tage Retention
-- Grafana: 2 Gi, `longhorn-retain`
-- Alertmanager: 1 Gi, `longhorn-retain`
+- Prometheus: 10 Gi, `local-path`, 30 Tage Retention
+- Grafana: 2 Gi, `local-path`
+- Alertmanager: 1 Gi, `local-path`
 
-Longhorn legt die PVCs automatisch an — keine separate PVC-YAML nötig.
+local-path legt die PVCs automatisch an — keine separate PVC-YAML nötig.
 
 ---
 

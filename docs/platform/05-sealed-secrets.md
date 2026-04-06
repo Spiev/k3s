@@ -1,6 +1,6 @@
 # 05 — Sealed Secrets einrichten
 
-Voraussetzung: [04 — Longhorn](./04-longhorn.md) abgeschlossen.
+Voraussetzung: [03 — MetalLB](./03-metallb.md) abgeschlossen, Cluster läuft.
 
 Sealed Secrets löst zwei Probleme gleichzeitig:
 - **Öffentliches Repo**: verschlüsselte Secrets können sicher committed werden — nur der Cluster kann sie entschlüsseln

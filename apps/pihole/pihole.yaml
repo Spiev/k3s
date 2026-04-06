@@ -9,14 +9,14 @@ metadata:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: pihole-config
+  name: pihole-config-new
   namespace: pihole
   labels:
     app: pihole
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: longhorn-retain-encrypted
+  storageClassName: local-path
   resources:
     requests:
       storage: 1Gi
@@ -86,7 +86,7 @@ spec:
       volumes:
         - name: config
           persistentVolumeClaim:
-            claimName: pihole-config
+            claimName: pihole-config-new
 ---
 # DNS-Service: LoadBalancer mit Dual-Stack → Pi-hole bekommt IPv4 + IPv6 vom Node
 apiVersion: v1

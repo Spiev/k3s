@@ -9,7 +9,7 @@
 | Raspi 5 "neu" | k3s Server-Node (Control Plane) | 8 GB | 256 GB | k3s |
 | Raspi 5 "alt" | k3s Agent-Node (Workloads + Storage) | 8 GB | 2 TB | Docker → k3s (nach Migration) |
 
-Beide Nodes sind baugleich (Raspberry Pi 5, 8 GB RAM). Der alte Raspi hat dank 2 TB NVMe deutlich mehr Speicher — er wird der primäre Longhorn-Speicherknoten für große Volumes (Immich, Paperless).
+Beide Nodes sind baugleich (Raspberry Pi 5, 8 GB RAM). Der alte Raspi hat dank 2 TB NVMe deutlich mehr Speicher — er wird der primäre Workload-Node für große Volumes (Immich, Paperless).
 
 ---
 
@@ -33,13 +33,11 @@ Beide Nodes sind baugleich (Raspberry Pi 5, 8 GB RAM). Der alte Raspi hat dank 2
                │  │  Control Plane      │  │  [freshrss]          │   │
                │  │  Traefik (Ingress)  │  │  [seafile]           │   │
                │  │  CoreDNS            │  │  [immich]            │   │
-               │  │  Longhorn Engine    │  │  [paperless]         │   │
+               │  │  Pi-hole (DNS)      │  │  [paperless]         │   │
                │  │                     │  │  [homeassistant] ←┐  │   │
                │  └─────────────────────┘  │  [mosquitto]      │  │   │
                │                           └───────────────────┼──┘   │
                │                                               │      │
-               │         Longhorn repliziert Volumes           │      │
-               │         zwischen beiden Nodes  ←──────────────┘      │
                │                                                      │
                └──────────────────────────────────────────────────────┘
                                                     │
@@ -72,7 +70,7 @@ Browser: https://freshrss.example.com
     Pod "freshrss-xxxx"
          │
          ▼
-    PVC → Longhorn Volume → NVMe
+    PVC → local-path Volume → NVMe
 ```
 
 Zwei Proxy-Hops, aber saubere Aufgabenteilung: nginx = externe Sicherheitsschicht, Traefik = internes Kubernetes-Routing. Kein DNS-Wechsel nötig, beide Raspis laufen unabhängig.
@@ -89,7 +87,7 @@ Browser: https://freshrss.example.com
          │  TLS via cert-manager (Let's Encrypt)
          │  Rate Limiting + Security Headers via Traefik Middleware
          ▼
-    Service → Pod → Longhorn → NVMe
+    Service → Pod → local-path → NVMe
 ```
 
 Traefik übernimmt dann alles was nginx heute tut. Fail2ban kann als DaemonSet im Cluster laufen oder entfällt zugunsten von Traefik-nativen Rate Limits.
@@ -108,7 +106,7 @@ Namespace
   │     └── Pod(s)        ← der eigentliche Container
   ├── Service             ← stabiler interner Netzwerkendpunkt
   ├── PersistentVolumeClaim (PVC)  ← "Ich brauche X GB Storage"
-  │     └── PersistentVolume (PV)  ← von Longhorn bereitgestellt
+  │     └── PersistentVolume (PV)  ← von local-path bereitgestellt
   ├── ConfigMap           ← Konfiguration (kein Secret)
   ├── SealedSecret        ← verschlüsseltes Secret (im Git speicherbar)
   └── IngressRoute        ← "Diese Domain geht zu diesem Service"
@@ -119,7 +117,7 @@ Beispiel FreshRSS (einfachster Fall, 1 Container):
 Namespace: freshrss
   ├── Deployment: freshrss (1 Pod, Image: lscr.io/linuxserver/freshrss)
   ├── Service: freshrss (ClusterIP → Port 80)
-  ├── PVC: freshrss-config (5Gi, Longhorn)
+  ├── PVC: freshrss-config (5Gi, local-path)
   └── IngressRoute: freshrss.example.com → Service freshrss
 ```
 
@@ -139,43 +137,36 @@ Namespace: seafile
 
 ---
 
-## Storage: Longhorn im Detail
+## Storage: local-path
+
+k3s bringt den `local-path-provisioner` built-in mit. Daten liegen direkt auf dem Node-Filesystem:
 
 ```
 Pod schreibt Daten
        │
        ▼
   PVC (Anforderung: "5Gi, ReadWriteOnce")
-       │  Longhorn erfüllt die Anforderung
+       │  local-path erfüllt die Anforderung
        ▼
-  Longhorn Volume
-  ┌───────────────────────────────────────────────────┐
-  │  Engine (koordiniert Replicas)                    │
-  │  ┌─────────────┐                                  │
-  │  │  Replica 1  │ → 256 GB NVMe (Server-Node)      │  ← jetzt
-  │  └─────────────┘                                  │
-  │  ┌─────────────┐                                  │
-  │  │  Replica 2  │ → 2 TB NVMe  (Agent-Node)        │  ← nach Migration
-  │  └─────────────┘                                  │
-  └───────────────────────────────────────────────────┘
+  /var/lib/rancher/k3s/storage/<pvc-name>/   ← direkt auf der NVMe
 ```
 
-Im Single-Node-Betrieb: `numberOfReplicas: 1` — Daten liegen einmal auf der 256 GB NVMe.
-Sobald Agent-Node joined: `numberOfReplicas: 2` → automatische Replikation auf 2 TB NVMe.
+PVCs erhalten automatisch eine `nodeAffinity` auf den Node, auf dem sie erstellt wurden. Das erzwingt technisch, was bei diesem Setup sowieso gewollt ist: Services sind fest einem Node zugeordnet (wegen Hardware oder Speicherplatz).
 
 **Storage-Planung mit 2 Nodes:**
-Longhorn kann über Node-Tags steuern wo Volumes angelegt werden. Große Volumes (Immich-Bibliothek, Paperless-Dokumente) wandern bevorzugt auf den Agent-Node mit 2 TB. Kleine Volumes (FreshRSS, Seafile) können überall liegen.
+Große Volumes (Immich-Bibliothek, Paperless-Dokumente) kommen auf den Agent-Node mit 2 TB NVMe — via explizites `nodeSelector` im Deployment. Kleine Volumes (FreshRSS, Seafile) auf den Server-Node.
 
 → Migrationsstrategie für Immich (1,5 TB Bibliothek): [`docs/services/immich.md`](services/immich.md)
 
-**Backup-Strategie (Single-Node):**
+**Backup-Strategie:**
 ```
-Longhorn Volume
-       │  Snapshot
+/var/lib/rancher/k3s/storage/<pvc-name>/
+       │  direkt lesbar (wie Docker-Volumes)
        ▼
-  Longhorn Backup → S3-kompatibles Ziel (z.B. Backblaze B2)
-                    oder Restic → externe HDD (wie docker-runtime)
+  Restic → Hetzner S3
 ```
+
+→ Entscheidung gegen Longhorn: [`docs/decisions/storage.md`](decisions/storage.md)
 
 ---
 
@@ -246,7 +237,7 @@ Beide Pis sind baugleich (Raspi 5, 8 GB RAM) — eine vollständige Migration au
 | CoreDNS | DNS | Cluster-internes DNS | k3s built-in |
 | Flannel | CNI | Pod-Netzwerk | k3s built-in |
 | MetalLB | Load Balancer | Externe IPs für Services auf Bare Metal (ersetzt k3s ServiceLB) | Installiert via kubectl |
-| Longhorn | Storage | Persistente Volumes | Installiert via kubectl |
+| local-path-provisioner | Storage | Persistente Volumes direkt auf dem Node-Filesystem | k3s built-in |
 | cert-manager | Controller | Let's Encrypt TLS — erst nötig wenn Traefik nginx ablöst | Später |
 | Flux CD | GitOps | Automatisches Deployment | Installiert via flux CLI |
 | Sealed Secrets | Controller | Secret-Verschlüsselung | Installiert via kubectl |
