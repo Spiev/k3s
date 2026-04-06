@@ -15,7 +15,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: longhorn-retain-encrypted
+  storageClassName: local-path
   resources:
     requests:
       storage: 10Gi    # Metadaten-DB: kleiner als Blob-Storage
@@ -30,7 +30,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: longhorn-retain-encrypted
+  storageClassName: local-path
   resources:
     requests:
       storage: 50Gi    # Datei-Blobs: großzügig bemessen

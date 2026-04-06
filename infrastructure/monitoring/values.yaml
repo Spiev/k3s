@@ -15,7 +15,7 @@ grafana:
 
   persistence:
     enabled: true
-    storageClassName: longhorn-retain-encrypted
+    storageClassName: local-path
     size: 2Gi
 
 prometheus:
@@ -26,7 +26,7 @@ prometheus:
     storageSpec:
       volumeClaimTemplate:
         spec:
-          storageClassName: longhorn-retain-encrypted
+          storageClassName: local-path
           accessModes:
             - ReadWriteOnce
           resources:
@@ -38,7 +38,7 @@ alertmanager:
     storage:
       volumeClaimTemplate:
         spec:
-          storageClassName: longhorn-retain-encrypted
+          storageClassName: local-path
           accessModes:
             - ReadWriteOnce
           resources:
