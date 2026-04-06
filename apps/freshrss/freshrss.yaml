@@ -9,14 +9,14 @@ metadata:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: freshrss-config-enc
+  name: freshrss-config-new
   namespace: freshrss
   labels:
     app: freshrss
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: longhorn-retain-encrypted
+  storageClassName: local-path
   resources:
     requests:
       storage: 5Gi
@@ -64,7 +64,7 @@ spec:
       volumes:
         - name: config
           persistentVolumeClaim:
-            claimName: freshrss-config-enc
+            claimName: freshrss-config-new
 ---
 apiVersion: v1
 kind: Service
