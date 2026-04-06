@@ -1,31 +1,31 @@
-# Renovate (automatische Dependency-Updates)
+# Renovate (automated dependency updates)
 
-Renovate überwacht alle gepinnten Versionen im Repo (Container-Images, GitHub Actions) und erstellt automatisch PRs wenn Updates verfügbar sind. Minor- und Patch-Updates werden automatisch gemergt, Major-Updates erfordern manuelle Bestätigung.
+Renovate monitors all pinned versions in the repo (container images, GitHub Actions) and automatically creates PRs when updates are available. Minor and patch updates are auto-merged; major updates require manual confirmation.
 
 ---
 
 ## Setup: GitHub App
 
-Renovate läuft als selbst-gehostete GitHub App (via `renovatebot/github-action`). Kein Mend-Account nötig.
+Renovate runs as a self-hosted GitHub App (via `renovatebot/github-action`). No Mend account required.
 
-**GitHub App anlegen** unter Settings → Developer Settings → GitHub Apps → New GitHub App:
+**Create a GitHub App** under Settings → Developer Settings → GitHub Apps → New GitHub App:
 
-| Feld | Wert |
+| Field | Value |
 |---|---|
 | Name | `Renovate - <repo-name>` |
-| Homepage URL | URL des Repos |
-| Webhooks | deaktivieren |
+| Homepage URL | URL of the repo |
+| Webhooks | disable |
 | **Repository permissions** | Contents: Read & Write, Issues: Read & Write, Pull requests: Read & Write, Workflows: Read & Write |
-| **Repository permissions** | Dependabot alerts: Read-only (`vulnerability_alerts` intern) |
+| **Repository permissions** | Dependabot alerts: Read-only (`vulnerability_alerts` internally) |
 | **Where can this be installed** | Only on this account |
 
-Nach dem Anlegen: App auf dem Repo installieren (Settings → Applications → Configure).
+After creation: install the app on the repo (Settings → Applications → Configure).
 
-**Secrets im Repo** (Settings → Secrets → Actions):
-- `RENOVATE_APP_ID` — App-ID (auf der App-Seite unter "About")
-- `RENOVATE_APP_PRIVATE_KEY` — Private Key generieren und vollständig (inkl. Header/Footer) als Secret speichern
+**Secrets in the repo** (Settings → Secrets → Actions):
+- `RENOVATE_APP_ID` — App ID (on the app page under "About")
+- `RENOVATE_APP_PRIVATE_KEY` — generate a private key and save it in full (including header/footer) as a secret
 
-> **Wichtig:** Neue Berechtigungen einer bestehenden App werden erst aktiv nachdem die Installation neu genehmigt wurde: Settings → Applications → deine App → "Review and accept new permissions".
+> **Important:** New permissions on an existing app only take effect after the installation is re-approved: Settings → Applications → your app → "Review and accept new permissions".
 
 ---
 
@@ -64,13 +64,13 @@ jobs:
           RENOVATE_AUTODISCOVER: "true"
 ```
 
-> **Kein `actions/checkout`** — Renovate erledigt alle git-Operationen selbst über den API-Token.
+> **No `actions/checkout`** — Renovate handles all git operations itself via the API token.
 >
-> **Kein `schedule` in `renovate.json`** — der interne Renovate-Schedule würde auch `workflow_dispatch`-Runs blockieren. Die Cron-Zeit im Workflow-File reicht.
+> **No `schedule` in `renovate.json`** — the internal Renovate schedule would also block `workflow_dispatch` runs. The cron time in the workflow file is sufficient.
 
 ---
 
-## Konfiguration
+## Configuration
 
 `.github/renovate.json`:
 
@@ -104,40 +104,40 @@ jobs:
 }
 ```
 
-### Wichtige Konfigurationsentscheidungen
+### Key configuration decisions
 
-**`enabledManagers` mit explizitem `fileMatch`**
+**`enabledManagers` with explicit `fileMatch`**
 
-Der `kubernetes`-Manager hat standardmäßig `fileMatch: []` — er scannt ohne explizite Konfiguration keine einzige Datei. `enabledManagers` aktiviert den Manager nur; wo er sucht, muss immer explizit angegeben werden.
+The `kubernetes` manager has `fileMatch: []` by default — without explicit configuration it does not scan a single file. `enabledManagers` only activates the manager; where it looks must always be specified explicitly.
 
-**LinuxServer.io: regex statt loose versioning**
+**LinuxServer.io: regex instead of loose versioning**
 
-LinuxServer.io-Images (`lscr.io/linuxserver/*`) verwenden das Format `1.28.1-ls299`. Mit `loose` versioning behandelt Renovate den `-ls299`-Suffix als semver-Pre-release und schlägt vor, auf den "stabilen" Bare-Tag `1.28.1` zu wechseln — falsch. Das `regex`-Pattern extrahiert `major`, `minor`, `patch` und `build` (die `ls`-Nummer) separat, sodass `ls299 > ls298` korrekt verglichen wird.
+LinuxServer.io images (`lscr.io/linuxserver/*`) use the format `1.28.1-ls299`. With `loose` versioning, Renovate treats the `-ls299` suffix as a semver pre-release and suggests switching to the "stable" bare tag `1.28.1` — which is wrong. The `regex` pattern extracts `major`, `minor`, `patch`, and `build` (the `ls` number) separately, so `ls299 > ls298` is compared correctly.
 
 ---
 
 ## Digest Pinning
 
-Mit `"pinDigests": true` ergänzt Renovate jeden Image-Tag um den SHA256-Digest:
+With `"pinDigests": true`, Renovate appends the SHA256 digest to every image tag:
 
 ```yaml
-# vorher
+# before
 image: lscr.io/linuxserver/freshrss:1.28.1-ls299
 
-# nachher (Renovate-PR)
+# after (Renovate PR)
 image: lscr.io/linuxserver/freshrss:1.28.1-ls299@sha256:3f2a1b...
 ```
 
-Kubernetes verwendet dann ausschließlich den Digest zum Pullen — der Tag bleibt nur zur Lesbarkeit erhalten. Das schützt gegen Tag-Mutability: ein Registry-Betreiber könnte theoretisch denselben Tag auf ein anderes Image pushen, der Digest bleibt dagegen unveränderlich.
+Kubernetes then uses exclusively the digest to pull — the tag is kept only for readability. This protects against tag mutability: a registry operator could theoretically push a different image to the same tag, while the digest remains immutable.
 
-Renovate trackt zwei Update-Typen:
+Renovate tracks two update types:
 
-| Update-Typ | Wann | Beispiel |
+| Update type | When | Example |
 |---|---|---|
-| `patch` / `minor` | Neuer Tag verfügbar | `ls299` → `ls300` |
-| `digest` | Neuer SHA256 beim selben Tag | Base-Image-Patch ohne neuen Tag |
+| `patch` / `minor` | New tag available | `ls299` → `ls300` |
+| `digest` | New SHA256 for the same tag | Base image patch without a new tag |
 
-**Wichtig:** Digest-Updates haben einen eigenen `updateType: "digest"` — dieser muss explizit in der Automerge-Regel stehen, sonst werden Digest-PRs nicht automatisch gemergt:
+**Important:** Digest updates have their own `updateType: "digest"` — this must be explicitly listed in the automerge rule, otherwise digest PRs are not auto-merged:
 
 ```json
 "matchUpdateTypes": ["minor", "patch", "digest"]
@@ -147,7 +147,7 @@ Renovate trackt zwei Update-Typen:
 
 ## Debugging
 
-Wenn Renovate keinen PR erstellt, zuerst Debug-Logging aktivieren (temporär):
+If Renovate does not create a PR, first enable debug logging (temporarily):
 
 ```yaml
 env:
@@ -155,25 +155,25 @@ env:
   LOG_LEVEL: "debug"
 ```
 
-Im Log nach folgenden Stellen suchen:
+Look for these entries in the log:
 
-| Was suchen | Bedeutung |
+| What to search for | Meaning |
 |---|---|
-| `"managers": {...}` | Zeigt welche Manager liefen und wie viele Dateien/Deps gefunden wurden |
-| `Package not scheduled` | Interner Schedule blockiert den Run → Schedule aus `renovate.json` entfernen |
-| `newVersion` / `newValue` | Zeigt das vorgeschlagene Update — prüfen ob es korrekt ist |
-| `kubernetes` fehlt in managers | `fileMatch` fehlt oder falsch konfiguriert |
+| `"managers": {...}` | Shows which managers ran and how many files/deps were found |
+| `Package not scheduled` | Internal schedule is blocking the run → remove schedule from `renovate.json` |
+| `newVersion` / `newValue` | Shows the proposed update — verify it is correct |
+| `kubernetes` missing in managers | `fileMatch` is missing or misconfigured |
 
-Nach dem Debugging `LOG_LEVEL: "debug"` wieder entfernen.
+Remove `LOG_LEVEL: "debug"` after debugging.
 
 ---
 
-## Pitfalls-Übersicht
+## Pitfalls overview
 
-| Problem | Ursache | Fix |
+| Problem | Cause | Fix |
 |---|---|---|
-| "No repositories found" | `RENOVATE_AUTODISCOVER` fehlt | `RENOVATE_AUTODISCOVER: "true"` setzen |
-| Kubernetes-Manifests werden nicht gescannt | `fileMatch: []` default | Explizites `fileMatch` in `kubernetes`-Config |
-| Falsches Update (Suffix wird entfernt) | `loose` versioning für LinuxServer.io | `regex` versioning mit `ls`-Pattern |
-| `workflow_dispatch` erstellt keine PRs | Schedule in `renovate.json` | Schedule aus `renovate.json` entfernen |
-| GitHub App Permissions greifen nicht | Neue Permissions nicht re-approved | App-Installation neu genehmigen |
+| "No repositories found" | `RENOVATE_AUTODISCOVER` missing | Set `RENOVATE_AUTODISCOVER: "true"` |
+| Kubernetes manifests not scanned | `fileMatch: []` default | Explicit `fileMatch` in `kubernetes` config |
+| Wrong update (suffix removed) | `loose` versioning for LinuxServer.io | `regex` versioning with `ls` pattern |
+| `workflow_dispatch` creates no PRs | Schedule in `renovate.json` | Remove schedule from `renovate.json` |
+| GitHub App permissions not working | New permissions not re-approved | Re-approve the app installation |
