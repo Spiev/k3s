@@ -1,51 +1,51 @@
 # Backup & Restore
 
-## Überblick
+## Overview
 
-Einheitliche Backup-Strategie via Restic für alle Services:
+Unified backup strategy via Restic for all services:
 
-| Strategie | Tool | Services | Restore-Granularität |
+| Strategy | Tool | Services | Restore granularity |
 |---|---|---|---|
-| Datei-Backup | Restic → Hetzner S3 | Alle Services | einzelne Dateien, ganzer Service |
+| File backup | Restic → Hetzner S3 | All services | individual files, entire service |
 
-`local-path`-Volumes liegen direkt auf dem Node-Filesystem (`/var/lib/rancher/k3s/storage/<pvc-name>/`) — Restic kann sie direkt sichern ohne Snapshot-Mechanismus.
+`local-path` volumes live directly on the node filesystem (`/var/lib/rancher/k3s/storage/<pvc-name>/`) — Restic can back them up directly without a snapshot mechanism.
 
 ---
 
-## Kritische Secrets außerhalb des Clusters
+## Critical secrets outside the cluster
 
-Diese Werte können **nicht** aus dem Cluster wiederhergestellt werden wenn etcd weg ist. Im Passwortmanager aufbewahren — unabhängig vom Cluster-Zustand:
+These values **cannot** be recovered from the cluster if etcd is gone. Store them in the password manager — independent of cluster state:
 
-| Secret | Exportieren | Aufbewahren |
+| Secret | How to export | Where to store |
 |---|---|---|
-| Sealed Secrets Key | `kubectl get secret -n kube-system -l sealedsecrets.bitnami.com/sealed-secrets-key -o yaml > sealed-secrets-key.yaml` | Passwortmanager |
-| Hetzner S3 Credentials | Hetzner Console | Passwortmanager |
-| Restic Repo-Passwort (S3) | aus `.restic.env` | Passwortmanager |
+| Sealed Secrets key | `kubectl get secret -n kube-system -l sealedsecrets.bitnami.com/sealed-secrets-key -o yaml > sealed-secrets-key.yaml` | Password manager |
+| Hetzner S3 credentials | Hetzner Console | Password manager |
+| Restic repo password (S3) | from `.restic.env` | Password manager |
 
-> `sealed-secrets-key.yaml` **nie ins Repo committen**.
+> **Never commit** `sealed-secrets-key.yaml` to the repo.
 
 ---
 
-## Restic Backup (alle Services)
+## Restic Backup (all services)
 
-### Funktionsweise
+### How it works
 
-Das Backup-Script läuft als Cron-Job direkt auf dem Pi-Node und:
-1. Verbindet sich per `kubectl exec` mit dem Datenbank-Pod und erstellt einen `pg_dumpall`-Dump
-2. Kopiert Applikationsdaten per `kubectl cp` aus dem App-Pod
-3. Sichert alles mit Restic in den Hetzner S3 Bucket
-4. Meldet Status pro Service via MQTT an Home Assistant
+The backup script runs as a cron job directly on the Pi node and:
+1. Connects via `kubectl exec` to the database pod and creates a `pg_dumpall` dump
+2. Copies application data via `kubectl cp` from the app pod
+3. Backs everything up with Restic to the Hetzner S3 bucket
+4. Reports status per service via MQTT to Home Assistant
 
-Jeder Service bekommt einen eigenen HA-Sensor (`backup_paperless`, `backup_teslamate`, `backup_overall`).
+Each service gets its own HA sensor (`backup_paperless`, `backup_teslamate`, `backup_overall`).
 
-### Einrichten
+### Setup
 
-**Voraussetzung:** Hetzner S3 Bucket vorhanden (manuell in der Hetzner Cloud Console anlegen).
+**Prerequisite:** Hetzner S3 bucket exists (create manually in the Hetzner Cloud Console).
 
-**Restic auf dem Pi-Node installieren:**
+**Install Restic on the Pi node:**
 
 ```bash
-# Aktuelle Version prüfen: https://github.com/restic/restic/releases
+# Check current version: https://github.com/restic/restic/releases
 RESTIC_VERSION="0.17.3"
 wget "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_arm64.bz2"
 bunzip2 "restic_${RESTIC_VERSION}_linux_arm64.bz2"
@@ -54,13 +54,13 @@ sudo chmod +x /usr/local/bin/restic
 restic version
 ```
 
-**mosquitto-clients installieren** (für MQTT-Benachrichtigungen):
+**Install mosquitto-clients** (for MQTT notifications):
 
 ```bash
 sudo apt install mosquitto-clients
 ```
 
-**Script einrichten:**
+**Set up the script:**
 
 ```bash
 cd ~/workspace/priv/k3s/scripts
@@ -70,53 +70,53 @@ chmod 700 backup.sh
 
 cp .restic.env.example .restic.env
 chmod 600 .restic.env
-# .restic.env mit eigenen Werten befüllen
+# Fill in .restic.env with your values
 
 cp .mqtt_credentials.example .mqtt_credentials
 chmod 600 .mqtt_credentials
-# .mqtt_credentials mit MQTT_USER und MQTT_PASSWORD befüllen
+# Fill in .mqtt_credentials with MQTT_USER and MQTT_PASSWORD
 ```
 
-**Restic S3-Repo initialisieren** (einmalig):
+**Initialise Restic S3 repo** (once):
 
 ```bash
 source .restic.env
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" init
 ```
 
-**Cron-Job einrichten:**
+**Set up cron job:**
 
 ```bash
 crontab -e
 ```
 
-Eintrag:
+Entry:
 ```
 30 2 * * * /home/stefan/workspace/priv/k3s/scripts/backup.sh >> /var/log/k3s-backup.log 2>&1
 ```
 
-**Ersten Backup-Lauf testen:**
+**Test the first backup run:**
 
 ```bash
 ~/workspace/priv/k3s/scripts/backup.sh
 ```
 
-Prüfen ob Snapshots vorhanden:
+Verify snapshots exist:
 ```bash
 source ~/workspace/priv/k3s/scripts/.restic.env
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots
 ```
 
-### Neuen Service hinzufügen
+### Adding a new service
 
-Wenn ein weiterer Service zu k3s migriert wird:
-1. In `scripts/.restic.env` den Service zu `BACKUP_SERVICES` hinzufügen
-2. In `scripts/backup.sh` eine `backup_<service>()`-Funktion ergänzen (analog zu `backup_paperless`)
-3. Die Funktion im `case`-Block unten registrieren
+When another service is migrated to k3s:
+1. Add the service to `BACKUP_SERVICES` in `scripts/.restic.env`
+2. Add a `backup_<service>()` function in `scripts/backup.sh` (analogous to `backup_paperless`)
+3. Register the function in the `case` block below
 
-### Home Assistant Dashboard
+### Home Assistant dashboard
 
-Für jeden Service und den Overall-Status erscheint automatisch ein Sensor in HA (via MQTT Discovery). Beispiel-Card für das Dashboard:
+A sensor for each service and the overall status appears automatically in HA (via MQTT Discovery). Example card for the dashboard:
 
 ```yaml
 type: entities
@@ -131,39 +131,39 @@ entities:
 
 ## Restore — Restic
 
-### Verfügbare Snapshots anzeigen
+### List available snapshots
 
 ```bash
 source ~/workspace/priv/k3s/scripts/.restic.env
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots
 ```
 
-Mit Filter nach Service:
+Filter by service:
 ```bash
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots --tag paperless
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots --tag teslamate
 ```
 
-### Einzelne Datei / Verzeichnis wiederherstellen
+### Restore a single file / directory
 
 ```bash
-# Snapshot-ID aus `restic snapshots` ermitteln, z.B. abc12345
+# Get snapshot ID from `restic snapshots`, e.g. abc12345
 SNAPSHOT="abc12345"
 
-# Inhalt eines Snapshots auflisten
+# List contents of a snapshot
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
   ls "$SNAPSHOT"
 
-# Einzelne Datei / Verzeichnis in /tmp restoren
+# Restore a single file / directory to /tmp
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
   restore "$SNAPSHOT" \
-  --include "/tmp/k3s-backup/paperless/media/documents/originals/2025/01/rechnung.pdf" \
+  --include "/tmp/k3s-backup/paperless/media/documents/originals/2025/01/invoice.pdf" \
   --target /tmp/restore
 ```
 
-### Ganzen Service wiederherstellen (Cluster läuft)
+### Restore an entire service (cluster running)
 
-**Schritt 1 — Staging-Verzeichnis aus Restic wiederherstellen:**
+**Step 1 — Restore staging directory from Restic:**
 
 ```bash
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
@@ -172,109 +172,109 @@ RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
   --target /tmp/restore
 ```
 
-Das staging-Verzeichnis liegt unter `/tmp/restore/tmp/k3s-backup/paperless/`.
+The staging directory is at `/tmp/restore/tmp/k3s-backup/paperless/`.
 
-**Schritt 2 — DB-Dump in den laufenden DB-Pod einspielen:**
+**Step 2 — Import DB dump into the running DB pod:**
 
 ```bash
-# Service stoppen (verhindert Schreibkonflikte während des Restores)
+# Stop service (prevents write conflicts during restore)
 kubectl scale deployment paperless -n paperless --replicas=0
 kubectl scale deployment paperless-db -n paperless --replicas=0
 
-# Warten bis Pods weg sind
+# Wait until pods are gone
 kubectl wait --for=delete pod -n paperless -l app=paperless --timeout=60s
 
-# DB-Pod wieder starten (ohne App)
+# Start DB pod again (without app)
 kubectl scale deployment paperless-db -n paperless --replicas=1
 kubectl wait --for=condition=Ready pod -n paperless -l app=paperless-db --timeout=60s
 
-# Dump einspielen
+# Import dump
 DB_POD=$(kubectl get pod -n paperless -l app=paperless-db -o jsonpath='{.items[0].metadata.name}')
 zcat /tmp/restore/tmp/k3s-backup/paperless/paperless_db_*.sql.gz \
   | kubectl exec -i -n paperless "$DB_POD" -- psql -U paperless
 ```
 
-**Schritt 3 — Media-Dateien zurückkopieren:**
+**Step 3 — Copy media files back:**
 
 ```bash
-# App-Pod starten
+# Start app pod
 kubectl scale deployment paperless -n paperless --replicas=1
 kubectl wait --for=condition=Ready pod -n paperless -l app=paperless --timeout=90s
 
 APP_POD=$(kubectl get pod -n paperless -l app=paperless -o jsonpath='{.items[0].metadata.name}')
 
-# Media-Verzeichnis zurückkopieren
+# Copy media directory back
 kubectl cp /tmp/restore/tmp/k3s-backup/paperless/media \
   "paperless/$APP_POD:/usr/src/paperless/media"
 ```
 
-**Schritt 4 — Verifizieren:**
+**Step 4 — Verify:**
 
-Im Paperless-UI prüfen ob Dokumente und Tags korrekt sind.
+Check documents and tags in the Paperless UI.
 
 ```bash
-# Aufräumen
+# Clean up
 rm -rf /tmp/restore
 ```
 
-### Ganzen Service wiederherstellen (nach Cluster-Neuinstall)
+### Restore an entire service (after cluster reinstall)
 
-Reihenfolge nach Neuinstall: **Sealed Secrets → Services → Restic Restore**
+Order after reinstall: **Sealed Secrets → Services → Restic Restore**
 
-1. Sealed Secrets Controller + Key einspielen
-2. Service-Manifeste deployen: `kubectl apply -f apps/paperless/`
-3. Warten bis Pods laufen
-4. Restic Restore wie oben (Schritt 1–4)
+1. Install Sealed Secrets controller + import key
+2. Deploy service manifests: `kubectl apply -f apps/paperless/`
+3. Wait until pods are running
+4. Restic restore as above (Steps 1–4)
 
 ---
 
 ## Restore — Restic (FreshRSS, Pi-hole)
 
-FreshRSS und Pi-hole haben kein Datenbankprozess — ihre Daten sind Konfigurationsdateien auf dem local-path-Volume. Restore entspricht dem Restic-Restore oben, analog zu Paperless.
+FreshRSS and Pi-hole have no database process — their data is configuration files on the local-path volume. Restore follows the same Restic restore process as above, analogous to Paperless.
 
-### FreshRSS wiederherstellen (Cluster läuft)
+### Restore FreshRSS (cluster running)
 
 ```bash
-# 1. Deployment stoppen
+# 1. Stop deployment
 kubectl scale deployment freshrss -n freshrss --replicas=0
 
-# 2. Restic-Snapshot restoren
+# 2. Restore Restic snapshot
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
   restore latest --tag freshrss --target /tmp/restore
 
-# 3. Daten zurückkopieren
+# 3. Copy data back
 kubectl cp /tmp/restore/var/lib/rancher/k3s/storage/freshrss-config/. \
   freshrss/$(kubectl get pod -n freshrss -l app=freshrss -o jsonpath='{.items[0].metadata.name}'):/config/
 
-# 4. Deployment starten und verifizieren
+# 4. Start deployment and verify
 kubectl scale deployment freshrss -n freshrss --replicas=1
 rm -rf /tmp/restore
 ```
 
-### Nach Cluster-Neuinstall
+### After cluster reinstall
 
-Reihenfolge: **Sealed Secrets → Services → Restic Restore**
+Order: **Sealed Secrets → Services → Restic Restore**
 
-1. Sealed Secrets Controller + Key einspielen
-2. Service-Manifeste deployen: `kubectl apply -f apps/freshrss/`
-3. Restic Restore wie oben
+1. Install Sealed Secrets controller + import key
+2. Deploy service manifests: `kubectl apply -f apps/freshrss/`
+3. Restic restore as above
 
 ---
 
-## Vor einem Cluster-Rebuild
+## Before a cluster rebuild
 
-Checkliste bevor der Cluster abgerissen wird:
+Checklist before tearing down the cluster:
 
 ```bash
-# 1. Restic: letzten erfolgreichen Backup-Run prüfen
+# 1. Restic: check last successful backup run
 source ~/workspace/priv/k3s/scripts/.restic.env
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots --last
 
-# 2. Sealed Secrets Key exportieren
+# 2. Export Sealed Secrets key
 kubectl get secret -n kube-system \
   -l sealedsecrets.bitnami.com/sealed-secrets-key \
   -o yaml > sealed-secrets-key.yaml
-# → Im Passwortmanager sichern, nicht ins Repo committen
+# → store in password manager, do not commit to repo
 ```
 
 ---
@@ -282,36 +282,36 @@ kubectl get secret -n kube-system \
 ## Troubleshooting
 
 ```bash
-# Restic: Snapshot-Details anzeigen
+# Restic: show snapshot details
 source ~/workspace/priv/k3s/scripts/.restic.env
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots --verbose
 
-# Restic: Repository-Integrität prüfen
+# Restic: check repository integrity
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" check
 
-# Restic: Stale Locks entfernen (nach abgebrochenem Backup)
+# Restic: remove stale locks (after aborted backup)
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" unlock
 
-# kubectl exec funktioniert nicht?
-#   → kubectl muss auf dem Node als der Cron-User erreichbar sein
-#   → KUBECONFIG prüfen: echo $KUBECONFIG (oder Default /etc/rancher/k3s/k3s.yaml)
+# kubectl exec not working?
+#   → kubectl must be reachable on the node as the cron user
+#   → check KUBECONFIG: echo $KUBECONFIG (or default /etc/rancher/k3s/k3s.yaml)
 kubectl get pods -n paperless
 
-# Backup-Log einsehen
+# View backup log
 tail -100 /var/log/k3s-backup.log
 ```
 
 ---
 
-## Hinweis: nginx resolver.conf bei Dual-Stack (FreshRSS)
+## Note: nginx resolver.conf with Dual-Stack (FreshRSS)
 
-Das linuxserver.io FreshRSS-Image generiert `/config/nginx/resolver.conf` beim ersten Start. In einem Dual-Stack-Cluster enthält diese Datei IPv6-Adressen ohne eckige Klammern — nginx lehnt das ab:
+The linuxserver.io FreshRSS image generates `/config/nginx/resolver.conf` on first start. In a Dual-Stack cluster this file contains IPv6 addresses without square brackets — nginx rejects them:
 
 ```
 invalid port in resolver "fd43::a"
 ```
 
-Fix — einmalig nach dem ersten Start ausführen:
+Fix — run once after the first start:
 
 ```bash
 kubectl exec -n freshrss <pod-name> -- sh -c \
@@ -319,4 +319,4 @@ kubectl exec -n freshrss <pod-name> -- sh -c \
 kubectl rollout restart deployment freshrss -n freshrss
 ```
 
-Da die Datei in `/config` (persistentes Volume) liegt und nur beim ersten Start generiert wird, ist dieser Fix dauerhaft.
+Since the file is in `/config` (persistent volume) and only generated on first start, this fix is permanent.

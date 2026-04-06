@@ -1,24 +1,24 @@
-# 02 — k3s installieren (Dual-Stack: IPv4 + IPv6)
+# 02 — Install k3s (Dual-Stack: IPv4 + IPv6)
 
-Voraussetzung: [01 — OS Setup](./01-os-setup.md) abgeschlossen. Pi läuft Raspberry Pi OS Bookworm (64-bit) von NVMe, cgroups aktiv, kein Swap.
-
----
-
-## Warum Dual-Stack?
-
-Dual-Stack (IPv4 + IPv6 gleichzeitig) ist eine **Install-Time-Entscheidung** — nachträgliches Aktivieren ist nicht möglich ohne einen Cluster-Neuinstall. Daher wird es von Anfang an konfiguriert.
-
-Dual-Stack ist zwingend erforderlich für:
-
-- **Pi-hole** — soll IPv6-DNS-Queries aus dem LAN entgegennehmen; ohne Dual-Stack bekommt ein LoadBalancer-Service keine IPv6-External-IP
-- **Matter-Hub** (Home Assistant) — Matter setzt IPv6 voraus
-- **Alle modernen Betriebssysteme** — bevorzugen IPv6 wenn verfügbar; DNS-Anfragen kommen regelmäßig über IPv6 an
+Prerequisite: [01 — OS Setup](./01-os-setup.md) completed. Pi is running Raspberry Pi OS Bookworm (64-bit) from NVMe, cgroups active, no swap.
 
 ---
 
-## 1. Konfiguration anlegen
+## Why Dual-Stack?
 
-Vor der Installation die k3s-Konfiguration anlegen — k3s liest sie automatisch beim Start:
+Dual-Stack (IPv4 + IPv6 simultaneously) is an **install-time decision** — enabling it afterwards requires a full cluster reinstall. So it is configured from the start.
+
+Dual-Stack is required for:
+
+- **Pi-hole** — must receive IPv6 DNS queries from the LAN; without Dual-Stack a LoadBalancer service gets no IPv6 External-IP
+- **Matter Hub** (Home Assistant) — Matter requires IPv6
+- **All modern operating systems** — prefer IPv6 when available; DNS queries regularly arrive over IPv6
+
+---
+
+## 1. Create the configuration
+
+Create the k3s configuration before installing — k3s reads it automatically on startup:
 
 ```bash
 sudo mkdir -p /etc/rancher/k3s
@@ -30,37 +30,37 @@ service-cidr: "10.43.0.0/16,fd43::/112"
 EOF
 ```
 
-| Parameter | Wert | Bedeutung |
+| Parameter | Value | Meaning |
 |---|---|---|
-| `tls-san` | `k3s.fritz.box` | Hostname im TLS-Zertifikat — ermöglicht Remote-kubectl |
-| `cluster-cidr` | `10.42.0.0/16,fd42::/56` | Pod-Netz (IPv4 + IPv6) |
-| `service-cidr` | `10.43.0.0/16,fd43::/112` | Service-ClusterIPs (IPv4 + IPv6) |
+| `tls-san` | `k3s.fritz.box` | Hostname in the TLS certificate — enables remote kubectl |
+| `cluster-cidr` | `10.42.0.0/16,fd42::/56` | Pod network (IPv4 + IPv6) |
+| `service-cidr` | `10.43.0.0/16,fd43::/112` | Service ClusterIPs (IPv4 + IPv6) |
 
-Die IPv6-Ranges sind ULA (Unique Local Addresses, `fd00::/8`) — privat, nicht geroutet ins Internet.
+The IPv6 ranges are ULA (Unique Local Addresses, `fd00::/8`) — private, not routed to the internet.
 
 ---
 
-## 2. k3s installieren
+## 2. Install k3s
 
 ```bash
 curl -sfL https://get.k3s.io | sh -
 ```
 
-Das Script:
-- lädt k3s herunter (single binary, enthält alles)
-- richtet einen systemd-Service ein
-- startet den Cluster mit der `config.yaml` aus Schritt 1
+The script:
+- downloads k3s (single binary, contains everything)
+- sets up a systemd service
+- starts the cluster using the `config.yaml` from Step 1
 
-Status prüfen:
+Check status:
 ```bash
 sudo systemctl status k3s
 ```
 
 ---
 
-## 3. kubectl einrichten
+## 3. Set up kubectl
 
-### Auf dem Pi
+### On the Pi
 
 ```bash
 mkdir -p ~/.kube
@@ -68,189 +68,189 @@ sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
 sudo chown $USER:$USER ~/.kube/config
 ```
 
-k3s schreibt die Kubeconfig standardmäßig nach `/etc/rancher/k3s/k3s.yaml` (nur root-lesbar). `KUBECONFIG` explizit setzen — für fish:
+k3s writes the kubeconfig to `/etc/rancher/k3s/k3s.yaml` by default (root-readable only). Set `KUBECONFIG` explicitly — for fish:
 
 ```bash
 echo 'set -gx KUBECONFIG ~/.kube/config' >> ~/.config/fish/config.fish
 source ~/.config/fish/config.fish
 ```
 
-Für bash:
+For bash:
 ```bash
 echo 'export KUBECONFIG=~/.kube/config' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-Ab jetzt funktioniert `kubectl` direkt ohne sudo.
+`kubectl` now works directly without sudo.
 
-### Vom Laptop
+### From the laptop
 
-kubectl installieren (Arch Linux):
+Install kubectl (Arch Linux):
 
 ```bash
 sudo pacman -S kubectl
 ```
 
-Kubeconfig vom Pi kopieren und Server-Adresse `127.0.0.1` auf den Hostnamen anpassen:
+Copy the kubeconfig from the Pi and update the server address from `127.0.0.1` to the hostname:
 
 ```bash
-# Auf dem Laptop ausführen:
+# Run on the laptop:
 mkdir -p ~/.kube
 scp <user>@k3s.fritz.box:~/.kube/config ~/.kube/config-raspi
 sed -i 's/127.0.0.1/k3s.fritz.box/g' ~/.kube/config-raspi
 ```
 
-`KUBECONFIG` setzen — für fish:
+Set `KUBECONFIG` — for fish:
 ```bash
 echo 'set -gx KUBECONFIG ~/.kube/config-raspi' >> ~/.config/fish/config.fish
 source ~/.config/fish/config.fish
 ```
 
-Verbindung testen:
+Test the connection:
 ```bash
 kubectl get nodes
 # NAME   STATUS   ROLES           AGE   VERSION
 # k3s    Ready    control-plane   ...   v1.x.x+k3s1
 ```
 
-> **Hinweis:** `~/.kube/config-raspi` enthält Client-Zertifikat und privaten Schlüssel — wer diese Datei hat, hat vollen Cluster-Zugriff. Nicht committen, nicht teilen.
+> **Note:** `~/.kube/config-raspi` contains the client certificate and private key — anyone with this file has full cluster access. Do not commit, do not share.
 
-> **Nach einem Cluster-Neuinstall** generiert k3s neue TLS-Zertifikate. Die Kubeconfig muss dann erneut vom Pi kopiert werden (gleiche Schritte wie oben).
+> **After a cluster reinstall**, k3s generates new TLS certificates. The kubeconfig must be copied from the Pi again (same steps as above).
 
 ---
 
-## 4. Was k3s mitbringt
+## 4. What k3s ships with
 
-Nach der Installation laufen bereits mehrere System-Pods:
+After installation, several system pods are already running:
 
 ```bash
 kubectl get pods --all-namespaces
 ```
 
-| Namespace | Pod | Funktion |
+| Namespace | Pod | Function |
 |---|---|---|
-| `kube-system` | `traefik-*` | Ingress Controller (HTTP/HTTPS-Routing) |
-| `kube-system` | `coredns-*` | Cluster-internes DNS |
-| `kube-system` | `metrics-server-*` | Ressourcen-Metriken für `kubectl top` |
+| `kube-system` | `traefik-*` | Ingress Controller (HTTP/HTTPS routing) |
+| `kube-system` | `coredns-*` | Cluster-internal DNS |
+| `kube-system` | `metrics-server-*` | Resource metrics for `kubectl top` |
 | `kube-system` | `svclb-traefik-*` | Service LoadBalancer (k3s built-in) |
 
-Flannel (CNI) läuft als Kernel-Modul, nicht als Pod. `local-path-provisioner` ist deaktiviert (siehe Konfiguration oben).
+Flannel (CNI) runs as a kernel module, not as a pod. `local-path-provisioner` is disabled (see configuration above).
 
 ---
 
-## 5. Grundkonzepte — die wichtigsten Objekte
+## 5. Core concepts — the most important objects
 
 ```
 Pod
-  └── kleinste deploybare Einheit; ein oder mehrere Container
-  └── kurzlebig, wird bei Problemen neu gestartet
+  └── smallest deployable unit; one or more containers
+  └── ephemeral, restarted on problems
 
 Deployment
-  └── verwaltet eine gewünschte Anzahl identischer Pods
-  └── übernimmt Rolling Updates und Rollbacks
+  └── manages a desired number of identical pods
+  └── handles rolling updates and rollbacks
 
 Service
-  └── stabiler Netzwerk-Endpunkt für eine Gruppe von Pods
-  └── Pods kommen und gehen, die Service-IP bleibt gleich
-  └── Typen: ClusterIP (intern), NodePort (Node-Port öffnen), LoadBalancer (externe IP)
+  └── stable network endpoint for a group of pods
+  └── pods come and go, the service IP stays the same
+  └── types: ClusterIP (internal), NodePort (open a node port), LoadBalancer (external IP)
 
 Namespace
-  └── logische Trennung von Ressourcen (z.B. ein Namespace pro Service)
+  └── logical separation of resources (e.g. one namespace per service)
 
 ConfigMap
-  └── Konfiguration als Key-Value, im Klartext
+  └── configuration as key-value pairs, in plaintext
 
 Secret
-  └── wie ConfigMap, aber base64-kodiert (≠ verschlüsselt!)
-  └── für Passwörter, API-Keys etc. → später: Sealed Secrets
+  └── like ConfigMap, but base64-encoded (≠ encrypted!)
+  └── for passwords, API keys etc. → later: Sealed Secrets
 
 PersistentVolume (PV)
-  └── tatsächlicher Speicher (von local-path-provisioner bereitgestellt)
+  └── actual storage (provided by local-path-provisioner)
 
 PersistentVolumeClaim (PVC)
-  └── Pods "beantragen" Speicher über PVCs
-  └── PVC bindet sich an ein passendes PV
+  └── pods "request" storage via PVCs
+  └── PVC binds to a matching PV
 
 Ingress / IngressRoute
-  └── externes HTTP(S)-Routing → welche Domain geht zu welchem Service
+  └── external HTTP(S) routing → which domain goes to which service
 ```
 
 ---
 
-## 6. Erste Schritte mit kubectl
+## 6. First steps with kubectl
 
-### Grundlegende Befehle
+### Basic commands
 
 ```bash
-# Überblick über den Cluster
+# Cluster overview
 kubectl get nodes
 kubectl get pods --all-namespaces
 
-# Kurzform: -A statt --all-namespaces
+# Short form: -A instead of --all-namespaces
 kubectl get pods -A
 
-# Ein Objekt im Detail
+# Object details
 kubectl describe pod <name> -n <namespace>
 
-# Logs anschauen
+# View logs
 kubectl logs <pod-name> -n <namespace>
 kubectl logs -f <pod-name> -n <namespace>   # live (follow)
 
-# In einen laufenden Pod einsteigen
+# Shell into a running pod
 kubectl exec -it <pod-name> -n <namespace> -- sh
 
-# Ressourcenverbrauch
+# Resource usage
 kubectl top nodes
 kubectl top pods -A
 ```
 
-### Etwas deployen — erstes Experiment
+### Deploy something — first experiment
 
-Einen Nginx-Pod starten, ohne YAML zu schreiben:
+Start an nginx pod without writing YAML:
 
 ```bash
-# Namespace anlegen
+# Create namespace
 kubectl create namespace test
 
-# Deployment erstellen
+# Create deployment
 kubectl create deployment nginx --image=nginx:alpine -n test
 
-# Warten bis der Pod läuft
-kubectl get pods -n test -w   # -w = watch (Ctrl+C zum Beenden)
+# Wait until the pod is running
+kubectl get pods -n test -w   # -w = watch (Ctrl+C to stop)
 
-# Pod von innen ansehen
+# Look inside the pod
 kubectl exec -it deploy/nginx -n test -- sh
-# wget -qO- http://localhost   → gibt Nginx-Startseite aus
+# wget -qO- http://localhost   → prints the nginx start page
 exit
 
-# Aufräumen
+# Clean up
 kubectl delete namespace test
 ```
 
-### YAML verstehen — was kubectl wirklich macht
+### Understanding YAML — what kubectl actually does
 
-Jede `kubectl create`-Aktion erzeugt Kubernetes-Objekte. Diese lassen sich auch als YAML anschauen:
+Every `kubectl create` action creates Kubernetes objects. These can also be viewed as YAML:
 
 ```bash
 kubectl get deployment nginx -n test -o yaml
 ```
 
-Das ist der Weg hin zu "alles als YAML im Git-Repo" — was später mit Flux passiert.
+This is the path towards "everything as YAML in the Git repo" — which is what happens later with Flux.
 
 ---
 
-## 7. Traefik — der eingebaute Ingress Controller
+## 7. Traefik — the built-in Ingress Controller
 
-Traefik läuft bereits. Prüfen:
+Traefik is already running. Check:
 
 ```bash
 kubectl get svc -n kube-system traefik
-# EXTERNAL-IP zeigt die Node-IP — mit Dual-Stack beide (IPv4 + IPv6)
+# EXTERNAL-IP shows the node IP — with Dual-Stack both (IPv4 + IPv6)
 ```
 
-Traefik hört auf Port 80 und 443 des Raspberry Pi. Alles weitere wird über Ingress-Objekte konfiguriert — das kommt mit dem ersten Service (FreshRSS).
+Traefik listens on port 80 and 443 of the Raspberry Pi. Everything else is configured via Ingress objects — which comes with the first service (FreshRSS).
 
-**Traefik Dashboard** (nur lokal):
+**Traefik Dashboard** (local only):
 ```bash
 kubectl port-forward -n kube-system svc/traefik 9000:9000
 # Browser: http://localhost:9000/dashboard/
@@ -258,83 +258,83 @@ kubectl port-forward -n kube-system svc/traefik 9000:9000
 
 ---
 
-## 8. k3s-spezifische Details
+## 8. k3s-specific details
 
-**Konfigurationsdatei:** `/etc/rancher/k3s/config.yaml`
+**Configuration file:** `/etc/rancher/k3s/config.yaml`
 ```bash
-# Änderungen erfordern:
+# Changes require:
 sudo systemctl restart k3s
 ```
 
-**Kubeconfig-Pfad:** `/etc/rancher/k3s/k3s.yaml`
+**Kubeconfig path:** `/etc/rancher/k3s/k3s.yaml`
 
-**Daten-Verzeichnis:** `/var/lib/rancher/k3s/`
-- `server/db/` — etcd-Daten (Cluster-State)
-- `agent/` — lokale Pod-Daten, Images
+**Data directory:** `/var/lib/rancher/k3s/`
+- `server/db/` — etcd data (cluster state)
+- `agent/` — local pod data, images
 
 **Logs:**
 ```bash
 sudo journalctl -u k3s -f
 ```
 
-**Neustart:**
+**Restart:**
 ```bash
 sudo systemctl restart k3s
 ```
 
-**Deinstallation** (löscht alles inkl. etcd):
+**Uninstall** (deletes everything including etcd):
 ```bash
 /usr/local/bin/k3s-uninstall.sh
 ```
 
 ---
 
-## 9. k3s aktualisieren
+## 9. Updating k3s
 
-k3s wird durch erneutes Ausführen des Install-Scripts aktualisiert — es erkennt die vorhandene Installation und führt ein In-Place-Update durch. Der Cluster läuft danach weiter.
+k3s is updated by running the install script again — it detects the existing installation and performs an in-place update. The cluster continues running afterwards.
 
 ```bash
 curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=stable sh -
 ```
 
-Oder auf eine konkrete Version pinnen:
+Or pin to a specific version:
 
 ```bash
 curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.32.2+k3s1 sh -
 ```
 
-Aktuelle Version prüfen:
+Check current version:
 
 ```bash
 k3s --version
 ```
 
-> **Traefik-Version:** Traefik ist aktuell an die k3s-Version gekoppelt — ein k3s-Update bringt automatisch die zugehörige Traefik-Version mit. Die langfristige Lösung ist, Traefik unabhängig von k3s zu verwalten (→ Phase 5, Flux CD).
+> **Traefik version:** Traefik is currently tied to the k3s version — a k3s update automatically brings the associated Traefik version. The long-term solution is to manage Traefik independently of k3s (→ Phase 5, Flux CD).
 
 ---
 
-## 10. Abschluss-Check
+## 10. Final check
 
 ```bash
 # Node Ready
 kubectl get nodes
 # STATUS = Ready
 
-# Alle System-Pods laufen
+# All system pods running
 kubectl get pods -A
-# Alle RUNNING oder COMPLETED, nichts in CrashLoopBackOff
+# All RUNNING or COMPLETED, nothing in CrashLoopBackOff
 
-# Dual-Stack: Traefik hat IPv4 und IPv6 External-IP
+# Dual-Stack: Traefik has both IPv4 and IPv6 External-IP
 kubectl get svc -n kube-system traefik
 # EXTERNAL-IP: <IPv4>,<IPv6>
 
-# Ressourcenverbrauch nach der Installation
+# Resource usage after installation
 kubectl top nodes
-# k3s braucht im Leerlauf ca. 500 MB RAM
+# k3s uses ~500 MB RAM at idle
 ```
 
 ---
 
 ---
 
-## Weiter: [03 — MetalLB](./03-metallb.md)
+## Next: [03 — MetalLB](./03-metallb.md)

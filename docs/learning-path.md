@@ -1,134 +1,134 @@
 # Kubernetes Learning Path — Raspberry Pi 5
 
-Ziel: Schrittweiser Einstieg in Kubernetes mit k3s auf zwei Raspberry Pi 5 (je 8 GB RAM). Server-Node: 256 GB NVMe, Agent-Node (nach Migration): 2 TB NVMe. Vollständige Migration aller Docker-Services angestrebt.
+Goal: step-by-step introduction to Kubernetes with k3s on two Raspberry Pi 5 (8 GB RAM each). Server-Node: 256 GB NVMe, Agent-Node (after migration): 2 TB NVMe. Full migration of all Docker services is the target.
 
-→ [Architektur-Übersicht](./architecture.md) — Gesamtbild, Netzwerkfluss, Komponenten
-
----
-
-## Architekturentscheidungen (Vorab)
-
-### Warum k3s?
-- Leichtgewichtig, ARM64-ready, enthält bereits Traefik (Ingress), CoreDNS, Flannel (CNI) und local-path-provisioner
-- Produktionsreif, aber deutlich einfacher als "full" Kubernetes
-- Einfache Multi-Node-Erweiterung: Agent einfach joinen lassen
-
-### Warum local-path als Storage?
-
-`local-path-provisioner` ist k3s built-in und die richtige Wahl für dieses Setup:
-- Daten liegen direkt auf dem Node-Filesystem — wie Docker-Volumes, direkt les- und sicherbar
-- Services sind sowieso fest einem Node zugeordnet (Hardware/Speicherplatz) → kein Vorteil durch Replikation
-- Backup via Restic direkt aus dem Filesystem, kein Snapshot-Overhead
-
-→ Vollständige Begründung: [`docs/decisions/storage.md`](decisions/storage.md)
-
-### Warum Flux CD als GitOps?
-- Leichter als ArgoCD (passt besser auf einen Raspi)
-- Pull-based: kein Webhook nötig, funktioniert auch hinter NAT
-- Kompatibel mit Sealed Secrets → Secrets können ins Git-Repo
+→ [Architecture Overview](./architecture.md) — big picture, network flow, components
 
 ---
 
-## Phase 0 — Hardware & OS (Tag 1–2)
+## Architecture decisions (upfront)
 
-### Raspberry Pi 5 einrichten
+### Why k3s?
+- Lightweight, ARM64-ready, already includes Traefik (Ingress), CoreDNS, Flannel (CNI), and local-path-provisioner
+- Production-ready, but significantly simpler than "full" Kubernetes
+- Easy multi-node expansion: just join an agent
+
+### Why local-path as storage?
+
+`local-path-provisioner` is k3s built-in and the right choice for this setup:
+- Data lives directly on the node filesystem — like Docker volumes, directly readable and backupable
+- Services are pinned to a fixed node anyway (hardware/storage capacity) → no benefit from replication
+- Backup via Restic directly from the filesystem, no snapshot overhead
+
+→ Full rationale: [`docs/decisions/storage.md`](decisions/storage.md)
+
+### Why Flux CD as GitOps?
+- Lighter than ArgoCD (fits better on a Raspi)
+- Pull-based: no webhook needed, works behind NAT
+- Compatible with Sealed Secrets → secrets can go into the Git repo
+
+---
+
+## Phase 0 — Hardware & OS (Day 1–2)
+
+### Set up Raspberry Pi 5
 
 **OS: Raspberry Pi OS Lite (64-bit, Bookworm)**
-Bringt alle Hardware-Tools nativ mit (`raspi-config`, `vcgencmd`, `rpi-eeprom-update`) — wichtig für Headless-Betrieb und künftige Hardware-Anpassungen. k3s läuft auf Raspberry Pi OS problemlos.
+Ships all hardware tools natively (`raspi-config`, `vcgencmd`, `rpi-eeprom-update`) — important for headless operation and future hardware adjustments. k3s runs on Raspberry Pi OS without issues.
 
-1. Raspberry Pi OS Lite (64-bit) mit dem Raspberry Pi Imager direkt auf die NVMe flashen
-2. Erster Boot: EEPROM aktualisieren (`sudo rpi-eeprom-update -a`)
-3. cgroups in `/boot/firmware/cmdline.txt` aktivieren, Swap deaktivieren
+1. Flash Raspberry Pi OS Lite (64-bit) directly to NVMe using the Raspberry Pi Imager
+2. First boot: update EEPROM (`sudo rpi-eeprom-update -a`)
+3. Enable cgroups in `/boot/firmware/cmdline.txt`, disable swap
 
 Details: [docs/01-os-setup.md](./platform/01-os-setup.md)
 
-**Warum NVMe wichtig ist:**
-Kubernetes schreibt ständig auf Disk (Etcd, Logs, Volumes). SD-Karten sterben dabei nach Wochen. NVMe ist hier keine Kür.
+**Why NVMe matters:**
+Kubernetes writes constantly to disk (etcd, logs, volumes). SD cards die within weeks from this. NVMe is not optional here.
 
 ---
 
-## Phase 1 — k3s & Grundkonzepte (Woche 1)
+## Phase 1 — k3s & Core concepts (Week 1)
 
-### k3s installieren
+### Install k3s
 
 ```bash
 curl -sfL https://get.k3s.io | sh -
-# Kubeconfig für deinen User kopieren
+# Copy kubeconfig for your user
 mkdir -p ~/.kube
 sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
 sudo chown $USER:$USER ~/.kube/config
 ```
 
-### Was k3s out-of-the-box mitbringt
-- **Traefik** — Ingress Controller (HTTP/HTTPS-Routing in den Cluster)
-- **CoreDNS** — Cluster-internes DNS (`service.namespace.svc.cluster.local`)
-- **Flannel** — Netzwerk zwischen Pods
-- **local-path-provisioner** — Storage direkt auf dem Node-Filesystem (produktiv genutzt)
-- **Etcd** — Cluster-State-Datenbank (läuft embedded)
+### What k3s ships out of the box
+- **Traefik** — Ingress Controller (HTTP/HTTPS routing into the cluster)
+- **CoreDNS** — cluster-internal DNS (`service.namespace.svc.cluster.local`)
+- **Flannel** — networking between pods
+- **local-path-provisioner** — storage directly on the node filesystem (used in production)
+- **Etcd** — cluster state database (runs embedded)
 
-### Grundkonzepte lernen
+### Learning core concepts
 
-Die wichtigsten Kubernetes-Objekte, in Reihenfolge des Verständnisses:
+The most important Kubernetes objects, in order of understanding:
 
 ```
-Pod → kleinste Einheit, ein oder mehrere Container
-Deployment → verwaltet Pods (gewünschte Anzahl, Rolling Updates)
-Service → stabiler Netzwerk-Endpunkt für Pods (ClusterIP / NodePort / LoadBalancer)
-ConfigMap → Konfiguration als Key-Value (kein Secret)
-Secret → wie ConfigMap, aber base64-kodiert (und mit Sealed Secrets verschlüsselbar)
-PersistentVolume (PV) → tatsächlicher Speicher
-PersistentVolumeClaim (PVC) → Pods "beantragen" Speicher über PVCs
-Namespace → logische Trennung von Ressourcen
-Ingress / IngressRoute → externes HTTP(S)-Routing in Services
+Pod → smallest unit, one or more containers
+Deployment → manages pods (desired count, rolling updates)
+Service → stable network endpoint for pods (ClusterIP / NodePort / LoadBalancer)
+ConfigMap → configuration as key-value pairs (not a secret)
+Secret → like ConfigMap, but base64-encoded (and encryptable with Sealed Secrets)
+PersistentVolume (PV) → actual storage
+PersistentVolumeClaim (PVC) → pods "request" storage via PVCs
+Namespace → logical separation of resources
+Ingress / IngressRoute → external HTTP(S) routing into services
 ```
 
-**Erste Schritte mit kubectl:**
+**First steps with kubectl:**
 ```bash
 kubectl get nodes
 kubectl get pods --all-namespaces
 kubectl get services --all-namespaces
 
-# Ein Objekt im Detail ansehen
+# Inspect an object in detail
 kubectl describe pod <name> -n <namespace>
-# Logs eines Pods
+# Pod logs
 kubectl logs <pod-name> -n <namespace>
-# In einen Pod "einsteigen"
+# Shell into a pod
 kubectl exec -it <pod-name> -n <namespace> -- sh
 ```
 
-**Empfohlene Lernressource:** [Kubernetes Docs — Concepts](https://kubernetes.io/docs/concepts/)
-Besonders relevant: Workloads, Services & Networking, Storage.
+**Recommended learning resource:** [Kubernetes Docs — Concepts](https://kubernetes.io/docs/concepts/)
+Particularly relevant: Workloads, Services & Networking, Storage.
 
 ---
 
-## Phase 2 — Networking & Ingress (Woche 1–2)
+## Phase 2 — Networking & Ingress (Week 1–2)
 
-k3s bringt Traefik mit. Das ist dein Nginx-Ersatz im Cluster.
+k3s ships with Traefik. This is your nginx replacement inside the cluster.
 
-### Service-Typen verstehen
+### Understanding service types
 ```
-ClusterIP    → nur innerhalb des Clusters erreichbar (default)
-NodePort     → Port auf dem Node öffnen (für Tests, nicht für Produktion)
-LoadBalancer → externe IP zuweisen (braucht MetalLB auf bare metal)
+ClusterIP    → only reachable within the cluster (default)
+NodePort     → open a port on the node (for testing, not production)
+LoadBalancer → assign an external IP (requires MetalLB on bare metal)
 ```
 
-### MetalLB installieren
+### Install MetalLB
 
-k3s bringt ein eingebautes ServiceLB (Klipper) mit, das `LoadBalancer`-Services einfach auf die Node-IP bindet. Für eine stabile VIP die bei Multi-Node zwischen Nodes wandern kann, braucht es MetalLB.
+k3s ships a built-in ServiceLB (Klipper) that simply binds `LoadBalancer` services to the node IP. For a stable VIP that can migrate between nodes in a multi-node setup, MetalLB is needed.
 
-**Schritt 1 — k3s ServiceLB deaktivieren** (in `/etc/rancher/k3s/config.yaml`):
+**Step 1 — Disable k3s ServiceLB** (in `/etc/rancher/k3s/config.yaml`):
 ```yaml
 disable:
   - servicelb
 ```
 `sudo systemctl restart k3s`
 
-**Schritt 2 — MetalLB deployen:**
+**Step 2 — Deploy MetalLB:**
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
 ```
 
-**Schritt 3 — IP-Pool konfigurieren** (`infrastructure/metallb/metallb.yaml`):
+**Step 3 — Configure IP pool** (`infrastructure/metallb/metallb.yaml`):
 ```yaml
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
@@ -137,7 +137,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    - 192.168.178.200-192.168.178.220   # freier Bereich im Heimnetz
+    - 192.168.178.200-192.168.178.220   # free range in the home network
 ---
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
@@ -149,32 +149,32 @@ spec:
     - homelab-pool
 ```
 
-Ab jetzt bekommt jeder `type: LoadBalancer`-Service eine dedizierte IP aus dem Pool — kein Port-Sharing, kein Konflikt zwischen Services.
+From now on, every `type: LoadBalancer` service gets a dedicated IP from the pool — no port sharing, no conflicts between services.
 
-> **Warum MetalLB statt kube-vip?** MetalLB ist purpose-built für genau diese Aufgabe und in professionellen On-Premises-Kubernetes-Umgebungen deutlich verbreiteter. kube-vip löst primär Control Plane HA (3+ Nodes) — in diesem Setup nicht relevant.
+> **Why MetalLB instead of kube-vip?** MetalLB is purpose-built for exactly this task and much more common in professional on-premises Kubernetes environments. kube-vip primarily solves Control Plane HA (3+ nodes) — not relevant in this setup.
 
-### Traefik konfigurieren
+### Configure Traefik
 
-Traefik in k3s läuft als `IngressController`. Es gibt zwei Wege, Routing zu definieren:
-- **Ingress** (Kubernetes-Standard, einfacher)
-- **IngressRoute** (Traefik-spezifisch, mächtiger — Empfehlung)
+Traefik in k3s runs as an `IngressController`. There are two ways to define routing:
+- **Ingress** (Kubernetes standard, simpler)
+- **IngressRoute** (Traefik-specific, more powerful — recommended)
 
 ### cert-manager / TLS
 
-**Noch nicht nötig.** Während der Migration terminiert nginx (auf dem alten Raspi) TLS — Traefik bekommt nur HTTP-Anfragen intern und braucht keine eigenen Zertifikate.
+**Not needed yet.** During migration, nginx (on the old Raspi) terminates TLS — Traefik only receives HTTP requests internally and does not need its own certificates.
 
-cert-manager kommt erst ins Spiel wenn entschieden wird, ob Traefik nginx als externen Einstiegspunkt ablöst. Das ist eine spätere Entscheidung (siehe Phase 8).
+cert-manager only comes into play when deciding whether Traefik replaces nginx as the external entry point. That is a later decision (see Phase 8).
 
 ---
 
-## Phase 3 — Storage: local-path (Woche 2)
+## Phase 3 — Storage: local-path (Week 2)
 
-k3s bringt den `local-path-provisioner` bereits mit — keine Installation nötig.
+k3s already ships with `local-path-provisioner` — no installation needed.
 
-### Konzepte
+### Concepts
 
 ```yaml
-# PersistentVolumeClaim — so beantragen Pods ihren Speicher
+# PersistentVolumeClaim — how pods request their storage
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -189,49 +189,49 @@ spec:
       storage: 5Gi
 ```
 
-Daten landen unter `/var/lib/rancher/k3s/storage/<pvc-name>/` auf dem Node — direkt lesbar, direkt sicherbar mit Restic.
+Data lands at `/var/lib/rancher/k3s/storage/<pvc-name>/` on the node — directly readable, directly backupable with Restic.
 
 ### Backup
 
 ```
 /var/lib/rancher/k3s/storage/<pvc-name>/
-       │  direkt lesbar
+       │  directly readable
        ▼
   Restic → Hetzner S3
 ```
 
 Details: [docs/operations/backup-restore.md](./operations/backup-restore.md)
 
-### Weg zum zweiten Node
+### Path to the second node
 
-Wenn irgendwann alle Services auf k3s laufen und der alte Raspi aus dem Docker-Betrieb geht:
-1. Docker stoppen, Daten sichern
-2. k3s Agent installieren und dem Cluster joinen
-3. Services explizit via `nodeSelector` auf die gewünschten Nodes pinnen
+Once all services are running on k3s and the old Raspi leaves Docker:
+1. Stop Docker, back up data
+2. Install k3s agent and join the cluster
+3. Explicitly pin services to desired nodes via `nodeSelector`
 
 ---
 
-## Phase 4 — Erste Migration: FreshRSS (Woche 3)
+## Phase 4 — First migration: FreshRSS (Week 3)
 
-FreshRSS ist ideal als erster Kandidat:
-- Ein einziges Volume (`./config`) — kein Datenbankcluster
-- Kein komplexes Netzwerk-Setup
-- Leicht rückgängig zu machen (Docker-Container läuft parallel weiter bis zum Cutover)
+FreshRSS is ideal as the first candidate:
+- A single volume (`./config`) — no database cluster
+- No complex network setup
+- Easy to roll back (Docker container keeps running in parallel until cutover)
 
-### Migrations-Strategie
+### Migration strategy
 
 ```
-1. FreshRSS in k3s deployen (leeres Volume)
-2. Daten aus Docker-Volume in local-path-PVC kopieren
-3. Testen (parallel zum alten Container)
-4. DNS/Traefik auf k3s umschalten
-5. Docker-Container stoppen
+1. Deploy FreshRSS in k3s (empty volume)
+2. Copy data from Docker volume into local-path PVC
+3. Test (in parallel with the old container)
+4. Switch DNS/Traefik to k3s
+5. Stop Docker container
 ```
 
-### Daten-Migration (Docker → local-path PVC)
+### Data migration (Docker → local-path PVC)
 
 ```bash
-# Temporärer Pod, der das PVC mountet
+# Temporary pod that mounts the PVC
 kubectl run migration --image=alpine --restart=Never \
   -n freshrss --overrides='
 {
@@ -246,77 +246,77 @@ kubectl run migration --image=alpine --restart=Never \
   }
 }'
 
-# Daten vom alten Server hineinkopieren
-kubectl cp /pfad/zu/docker/freshrss/config/. freshrss/migration:/data/
+# Copy data from the old server into the pod
+kubectl cp /path/to/docker/freshrss/config/. freshrss/migration:/data/
 ```
 
-Die fertigen Manifeste für FreshRSS werden in `apps/freshrss/` im Repo liegen.
+The finished manifests for FreshRSS will live in `apps/freshrss/` in the repo.
 
 ---
 
-## Phase 4b — Zweite Migration: Seafile (Woche 3–4)
+## Phase 4b — Second migration: Seafile (Week 3–4)
 
-Seafile ist der ideale nächste Schritt nach FreshRSS, weil es alle neuen Konzepte einführt, die danach für Flux/GitOps gebraucht werden: mehrere zusammengehörige Pods, Service-to-Service-Kommunikation und Secrets.
+Seafile is the ideal next step after FreshRSS, because it introduces all the new concepts needed for Flux/GitOps: multiple related pods, service-to-service communication, and secrets.
 
-### Architektur in k3s
+### Architecture in k3s
 
-Das offizielle `seafileltd/seafile-mc`-Image enthält Seafile, Seahub **und** memcached — also nur 2 Pods:
+The official `seafileltd/seafile-mc` image contains Seafile, Seahub **and** memcached — just 2 pods:
 
 ```
 [Ingress/Traefik]
       ↓
-[seafile-mc Pod]  ←→  ClusterIP Service  ←→  [MariaDB Pod]
+[seafile-mc pod]  ←→  ClusterIP Service  ←→  [MariaDB pod]
       ↓
 [seafile-data PVC]  +  [mariadb-data PVC]
 ```
 
-### Neue Konzepte gegenüber FreshRSS
+### New concepts compared to FreshRSS
 
-- **Mehrere Deployments in einem Namespace** — Seafile und MariaDB als getrennte Deployments
-- **Service-to-Service-Kommunikation** — Seafile spricht MariaDB über `mariadb.seafile.svc.cluster.local` an (CoreDNS)
-- **Sealed Secrets in der Praxis** — DB-Passwort, Seafile `SECRET_KEY`, Admin-Credentials
-- **Startup-Reihenfolge** — MariaDB muss vor Seafile bereit sein (`initContainers` oder `startupProbe`)
+- **Multiple Deployments in one Namespace** — Seafile and MariaDB as separate Deployments
+- **Service-to-service communication** — Seafile talks to MariaDB via `mariadb.seafile.svc.cluster.local` (CoreDNS)
+- **Sealed Secrets in practice** — DB password, Seafile `SECRET_KEY`, admin credentials
+- **Startup ordering** — MariaDB must be ready before Seafile starts (`initContainers` or `startupProbe`)
 
-### Warum Seafile trotz Sync-Vorteil sorgfältig migriert werden sollte
+### Why Seafile should be migrated carefully despite its sync advantage
 
-Seafile ist sync-basiert: die Datei-Blobs existieren auf allen Clients lokal. Ein Cluster-Ausfall bedeutet also keinen Datenverlust. **Was verloren gehen würde:** Versionshistorie, Share-Links, Bibliotheks-Metadaten (alles in MariaDB). Backups der MariaDB sind deshalb trotzdem wichtig.
+Seafile is sync-based: file blobs exist locally on all clients. A cluster outage therefore means no data loss. **What would be lost:** version history, share links, library metadata (all in MariaDB). Backups of MariaDB are still important.
 
-### Migrationsstrategie
+### Migration strategy
 
 ```
-1. Seafile in k3s deployen (leere DB + leeres Volume)
-2. MariaDB-Dump vom alten Server einspielen
-3. Seafile-Datenbibliothek ins neue PVC kopieren (rsync oder kubectl cp)
-4. Seafile-Client auf einem Gerät auf neue URL umstellen → Test-Sync
-5. DNS umschalten, alle Clients auf neue URL
-6. Docker-Container stoppen
+1. Deploy Seafile in k3s (empty DB + empty volume)
+2. Import MariaDB dump from old server
+3. Copy Seafile data library into new PVC (rsync or kubectl cp)
+4. Switch Seafile client on one device to new URL → test sync
+5. Switch DNS, update all clients to new URL
+6. Stop Docker containers
 ```
 
 ---
 
-## Phase 5 — GitOps mit Flux CD (Woche 4–5)
+## Phase 5 — GitOps with Flux CD (Week 4–5)
 
-### Repository-Struktur (Ziel)
+### Repository structure (target)
 
 ```
 k3s/
 ├── clusters/
-│   └── raspi/              ← Cluster-spezifische Flux-Konfiguration
-│       ├── flux-system/    ← Flux selbst (auto-generiert)
-│       └── apps.yaml       ← zeigt auf apps/
+│   └── raspi/              ← cluster-specific Flux configuration
+│       ├── flux-system/    ← Flux itself (auto-generated)
+│       └── apps.yaml       ← points to apps/
 ├── apps/
-│   ├── freshrss/           ← FreshRSS Manifeste
+│   ├── freshrss/           ← FreshRSS manifests
 │   └── cert-manager/
 ├── infrastructure/
-│   └── traefik/            ← Traefik-Konfiguration
+│   └── traefik/            ← Traefik configuration
 └── docs/
 ```
 
-### Traefik aus k3s herauslösen
+### Moving Traefik out of k3s
 
-Traefik ist in k3s eingebaut und an die k3s-Version gekoppelt — Versionsverwaltung und Renovate-Tracking sind so nicht möglich. Mit Flux lässt sich das sauber lösen:
+Traefik is built into k3s and tied to the k3s version — version management and Renovate tracking are not possible this way. Flux solves this cleanly:
 
-**Schritt 1 — Eingebautes Traefik deaktivieren** (in `/etc/rancher/k3s/config.yaml` auf dem Pi):
+**Step 1 — Disable built-in Traefik** (in `/etc/rancher/k3s/config.yaml` on the Pi):
 
 ```yaml
 disable:
@@ -324,9 +324,9 @@ disable:
   - local-storage
 ```
 
-`sudo systemctl restart k3s` — Traefik wird aus dem Cluster entfernt.
+`sudo systemctl restart k3s` — Traefik is removed from the cluster.
 
-**Schritt 2 — Traefik als Flux HelmRelease ins Repo** (`infrastructure/traefik/helmrelease.yaml`):
+**Step 2 — Traefik as a Flux HelmRelease in the repo** (`infrastructure/traefik/helmrelease.yaml`):
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -346,47 +346,47 @@ spec:
   chart:
     spec:
       chart: traefik
-      version: "34.4.0"   # Renovate tracked das automatisch
+      version: "34.4.0"   # Renovate tracks this automatically
       sourceRef:
         kind: HelmRepository
         name: traefik
 ```
 
-Flux deployed das beim nächsten Sync automatisch. Renovate erkennt `HelmRelease`-Ressourcen nativ und schlägt Updates als PRs vor.
+Flux deploys it automatically on the next sync. Renovate natively recognises `HelmRelease` resources and proposes updates as PRs.
 
-> **Wichtig:** Erst Traefik in k3s deaktivieren, dann Flux deployen — sonst gibt es CRD-Ownership-Konflikte (beide versuchen dieselben Gateway-CRDs zu verwalten).
+> **Important:** Disable Traefik in k3s first, then deploy Flux — otherwise there are CRD ownership conflicts (both try to manage the same Gateway CRDs).
 
-> **HelmChart vs. HelmRelease:** k3s hat einen eigenen `HelmChart`-Typ (`helm.cattle.io/v1`) der ebenfalls von Renovate unterstützt wird. Flux nutzt `HelmRelease` (`helm.toolkit.fluxcd.io/v2`) mit separatem `HelmRepository`-Objekt. Beide funktionieren, aber sobald Flux da ist, ist `HelmRelease` der konsistentere Weg.
+> **HelmChart vs. HelmRelease:** k3s has its own `HelmChart` type (`helm.cattle.io/v1`) which is also supported by Renovate. Flux uses `HelmRelease` (`helm.toolkit.fluxcd.io/v2`) with a separate `HelmRepository` object. Both work, but once Flux is present, `HelmRelease` is the more consistent approach.
 
-### Flux installieren & bootstrappen
+### Install & bootstrap Flux
 
 ```bash
 curl -s https://fluxcd.io/install.sh | sudo bash
 
 flux bootstrap github \
-  --owner=<dein-github-user> \
+  --owner=<your-github-user> \
   --repository=k3s \
   --branch=main \
   --path=clusters/raspi \
   --personal
 ```
 
-Flux richtet sich selbst ein und überwacht ab sofort dieses Repository. Jeder Commit zu `main` → Flux deployed automatisch.
+Flux sets itself up and monitors this repository from now on. Every commit to `main` → Flux deploys automatically.
 
 ---
 
-## Phase 6 — Secrets Management (Woche 4)
+## Phase 6 — Secrets Management (Week 4)
 
-Secrets in Kubernetes sind nur base64-kodiert, nicht verschlüsselt. Für ein öffentliches GitHub-Repo brauchen wir Sealed Secrets.
+Secrets in Kubernetes are only base64-encoded, not encrypted. For a public GitHub repo, Sealed Secrets is required.
 
 ### Sealed Secrets
 
 ```bash
-# Controller im Cluster installieren (Version prüfen: https://github.com/bitnami-labs/sealed-secrets/releases)
+# Install controller in the cluster (check version: https://github.com/bitnami-labs/sealed-secrets/releases)
 SEALED_SECRETS_VERSION="v0.27.1"
 kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/${SEALED_SECRETS_VERSION}/controller.yaml
 
-# CLI-Tool auf dem Laptop (Arch Linux, x86_64)
+# CLI tool on the laptop (Arch Linux, x86_64)
 KUBESEAL_VERSION="${SEALED_SECRETS_VERSION#v}"
 curl -L "https://github.com/bitnami-labs/sealed-secrets/releases/download/${SEALED_SECRETS_VERSION}/kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz" \
   | tar xz kubeseal
@@ -394,77 +394,77 @@ sudo install -m 755 kubeseal /usr/local/bin/kubeseal
 ```
 
 ```bash
-# Secret verschlüsseln → kann sicher ins Git-Repo
+# Encrypt secret → safe to commit to the Git repo
 kubectl create secret generic pihole-secret \
   --namespace pihole \
-  --from-literal=WEBPASSWORD="geheim" \
+  --from-literal=WEBPASSWORD="secret" \
   --dry-run=client -o yaml | \
   kubeseal --format yaml > apps/pihole/pihole-sealed-secret.yaml
 ```
 
-Das resultierende `SealedSecret` kann gefahrlos in das öffentliche Repo committed werden. Nur der Cluster kann es entschlüsseln.
+The resulting `SealedSecret` can be safely committed to the public repo. Only the cluster can decrypt it.
 
-> **Wichtig:** Den Controller-Schlüssel sofort nach der Installation sichern — Details und vollständige Recovery-Prozedur: [docs/platform/05-sealed-secrets.md](./platform/05-sealed-secrets.md)
+> **Important:** Back up the controller key immediately after installation — details and full recovery procedure: [docs/platform/05-sealed-secrets.md](./platform/05-sealed-secrets.md)
 
 ---
 
-## Phase 7 — Monitoring (Woche 5)
+## Phase 7 — Monitoring (Week 5)
 
-**kube-prometheus-stack** installiert Prometheus, Grafana und Alertmanager in einem Helm-Chart — inklusive vorgefertigter Dashboards für Node-Metriken, Pod-Ressourcen, PVCs und Kubernetes-Objekte.
+**kube-prometheus-stack** installs Prometheus, Grafana, and Alertmanager in a single Helm chart — including pre-built dashboards for node metrics, pod resources, PVCs, and Kubernetes objects.
 
-Raspberry Pi Hardware-Metriken (CPU-Temperatur etc.) liefert `node_exporter`, der bereits im Stack enthalten ist.
+Raspberry Pi hardware metrics (CPU temperature etc.) are provided by `node_exporter`, which is already included in the stack.
 
-Optional: Prometheus-Integration mit Home Assistant für Automationen auf Basis von Cluster-Metriken.
+Optional: Prometheus integration with Home Assistant for automations based on cluster metrics.
 
 Details: [docs/operations/monitoring.md](./operations/monitoring.md)
 
 ---
 
-## Phase 8 — Multi-Node: Alter Raspi hinzufügen (Zukunft)
+## Phase 8 — Multi-Node: add the old Raspi (Future)
 
-**Voraussetzung:** Der alte Raspi (Raspi 5, 8 GB RAM, 2 TB NVMe) läuft erst dann als k3s Agent-Node, wenn alle seine Docker-Services vollständig nach k3s migriert sind. Beide Rollen gleichzeitig sind nicht möglich.
+**Prerequisite:** The old Raspi (Raspi 5, 8 GB RAM, 2 TB NVMe) only runs as a k3s Agent-Node once all its Docker services are fully migrated to k3s. Both roles simultaneously are not possible.
 
-Home Assistant läuft dann auf dem Agent-Node mit `hostNetwork: true` und `nodeAffinity` für den Zigbee-Dongle — kein Umstecken nötig.
+Home Assistant then runs on the Agent-Node with `hostNetwork: true` and `nodeAffinity` for the Zigbee dongle — no re-plugging needed.
 
-Ablauf wenn es soweit ist:
-1. **MetalLB einrichten** (falls noch nicht geschehen) — VIP-Pool konfigurieren damit Services eine stabile IP bekommen die zwischen Nodes wandern kann (siehe Phase 2)
-2. Docker-Services stoppen, Daten sichern
-3. k3s Agent auf dem alten Raspi installieren:
+Steps when the time comes:
+1. **Set up MetalLB** (if not already done) — configure VIP pool so services get a stable IP that can migrate between nodes (see Phase 2)
+2. Stop Docker services, back up data
+3. Install k3s agent on the old Raspi:
 
 ```bash
-# Token vom Server-Node holen
+# Get token from the server node
 sudo cat /var/lib/rancher/k3s/server/node-token
 
-# Auf dem alten Raspi:
+# On the old Raspi:
 curl -sfL https://get.k3s.io | K3S_URL=https://<raspi5-ip>:6443 \
   K3S_TOKEN=<token> sh -
 ```
 
-3. Services via `nodeSelector` auf die gewünschten Nodes pinnen.
+3. Pin services to desired nodes via `nodeSelector`.
 
-**Node-Rollen:**
-- **Server-Node** (Raspi 5): Control-Plane, API-Server, Scheduler, Etcd
-- **Agent-Node** (alter Raspi): nur Workloads, kein Control-Plane
-
----
-
-## Nicht-Ziele (bewusst ausgelassen)
-
-- **High-Availability Control Plane**: Sinnvoll erst ab 3 Nodes. Für 2 Nodes reicht Single-Server-Setup.
-- **Kubernetes-Dashboard**: Grafana deckt den Bedarf besser ab.
-- **Multi-Cluster-Setups**: Nicht für diesen Use Case.
+**Node roles:**
+- **Server-Node** (Raspi 5): Control Plane, API server, scheduler, etcd
+- **Agent-Node** (old Raspi): workloads only, no Control Plane
 
 ---
 
-## Reihenfolge der Dokumente
+## Non-goals (deliberately excluded)
 
-1. `docs/platform/01-os-setup.md` — NVMe-Boot, Raspberry Pi OS, cgroups
-2. `docs/platform/02-k3s-install.md` — k3s mit Dual-Stack (IPv4+IPv6), kubectl (lokal + remote), erste Schritte
-3. `docs/platform/03-metallb.md` — MetalLB einrichten (LoadBalancer-VIPs für Bare Metal)
-4. `docs/services/freshrss.md` — FreshRSS migrieren
-5. `docs/platform/05-sealed-secrets.md` — Sealed Secrets einrichten (Voraussetzung für alle weiteren Secrets)
+- **High-Availability Control Plane**: Only makes sense with 3+ nodes. Single-server setup is sufficient for 2 nodes.
+- **Kubernetes Dashboard**: Grafana covers this better.
+- **Multi-cluster setups**: Not applicable to this use case.
+
+---
+
+## Document order
+
+1. `docs/platform/01-os-setup.md` — NVMe boot, Raspberry Pi OS, cgroups
+2. `docs/platform/02-k3s-install.md` — k3s with Dual-Stack (IPv4+IPv6), kubectl (local + remote), first steps
+3. `docs/platform/03-metallb.md` — set up MetalLB (LoadBalancer VIPs for bare metal)
+4. `docs/services/freshrss.md` — migrate FreshRSS
+5. `docs/platform/05-sealed-secrets.md` — set up Sealed Secrets (prerequisite for all further secrets)
 6. `docs/services/pihole.md` — Pi-hole: DNS via LoadBalancer
-7. `docs/services/seafile.md` — Seafile migrieren (Multi-Container, Secrets)
-8. `docs/services/immich.md` — Immich migrieren (Restic-Restore-Strategie, großes Volume)
+7. `docs/services/seafile.md` — migrate Seafile (multi-container, secrets)
+8. `docs/services/immich.md` — migrate Immich (Restic restore strategy, large volume)
 9. `docs/operations/monitoring.md` — Prometheus + Grafana
-10. `docs/operations/backup-restore.md` — Backup & Restore, kritische Secrets
+10. `docs/operations/backup-restore.md` — backup & restore, critical secrets

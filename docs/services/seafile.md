@@ -1,12 +1,12 @@
-# Seafile deployen
+# Deploy Seafile
 
-Voraussetzung: [FreshRSS](./freshrss.md) abgeschlossen. Sealed Secrets sollten vor diesem Schritt eingerichtet sein (Secrets für DB-Passwort und Seafile SECRET_KEY).
+Prerequisite: [FreshRSS](./freshrss.md) completed. Sealed Secrets should be set up before this step (secrets for DB password and Seafile SECRET_KEY).
 
-Seafile ist der zweite Migrationskanditat und deutlich komplexer als FreshRSS: zwei Pods, zwei Volumes, Service-to-Service-Kommunikation und Secrets. Das macht es zum idealen Lernschritt vor GitOps.
+Seafile is the second migration candidate and significantly more complex than FreshRSS: two pods, two volumes, service-to-service communication, and secrets. This makes it the ideal learning step before GitOps.
 
 ---
 
-## Architektur
+## Architecture
 
 ```
 [Ingress/Traefik]
@@ -23,52 +23,52 @@ Seafile ist der zweite Migrationskanditat und deutlich komplexer als FreshRSS: z
                     (local-path)          (local-path)
 ```
 
-`seafile-mc` (das offizielle Image) enthält Seafile, Seahub **und** memcached in einem Container. Dadurch bleibt es bei zwei Pods statt vier.
+`seafile-mc` (the official image) contains Seafile, Seahub **and** memcached in a single container. This keeps the setup at two pods instead of four.
 
 ---
 
-## Neue Konzepte gegenüber FreshRSS
+## New concepts compared to FreshRSS
 
-| Konzept | Warum hier relevant |
+| Concept | Why it matters here |
 |---|---|
-| Mehrere Deployments in einem Namespace | Seafile + MariaDB als getrennte Workloads |
-| Service-to-Service-Kommunikation | Seafile spricht MariaDB via CoreDNS an |
-| Sealed Secrets | DB-Passwort und Seafile `SECRET_KEY` müssen verschlüsselt im Repo liegen |
-| Startup-Abhängigkeit | MariaDB muss bereit sein bevor Seafile startet |
-| StatefulSet vs. Deployment | Datenbanken wollen stabile Pod-Namen → MariaDB als StatefulSet |
+| Multiple Deployments in one Namespace | Seafile + MariaDB as separate workloads |
+| Service-to-service communication | Seafile talks to MariaDB via CoreDNS |
+| Sealed Secrets | DB password and Seafile `SECRET_KEY` must be encrypted in the repo |
+| Startup dependency | MariaDB must be ready before Seafile starts |
+| StatefulSet vs. Deployment | Databases want stable pod names → MariaDB as StatefulSet |
 
 ---
 
-## Übersicht der Manifeste (geplant)
+## Manifest overview (planned)
 
 ```
 apps/seafile/
 ├── namespace.yaml
-├── pvc-seafile.yaml          ← /shared/seafile (Datei-Blobs)
+├── pvc-seafile.yaml          ← /shared/seafile (file blobs)
 ├── pvc-mariadb.yaml          ← /var/lib/mysql
-├── statefulset-mariadb.yaml  ← MariaDB als StatefulSet
-├── service-mariadb.yaml      ← ClusterIP, nur intern erreichbar
-├── deployment-seafile.yaml   ← seafile-mc Container
+├── statefulset-mariadb.yaml  ← MariaDB as StatefulSet
+├── service-mariadb.yaml      ← ClusterIP, only reachable internally
+├── deployment-seafile.yaml   ← seafile-mc container
 ├── service-seafile.yaml      ← ClusterIP → Ingress
-├── ingress.yaml              ← Domain-Routing
-└── sealed-secret.yaml        ← DB-Passwort + SECRET_KEY (verschlüsselt)
+├── ingress.yaml              ← domain routing
+└── sealed-secret.yaml        ← DB password + SECRET_KEY (encrypted)
 ```
 
 ---
 
-## Warum MariaDB als StatefulSet?
+## Why MariaDB as a StatefulSet?
 
-Deployments erstellen Pods mit zufälligen Namen (`mariadb-7d9f4b-xxxx`). Bei einem Neustart bekommt der Pod einen neuen Namen — für zustandslose Apps kein Problem, für Datenbanken aber ungünstig: das Volume-Mounting kann instabil werden.
+Deployments create pods with random names (`mariadb-7d9f4b-xxxx`). On restart the pod gets a new name — no problem for stateless apps, but undesirable for databases: volume mounting can become unstable.
 
-StatefulSets vergeben stabile, vorhersehbare Namen (`mariadb-0`) und garantieren eine definierte Startreihenfolge. Standard-Praxis für Datenbanken in Kubernetes.
+StatefulSets assign stable, predictable names (`mariadb-0`) and guarantee a defined startup order. Standard practice for databases in Kubernetes.
 
 ---
 
-## Startup-Reihenfolge: MariaDB vor Seafile
+## Startup order: MariaDB before Seafile
 
-Seafile schlägt beim Start fehl wenn MariaDB noch nicht bereit ist. Zwei Wege das zu lösen:
+Seafile fails to start if MariaDB is not yet ready. Two ways to solve this:
 
-**Option A — `initContainer`** (empfohlen): Ein leichter Init-Container prüft vor dem Seafile-Start ob MariaDB erreichbar ist:
+**Option A — `initContainer`** (recommended): A lightweight init container checks whether MariaDB is reachable before Seafile starts:
 
 ```yaml
 initContainers:
@@ -77,30 +77,30 @@ initContainers:
     command: ['sh', '-c', 'until nc -z mariadb 3306; do echo waiting; sleep 2; done']
 ```
 
-**Option B — `startupProbe`**: Seafile bekommt eine großzügige Startup-Probe die mehrere Minuten wartet.
+**Option B — `startupProbe`**: Seafile gets a generous startup probe that waits several minutes.
 
-Option A ist expliziter und zuverlässiger.
+Option A is more explicit and reliable.
 
 ---
 
 ## Secrets (Sealed Secrets)
 
-Folgende Werte müssen als Secret im Cluster liegen — **nicht** im Klartext ins Repo:
+The following values must exist as a secret in the cluster — **not** in plaintext in the repo:
 
-| Key | Wert | Woher |
+| Key | Value | Source |
 |---|---|---|
-| `MYSQL_ROOT_PASSWORD` | MariaDB Root-Passwort | Neu generieren |
-| `MYSQL_PASSWORD` | Seafile DB-User-Passwort | Neu generieren |
-| `SEAFILE_ADMIN_PASSWORD` | Seafile Admin-Passwort | Neu generieren |
-| `SECRET_KEY` | Django Secret Key | `openssl rand -hex 32` |
+| `MYSQL_ROOT_PASSWORD` | MariaDB root password | Generate new |
+| `MYSQL_PASSWORD` | Seafile DB user password | Generate new |
+| `SEAFILE_ADMIN_PASSWORD` | Seafile admin password | Generate new |
+| `SECRET_KEY` | Django secret key | `openssl rand -hex 32` |
 
-Workflow wenn Sealed Secrets eingerichtet ist:
+Workflow once Sealed Secrets is set up:
 ```bash
 kubectl create secret generic seafile-secrets \
   --namespace seafile \
-  --from-literal=MYSQL_ROOT_PASSWORD=<passwort> \
-  --from-literal=MYSQL_PASSWORD=<passwort> \
-  --from-literal=SEAFILE_ADMIN_PASSWORD=<passwort> \
+  --from-literal=MYSQL_ROOT_PASSWORD=<password> \
+  --from-literal=MYSQL_PASSWORD=<password> \
+  --from-literal=SEAFILE_ADMIN_PASSWORD=<password> \
   --from-literal=SECRET_KEY=$(openssl rand -hex 32) \
   --dry-run=client -o yaml | \
   kubeseal --format yaml > apps/seafile/sealed-secret.yaml
@@ -111,50 +111,50 @@ git commit -m "feat(seafile): add sealed secrets"
 
 ---
 
-## Datenmigration (falls bestehende Seafile-Instanz vorhanden)
+## Data migration (if an existing Seafile instance exists)
 
-Seafile hat zwei voneinander unabhängige Datenbereiche:
-
-```
-Datei-Blobs  →  /shared/seafile/   → PVC seafile-data
-Metadaten    →  MariaDB-Datenbank  → PVC mariadb-data
-```
-
-**Beide müssen konsistent migriert werden** — ein MariaDB-Dump ohne die passenden Blobs (oder umgekehrt) ergibt einen kaputten Zustand.
-
-### Migrations-Strategie
+Seafile has two independent data areas:
 
 ```
-1. Seafile auf alter Instanz in den Read-Only-Modus versetzen
-   (verhindert Schreibzugriffe während der Migration)
-2. MariaDB-Dump erstellen
-3. Datei-Blobs rsyncen
-4. MariaDB in k3s einspielen
-5. Blobs in PVC kopieren
-6. Seafile-Client auf einem Gerät testen
-7. DNS / nginx umleiten
-8. Alte Instanz abschalten
+File blobs  →  /shared/seafile/   → PVC seafile-data
+Metadata    →  MariaDB database   → PVC mariadb-data
 ```
 
-### Read-Only-Modus in Seafile aktivieren
+**Both must be migrated consistently** — a MariaDB dump without the matching blobs (or vice versa) results in a broken state.
+
+### Migration strategy
+
+```
+1. Put old Seafile instance into read-only mode
+   (prevents writes during migration)
+2. Create MariaDB dump
+3. Rsync file blobs
+4. Import MariaDB into k3s
+5. Copy blobs into PVC
+6. Test Seafile client on one device
+7. Switch DNS / nginx
+8. Shut down old instance
+```
+
+### Enable read-only mode in Seafile
 
 ```bash
-# Seafile auf alter Instanz
+# On the old instance
 seafile-admin maintenance --enable
 ```
 
-Damit können Clients noch lesen/syncen, aber keine neuen Änderungen schreiben — kein Datenverlust während der Migration.
+This allows clients to still read/sync but prevents new writes — no data loss during migration.
 
-### MariaDB-Dump
+### MariaDB dump
 
 ```bash
-# Auf alter Instanz (Docker):
+# On the old instance (Docker):
 docker exec seafile-db mysqldump -u root -p --all-databases > seafile-dump.sql
 ```
 
-### Blobs rsyncen
+### Rsync blobs
 
-Da Seafile sync-basiert ist, haben Clients alle Datei-Blobs lokal. Die Blobs auf dem Server sind aber die kanonische Quelle für Versionshistorie und Sharing-Links.
+Since Seafile is sync-based, clients have all file blobs locally. The blobs on the server are however the canonical source for version history and sharing links.
 
 ```bash
 rsync -av /path/to/seafile/data/ <user>@<raspi-hostname>:/tmp/seafile-data/
@@ -162,16 +162,16 @@ rsync -av /path/to/seafile/data/ <user>@<raspi-hostname>:/tmp/seafile-data/
 
 ---
 
-## Neuinstallation (kein bestehendes Seafile)
+## Fresh installation (no existing Seafile)
 
-Falls Seafile direkt in k3s neu aufgesetzt wird (kein Migration):
-1. Manifeste anwenden
-2. Seafile initialisiert sich selbst beim ersten Start
-3. Admin-Account über die Web-UI einrichten
-4. Seafile-Clients verbinden und sync einrichten
+If Seafile is being set up directly in k3s (no migration):
+1. Apply manifests
+2. Seafile initialises itself on first start
+3. Set up admin account via the web UI
+4. Connect Seafile clients and configure sync
 
-Das ist der einfachere Weg — und da Seafile noch nicht im docker-runtime liegt, möglicherweise der relevantere.
+This is the simpler path — and since Seafile is not yet in the docker-runtime, possibly the more relevant one.
 
 ---
 
-## Weiter: [Learning Path — Phase 5: GitOps mit Flux CD](../learning-path.md#phase-5--gitops-mit-flux-cd-woche-45)
+## Next: [Learning Path — Phase 5: GitOps with Flux CD](../learning-path.md#phase-5--gitops-with-flux-cd-week-45)

@@ -1,85 +1,85 @@
-# 01 — Raspberry Pi 5: OS & NVMe-Boot
+# 01 — Raspberry Pi 5: OS & NVMe Boot
 
 Hardware: Raspberry Pi 5 (8 GB RAM), M.2 HAT+, 256 GB NVMe SSD.
 
 **OS: Raspberry Pi OS Lite (64-bit, Bookworm)**
-Bringt alle Hardware-Tools nativ mit: `raspi-config`, `vcgencmd`, `rpi-eeprom-update` — ideal für Headless-Betrieb und spätere Hardware-Anpassungen.
+Ships all hardware tools natively: `raspi-config`, `vcgencmd`, `rpi-eeprom-update` — ideal for headless operation and future hardware adjustments.
 
 ---
 
-## Überblick
+## Overview
 
 ```
-Raspberry Pi OS auf NVMe flashen (vom Laptop)
-  → Erster Boot: EEPROM-Update via rpi-eeprom-update
-  → OS konfigurieren (SSH, statische IP, cgroups, Swap deaktivieren)
-  → Bereit für k3s
+Flash Raspberry Pi OS to NVMe (from the laptop)
+  → First boot: EEPROM update via rpi-eeprom-update
+  → Configure OS (SSH, static IP, cgroups, disable swap)
+  → Ready for k3s
 ```
 
 ---
 
-## 1. Raspberry Pi OS auf NVMe flashen
+## 1. Flash Raspberry Pi OS to NVMe
 
-**Auf dem Laptop** (nicht auf dem Pi): Raspberry Pi OS Lite (64-bit) mit dem **Raspberry Pi Imager** direkt auf die NVMe schreiben.
+**On the laptop** (not on the Pi): write Raspberry Pi OS Lite (64-bit) to the NVMe using the **Raspberry Pi Imager**.
 
-Die NVMe muss dazu entweder:
-- per USB-NVMe-Adapter am Laptop angeschlossen sein, oder
-- über `rpiboot` + USB-Kabel direkt vom Pi als USB-Gerät am Laptop erscheinen (erfordert das M.2 HAT+ im "flash mode")
+The NVMe must either be:
+- connected to the laptop via a USB-NVMe adapter, or
+- exposed as a USB device via `rpiboot` + USB cable directly from the Pi (requires the M.2 HAT+ in "flash mode")
 
-Im Imager unter "OS Customisation" **vor dem Flashen** konfigurieren:
-- Hostname: `raspi` (oder was du bevorzugst)
-- SSH: Public-Key-Authentifizierung, deinen SSH-Key eintragen
-- Benutzername + Passwort setzen
-- WLAN: konfigurieren, wenn notwendig, sonst leer lassen (Server läuft per Ethernet)
-- Locale: `Europe/Berlin`, Keyboard `de`
+In the Imager under "OS Customisation" configure **before flashing**:
+- Hostname: `raspi` (or your preference)
+- SSH: public key authentication, enter your SSH key
+- Set username + password
+- Wi-Fi: configure if needed, otherwise leave empty (server runs via Ethernet)
+- Locale: `Europe/Berlin`, keyboard `de`
 
 ---
 
-## 2. Erster Boot: EEPROM aktualisieren
+## 2. First boot: update EEPROM
 
 ```bash
-ssh <user>@<ip-adresse>
+ssh <user>@<ip-address>
 
-# System + Bootloader auf aktuellen Stand bringen
+# Update system and bootloader
 sudo apt update && sudo apt full-upgrade -y
 sudo rpi-eeprom-update -a
 sudo reboot
 ```
 
-Nach dem Neustart prüfen:
+After reboot, verify:
 ```bash
 sudo rpi-eeprom-update
-# Ausgabe sollte zeigen: BOOTLOADER: up to date
+# Output should show: BOOTLOADER: up to date
 
-# Aktuelle Bootloader-Version und Boot-Reihenfolge
+# Current bootloader version and boot order
 sudo rpi-eeprom-config | grep BOOT_ORDER
-# Raspberry Pi 5 booted standardmäßig von NVMe wenn vorhanden (BOOT_ORDER=0xf461)
-# Falls nicht: sudo raspi-config → Advanced → Boot Order → NVMe/USB Boot
+# Raspberry Pi 5 boots from NVMe by default if present (BOOT_ORDER=0xf461)
+# If not: sudo raspi-config → Advanced → Boot Order → NVMe/USB Boot
 ```
 
 ---
 
-## 3. OS-Grundkonfiguration
+## 3. OS base configuration
 
-### System aktualisieren
+### Update the system
 
 ```bash
 sudo apt install -y curl git vim htop iotop
 ```
 
-### Hostname setzen (falls nicht im Imager gemacht)
+### Set hostname (if not done in the Imager)
 
 ```bash
 sudo hostnamectl set-hostname raspi
 ```
 
-### Statische IP
+### Static IP
 
-Raspberry Pi OS Bookworm nutzt NetworkManager. Verbindungsname prüfen:
+Raspberry Pi OS Bookworm uses NetworkManager. Check the connection name:
 
 ```bash
 nmcli con show
-# Typischerweise "Wired connection 1" oder "eth0"
+# Typically "Wired connection 1" or "eth0"
 ```
 
 ```bash
@@ -87,54 +87,54 @@ nmcli con mod "Wired connection 1" \
   ipv4.method manual \
   ipv4.addresses "<server-ip>/24" \
   ipv4.gateway "<gateway-ip>" \
-  ipv4.dns "<gateway-ip> 1.1.1.1"   # Pi-hole oder Router als primärer DNS
+  ipv4.dns "<gateway-ip> 1.1.1.1"   # Pi-hole or router as primary DNS
 
 nmcli con up "Wired connection 1"
 ```
 
-### Swap deaktivieren
+### Disable swap
 
-k3s erfordert deaktivierten Swap. Erst prüfen ob überhaupt Swap aktiv ist:
+k3s requires swap to be disabled. First check whether swap is even active:
 
 ```bash
 free -h
 swapon --show
 ```
 
-Wenn die Swap-Zeile `0B` zeigt bzw. `swapon` keine Ausgabe liefert — nichts zu tun, weiter zum nächsten Schritt.
+If the swap line shows `0B` or `swapon` produces no output — nothing to do, proceed to the next step.
 
-Falls Swap aktiv ist, je nach Swap-Variante deaktivieren:
+If swap is active, disable it according to the swap type:
 
 ```bash
-# Variante A: dphys-swapfile (ältere RPi OS Versionen / SD-Karte)
+# Option A: dphys-swapfile (older RPi OS versions / SD card)
 sudo dphys-swapfile swapoff
 sudo dphys-swapfile uninstall
 sudo systemctl disable dphys-swapfile
 
-# Variante B: systemd swap file
-sudo swapoff /var/swap      # oder den Pfad aus "swapon --show"
+# Option B: systemd swap file
+sudo swapoff /var/swap      # or the path shown by "swapon --show"
 sudo sed -i '/swap/d' /etc/fstab
 
-# Variante C: zram (Raspberry Pi OS Bookworm)
-# zram-generator kann nicht per systemctl disable deaktiviert werden.
-# Zuverlässigste Lösung: Paket entfernen
+# Option C: zram (Raspberry Pi OS Bookworm)
+# zram-generator cannot be disabled via systemctl disable.
+# Most reliable solution: remove the package
 sudo swapoff /dev/zram0
 sudo apt remove systemd-zram-generator
 sudo reboot
-# Nach Neustart: swapon --show → keine Ausgabe = erledigt
+# After reboot: swapon --show → no output = done
 ```
 
-### cgroups für k3s aktivieren
+### Enable cgroups for k3s
 
-k3s benötigt cgroup memory. Auf Raspberry Pi OS Bookworm in `/boot/firmware/cmdline.txt` am **Ende der einzigen Zeile** (kein Zeilenumbruch!) ergänzen:
+k3s requires cgroup memory. On Raspberry Pi OS Bookworm, append the following to the **end of the single line** in `/boot/firmware/cmdline.txt` (no line break!):
 
-> Tipp in vim: `Shift+G` springt zur letzten Zeile, `A` wechselt in Append-Modus ans Zeilenende.
+> Tip in vim: `Shift+G` jumps to the last line, `A` switches to Append mode at the end of the line.
 
 ```
 cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1
 ```
 
-Beispiel wie die Zeile danach aussehen sollte:
+Example of what the line should look like afterwards:
 ```
 console=serial0,115200 console=tty1 root=PARTUUID=xxxx [...] cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1
 ```
@@ -143,35 +143,35 @@ console=serial0,115200 console=tty1 root=PARTUUID=xxxx [...] cgroup_enable=cpuse
 sudo reboot
 ```
 
-Nach dem Neustart prüfen:
+After reboot, verify:
 ```bash
 cat /sys/fs/cgroup/cgroup.controllers
-# memory muss in der Ausgabe stehen: "cpuset cpu io memory pids"
+# memory must appear in the output: "cpuset cpu io memory pids"
 ```
 
-**Hinweis:** In `/proc/cmdline` erscheint zusätzlich `cgroup_disable=memory` — das wird vom Raspberry Pi Firmware-Bootloader automatisch injiziert und steht nicht in `cmdline.txt`. Kein Problem: der Linux-Kernel verarbeitet Parameter von links nach rechts, `cgroup_enable=memory` am Ende überschreibt das frühere `cgroup_disable=memory`. Maßgeblich ist allein ob `memory` in `/sys/fs/cgroup/cgroup.controllers` auftaucht.
+**Note:** `/proc/cmdline` also shows `cgroup_disable=memory` — this is automatically injected by the Raspberry Pi firmware bootloader and is not in `cmdline.txt`. This is not a problem: the Linux kernel processes parameters left to right, so `cgroup_enable=memory` at the end overrides the earlier `cgroup_disable=memory`. The only thing that matters is whether `memory` appears in `/sys/fs/cgroup/cgroup.controllers`.
 
 ### Firewall (ufw)
 
 ```bash
 sudo apt install -y ufw
 sudo ufw allow ssh
-sudo ufw allow 6443/tcp    # k3s API-Server (kubectl von außen)
-sudo ufw allow 8472/udp    # Flannel VXLAN (später für Agent-Nodes)
+sudo ufw allow 6443/tcp    # k3s API server (kubectl from outside)
+sudo ufw allow 8472/udp    # Flannel VXLAN (later for Agent-Nodes)
 sudo ufw allow 10250/tcp   # kubelet metrics
 sudo ufw enable
 ```
 
-> Sobald ein zweiter Node hinzukommt, müssen ggf. weitere Ports geöffnet werden (k3s Agent-Kommunikation: 6443, 8472/UDP für Flannel).
+> Once a second node is added, additional ports may need to be opened (k3s agent communication: 6443, 8472/UDP for Flannel).
 
 ---
 
-## 4. Abschluss-Check
+## 4. Final check
 
 ```bash
-# OS-Version
+# OS version
 cat /etc/os-release | grep PRETTY_NAME
-# Sollte Debian GNU/Linux 12 (bookworm) zeigen
+# Should show: Debian GNU/Linux 12 (bookworm)
 
 # Kernel (64-bit?)
 uname -m
@@ -179,27 +179,27 @@ uname -m
 
 # Disk
 df -h /
-# /dev/nvme0n1p2 als root, ausreichend freier Platz
+# /dev/nvme0n1p2 as root, sufficient free space
 
 # RAM
 free -h
 # ~7.x GB total, Swap: 0B
 
-# cgroups aktiv (memory muss in der Ausgabe stehen)
+# cgroups active (memory must appear in the output)
 cat /sys/fs/cgroup/cgroup.controllers
 
-# Netzwerk
+# Network
 ip addr show eth0
 
-# EEPROM aktuell
+# EEPROM up to date
 sudo rpi-eeprom-update
 
-# SSH-Key-Login funktioniert
-# Passwort-Login deaktivieren:
+# SSH key login works
+# Disable password login:
 sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
 sudo systemctl reload ssh
 ```
 
 ---
 
-## Weiter: [02 — k3s installieren](./02-k3s-install.md)
+## Next: [02 — Install k3s](./02-k3s-install.md)

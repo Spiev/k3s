@@ -1,40 +1,40 @@
 # Immich Migration: Docker → k3s
 
-Immich ist aufgrund der Datenmenge der komplexeste Migrations-Kandidat. Diese Anleitung beschreibt die Strategie und den konkreten Ablauf.
+Immich is the most complex migration candidate due to its data volume. This guide describes the strategy and concrete steps.
 
 ---
 
-## Ausgangslage & Constraints
+## Starting point & constraints
 
-Immich läuft auf dem Agent-Node (2 TB NVMe) mit einer Bibliothek von ~1.5 TB. Der Agent-Node muss für den k3s-Join neu installiert werden — Docker und k3s können nicht parallel betrieben werden.
+Immich runs on the Agent-Node (2 TB NVMe) with a library of ~1.5 TB. The Agent-Node must be reinstalled for the k3s join — Docker and k3s cannot run in parallel.
 
-**Das Problem:**
+**The problem:**
 ```
-NVMe (1.8T gesamt):  ~1.6T belegt, ~200G frei
+NVMe (1.8T total):  ~1.6T used, ~200G free
   └── Immich library:  ~1.5 TB
-  └── alle anderen Services: ~12 GB
-Externe SSD:         ~393G frei  (zu wenig für 1.5T)
+  └── all other services: ~12 GB
+External SSD:         ~393G free  (not enough for 1.5T)
 ```
 
-Ein klassischer Migration-Pod (altes Volume → neues PVC kopieren) scheidet aus — dafür fehlt ~1.5 TB freier Speicher auf derselben Platte.
+A classic migration pod (copy old volume → new PVC) is not viable — there is ~1.5 TB of free space missing on the same disk.
 
 ---
 
-## Strategie: Restic-Restore nach Neuinstall
+## Strategy: Restic restore after reinstall
 
-Der Agent-Node wird neu installiert (NVMe wird dabei gewischt). Danach stehen ~1.8 TB frei zur Verfügung — genug für das local-path-PVC + Restore der Immich-Bibliothek aus dem Restic-Backup.
+The Agent-Node is reinstalled (NVMe is wiped). Afterwards ~1.8 TB are free — enough for the local-path PVC + restore of the Immich library from the Restic backup.
 
-Das Restic-Backup enthält:
-- Immich library (Fotos/Videos)
-- PostgreSQL-Dump (via Immich's eingebautem Backup-Worker, landet im library-Verzeichnis)
+The Restic backup contains:
+- Immich library (photos/videos)
+- PostgreSQL dump (via Immich's built-in backup worker, stored in the library directory)
 
 ```
-Externe SSD (Restic-Repo)
+External SSD (Restic repo)
         │
         │  restic restore
         ▼
-Frisch installierter Agent-Node
-  └── local-path PVC (1.6T+, auf NVMe)
+Freshly installed Agent-Node
+  └── local-path PVC (1.6T+, on NVMe)
         │
         ▼
 Immich deployment in k3s
@@ -42,83 +42,83 @@ Immich deployment in k3s
 
 ---
 
-## Reihenfolge
+## Order of operations
 
-### Phase 1 — Voraussetzungen schaffen
+### Phase 1 — Prerequisites
 
-1. **Alle anderen Docker-Services zuerst migrieren:** Pi-hole, Teslamate, Home Assistant, Paperless (zusammen ~12 GB — unkritisch für den Speicher)
-2. **S3-Offsite-Backup sicherstellen:** Restic läuft bereits lokal auf externe SSD. Vor der Migration sicherstellen, dass das Offsite-Backup ebenfalls aktuell ist → zwei unabhängige Kopien
-3. **Backup-Integrität prüfen:**
+1. **Migrate all other Docker services first:** Pi-hole, Teslamate, Home Assistant, Paperless (together ~12 GB — not critical for storage)
+2. **Ensure S3 off-site backup is current:** Restic already runs locally to external SSD. Before migration, verify the off-site backup is also up to date → two independent copies
+3. **Verify backup integrity:**
    ```bash
-   restic -r <repo-pfad> check --read-data
+   restic -r <repo-path> check --read-data
    ```
-   `--read-data` ist wichtig — ohne dieses Flag prüft Restic nur Metadaten, nicht die eigentlichen Daten. Bei ~1.5 TB dauert das eine Weile.
-4. **Letztes Backup vor dem Wipe** manuell triggern
+   `--read-data` is important — without this flag Restic only checks metadata, not the actual data. With ~1.5 TB this takes a while.
+4. **Trigger one final backup manually** before the wipe
 
-### Phase 2 — Agent-Node neu aufsetzen
+### Phase 2 — Reinstall Agent-Node
 
-1. Raspberry Pi OS Lite (64-bit, Bookworm) auf NVMe flashen
-2. cgroups aktivieren, Swap deaktivieren (→ [01-os-setup.md](../platform/01-os-setup.md))
-3. k3s Agent installieren und dem Cluster joinen (→ [learning-path.md Phase 8](../learning-path.md))
+1. Flash Raspberry Pi OS Lite (64-bit, Bookworm) to NVMe
+2. Enable cgroups, disable swap (→ [01-os-setup.md](../platform/01-os-setup.md))
+3. Install k3s agent and join the cluster (→ [learning-path.md Phase 8](../learning-path.md))
 
-### Phase 3 — local-path PVC anlegen
+### Phase 3 — Create local-path PVC
 
-PVC wird automatisch auf dem Node erstellt, auf dem der Pod läuft. Node via `nodeSelector` festlegen:
+The PVC is automatically created on the node where the pod runs. Pin the node via `nodeSelector`:
 
 ```yaml
 # In apps/immich/immich.yaml
-# Deployment mit nodeSelector auf Agent-Node
-# PVC Größe: mindestens aktuelle Library-Größe + Puffer (z.B. 1800Gi)
+# Deployment with nodeSelector pointing to Agent-Node
+# PVC size: at least current library size + buffer (e.g. 1800Gi)
 ```
 
-### Phase 4 — Restore aus Restic
+### Phase 4 — Restore from Restic
 
-Temporären Restore-Pod deployen, der PVC + externe SSD mountet:
+Deploy a temporary restore pod that mounts the PVC + external SSD:
 
 ```yaml
-# restore-pod.yaml (wird nach Restore gelöscht, nicht committed)
+# restore-pod.yaml (deleted after restore, not committed)
 volumes:
   - name: immich-data
     persistentVolumeClaim:
       claimName: immich-library
   - name: backup-ssd
     hostPath:
-      path: /mnt/sda1   # externe SSD am Agent-Node
+      path: /mnt/sda1   # external SSD on Agent-Node
 ```
 
-Im Pod:
+In the pod:
 ```bash
 restic -r /backup/restic-repo restore latest \
   --target /data \
   --include '**/immich/library'
 ```
 
-### Phase 5 — Immich deployen & verifizieren
+### Phase 5 — Deploy Immich & verify
 
-1. Restore-Pod löschen
-2. Immich deployen (server, machine-learning, redis, postgres)
-3. Im Immich-UI: Admin → Jobs → "Library Scan" ausführen
-4. Stichproben: Ein paar Alben, Faces, Suche prüfen
-5. Traefik IngressRoute aktivieren, DNS/nginx umschalten
-6. Externe SSD kann danach als reines Backup-Target weitergenutzt werden
+1. Delete the restore pod
+2. Deploy Immich (server, machine-learning, redis, postgres)
+3. In the Immich UI: Admin → Jobs → run "Library Scan"
+4. Spot-check: a few albums, faces, search
+5. Activate Traefik IngressRoute, switch DNS/nginx
+6. The external SSD can continue to be used as a pure backup target
 
 ---
 
-## Stack-Übersicht (4 Container)
+## Stack overview (4 containers)
 
-| Container | Image | Zweck |
+| Container | Image | Purpose |
 |---|---|---|
-| immich-server | `ghcr.io/immich-app/immich-server` | API + Web-UI |
-| immich-machine-learning | `ghcr.io/immich-app/immich-machine-learning` | Gesichtserkennung, CLIP-Suche |
-| redis | `docker.io/valkey/valkey:8-bookworm` | Cache & Queue |
-| postgres | `ghcr.io/immich-app/postgres:16-vectorchord...` | DB mit pgvectors-Extension |
+| immich-server | `ghcr.io/immich-app/immich-server` | API + web UI |
+| immich-machine-learning | `ghcr.io/immich-app/immich-machine-learning` | Face recognition, CLIP search |
+| redis | `docker.io/valkey/valkey:8-bookworm` | Cache & queue |
+| postgres | `ghcr.io/immich-app/postgres:16-vectorchord...` | DB with pgvectors extension |
 
-> Postgres-Image ist Immich-spezifisch (enthält VectorChord/pgvectors) — kein Standard-PostgreSQL-Image verwenden.
+> The Postgres image is Immich-specific (includes VectorChord/pgvectors) — do not use a standard PostgreSQL image.
 
 **Volumes:**
-- `immich-library` PVC → `/usr/src/app/upload` im immich-server
+- `immich-library` PVC → `/usr/src/app/upload` in immich-server
 - `immich-postgres` PVC → `/var/lib/postgresql/data`
-- `model-cache` PVC → `/cache` im machine-learning Container
+- `model-cache` PVC → `/cache` in the machine-learning container
 
 **Secrets (Sealed Secrets):**
 - `DB_PASSWORD`
@@ -126,19 +126,19 @@ restic -r /backup/restic-repo restore latest \
 
 ---
 
-## Risiken & Absicherung
+## Risks & mitigations
 
-| Risiko | Absicherung |
+| Risk | Mitigation |
 |---|---|
-| Restic-Restore schlägt fehl | `restic check --read-data` vorher + S3-Offsite als zweite Kopie |
-| Restore unvollständig | Test-Restore eines Ordners vor dem Wipe |
-| Postgres-Dump fehlt/veraltet | Immich-Backup-Job im UI prüfen: Admin → Jobs → "Database Backup" |
-| PVC zu klein | Aktuellen Verbrauch vor Migration messen: `du -sh ~/docker/immich/library` |
+| Restic restore fails | `restic check --read-data` beforehand + S3 off-site as second copy |
+| Incomplete restore | Test-restore of a folder before the wipe |
+| Postgres dump missing/outdated | Check Immich backup job in UI: Admin → Jobs → "Database Backup" |
+| PVC too small | Measure current usage before migration: `du -sh ~/docker/immich/library` |
 
 ---
 
-## Abhängigkeiten
+## Dependencies
 
-- Alle anderen Docker-Services müssen zuerst migriert sein (Agent-Node muss frei sein für Neuinstall)
-- Sealed Secrets muss eingerichtet sein (→ Phase 6 im learning-path)
-- Flux CD optional, aber empfohlen bevor Immich migriert wird
+- All other Docker services must be migrated first (Agent-Node must be free for reinstall)
+- Sealed Secrets must be set up (→ Phase 6 in learning-path)
+- Flux CD optional, but recommended before Immich is migrated
