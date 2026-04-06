@@ -57,7 +57,7 @@ clusters/       Flux CD configuration
 
 | Service | Status | Notes |
 |---|---|---|
-| FreshRSS | ✅ Migrated | Running on k3s, volume migration to encrypted pending |
+| FreshRSS | ✅ Migrated | Running on k3s, volume migration |
 | Pi-hole | ✅ Migrated | DNS via LoadBalancer + Ingress |
 | Seafile | Planning | Set up directly in k3s |
 | Immich | Open | Restic restore strategy (no space to copy) — after Agent-Node join |
