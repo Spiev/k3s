@@ -162,9 +162,14 @@ send_discovery() {
     send_sensor_discovery "k3s_unhealthy_pods"   "Unhealthy Pods"      ""     "mdi:kubernetes"
     send_sensor_discovery "k3s_unbound_pvcs"     "Unbound PVCs"        ""     "mdi:database-alert"
 
+    # Flux CD metrics
+    send_sensor_discovery "k3s_flux_revision"    "Flux Revision"       ""     "mdi:source-branch"
+    send_sensor_discovery "k3s_flux_last_sync"   "Flux Last Sync"      ""     "mdi:sync"          "timestamp"
+
     # Binary sensors
     send_binary_discovery "k3s_node_ready"       "k3s Node Ready"      "mdi:kubernetes"        "connectivity"
     send_binary_discovery "k3s_undervoltage"     "k3s Undervoltage"    "mdi:lightning-bolt"    "problem"
+    send_binary_discovery "k3s_flux_ready"       "Flux Ready"          "mdi:sync-alert"        "problem"
 
     echo "MQTT Discovery configs sent"
 }
@@ -289,6 +294,37 @@ get_unhealthy_pods() {
     echo "${result:-0}"
 }
 
+# Flux: are all kustomizations Ready?
+# Returns ON (no problem) or OFF (problem detected — inverted for HA problem device_class)
+get_flux_ready() {
+    local not_ready
+    not_ready=$(KUBECONFIG="$KUBECONFIG" kubectl get kustomizations -n flux-system \
+        --no-headers 2>/dev/null \
+        | awk '{print $4}' \
+        | { grep -vc "^True$" || true; })
+    [[ "${not_ready:-1}" == "0" ]] && echo "OFF" || echo "ON"
+}
+
+# Flux: short SHA of last applied revision for apps kustomization
+get_flux_revision() {
+    local rev
+    rev=$(KUBECONFIG="$KUBECONFIG" kubectl get kustomization apps -n flux-system \
+        -o jsonpath='{.status.lastAppliedRevision}' 2>/dev/null)
+    if [[ -z "$rev" ]]; then echo "unknown"; return; fi
+    # Extract short SHA: "main@sha1:ee7755bb..." → "ee7755bb"
+    echo "$rev" | sed 's/.*sha1://' | cut -c1-8
+}
+
+# Flux: timestamp of last successful reconciliation for apps kustomization
+get_flux_last_sync() {
+    KUBECONFIG="$KUBECONFIG" kubectl get kustomization apps -n flux-system \
+        -o jsonpath='{.status.lastHandledReconcileAt}' 2>/dev/null \
+        | grep -E '^\d{4}' \
+        || kubectl get kustomization apps -n flux-system \
+            -o jsonpath='{.status.conditions[?(@.type=="Ready")].lastTransitionTime}' 2>/dev/null \
+        || echo ""
+}
+
 # Count PVCs not in Bound state
 get_unbound_pvcs() {
     local result
@@ -319,12 +355,16 @@ UNDERVOLTAGE=$(get_undervoltage)
 NODE_READY=$(get_node_ready)
 UNHEALTHY_PODS=$(get_unhealthy_pods)
 UNBOUND_PVCS=$(get_unbound_pvcs)
+FLUX_READY=$(get_flux_ready)
+FLUX_REVISION=$(get_flux_revision)
+FLUX_LAST_SYNC=$(get_flux_last_sync)
 
 echo "CPU: ${CPU_USAGE}%, RAM: ${RAM_USAGE}%, Disk: ${DISK_USAGE}% (${DISK_FREE_GB} GB free)"
 echo "CPU temp: ${CPU_TEMP}°C, NVMe temp: ${NVME_TEMP}°C"
 echo "Fan: ${FAN_RPM} RPM (${FAN_PWM}%)"
 echo "Node ready: ${NODE_READY}, Unhealthy pods: ${UNHEALTHY_PODS}, Unbound PVCs: ${UNBOUND_PVCS}"
 echo "Undervoltage: ${UNDERVOLTAGE}"
+echo "Flux ready: ${FLUX_READY}, revision: ${FLUX_REVISION}, last sync: ${FLUX_LAST_SYNC}"
 
 PAYLOAD=$(cat <<EOF
 {
@@ -341,6 +381,9 @@ PAYLOAD=$(cat <<EOF
   "k3s_node_ready": "$NODE_READY",
   "k3s_unhealthy_pods": $UNHEALTHY_PODS,
   "k3s_unbound_pvcs": $UNBOUND_PVCS,
+  "k3s_flux_ready": "$FLUX_READY",
+  "k3s_flux_revision": "$FLUX_REVISION",
+  "k3s_flux_last_sync": "$FLUX_LAST_SYNC",
   "last_updated": "$(date --iso-8601=seconds)"
 }
 EOF
