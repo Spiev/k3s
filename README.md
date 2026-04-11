@@ -23,6 +23,7 @@ Kubernetes infrastructure on a Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration
 | [Pi-hole](docs/services/pihole.md) | Pi-hole: DNS via LoadBalancer + Ingress |
 | [Seafile](docs/services/seafile.md) | Migration: Seafile, multi-container, Secrets |
 | [Immich](docs/services/immich.md) | Migration: Immich, Restic restore strategy (1.5 TB library) |
+| [Flux CD](docs/platform/flux.md) | GitOps: automated deployment from Git |
 | [SOPS + age](docs/platform/sops.md) | Encrypting secrets for a public Git repo |
 | [Vaultwarden](docs/services/vaultwarden.md) | Password manager: concept, SSO, YubiKey, backup, Tier-0 emergency plan |
 | **Operations** | |
