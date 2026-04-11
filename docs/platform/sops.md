@@ -164,6 +164,42 @@ SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt \
 
 ---
 
+## Decrypting with YubiKey (local, no software key needed)
+
+The software private key is intentionally **not stored on disk** after bootstrapping the cluster secret — the YubiKey is the only local decryption key.
+
+```bash
+# 1. YubiKey must be plugged in, pcscd must be running
+sudo systemctl start pcscd
+
+# 2. Write identity string from Vaultwarden to a temp file
+echo "AGE-PLUGIN-YUBIKEY-19Z4D5QYZU83AGTCJ9PR2Q" > /tmp/yubikey-identity.txt
+
+# 3. Decrypt — YubiKey will ask for PIV PIN and a touch
+SOPS_AGE_KEY_FILE=/tmp/yubikey-identity.txt \
+  sops --decrypt apps/pihole/pihole-secret.sops.yaml
+
+rm /tmp/yubikey-identity.txt
+```
+
+---
+
+## ⚠️ base64 trap — Kubernetes Secret data fields
+
+`kubectl create secret --from-literal` stores values **base64-encoded** in the `data` field. SOPS encrypts that base64 value. After decrypting, you see the encoded form — not the plaintext.
+
+To read the actual value:
+
+```bash
+SOPS_AGE_KEY_FILE=/tmp/yubikey-identity.txt \
+  sops --decrypt --extract '["data"]["FTLCONF_webserver_api_password"]' \
+  apps/pihole/pihole-secret.sops.yaml | base64 -d
+```
+
+Alternatively use `stringData` in the manifest (plaintext stored, Kubernetes encodes automatically) — but `kubectl create --dry-run` always outputs `data`.
+
+---
+
 ## Adding a YubiKey as a second recipient (optional, after YubiKey procurement)
 
 Once YubiKeys are available, the YubiKey can be added as a second recipient for local editing. The cluster always uses the software key.
