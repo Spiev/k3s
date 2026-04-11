@@ -139,10 +139,14 @@ The identity file line (`AGE-PLUGIN-YUBIKEY-...`) is needed later for local decr
 ### Generate software age key (for cluster)
 
 ```bash
+# Arch Linux
+sudo pacman -S age
+
 mkdir -p ~/.config/sops/age
 age-keygen -o ~/.config/sops/age/keys.txt
 # Public key is shown in output: age1abc...
 # Private key → back up to Vaultwarden immediately
+# Do NOT delete the file yet — it is needed to bootstrap the cluster secret below
 ```
 
 ### Update .sops.yaml
@@ -168,12 +172,23 @@ git push
 
 ### Bootstrap cluster key into flux-system
 
+Run from the laptop — pipes the local key file directly into the cluster via SSH:
+
 ```bash
 cat ~/.config/sops/age/keys.txt | \
   ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl create secret generic sops-age \
     --namespace=flux-system \
     --from-file=age.agekey=/dev/stdin"
 ```
+
+Verify:
+```bash
+ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl get secret sops-age -n flux-system \
+  -o jsonpath='{.data.age\.agekey}' | base64 -d | head -2"
+# Should show: # public key: age1abc...
+```
+
+The private key file can be kept at `~/.config/sops/age/keys.txt` for local SOPS operations. It is never committed to Git.
 
 ### Apply kustomize-controller SOPS patch
 

@@ -93,14 +93,7 @@ git commit -m "feat(sops): add encryption config with age public key"
 
 ## Step 4 — Bootstrap the age key into the cluster (one-time, manual)
 
-This is the one step that cannot be automated from Git. The private key must exist in the cluster before Flux can decrypt anything. Do this once, right after `flux bootstrap`:
-
-```bash
-cat ~/.config/sops/age/keys.txt | \
-  kubectl create secret generic sops-age \
-    --namespace=flux-system \
-    --from-file=age.agekey=/dev/stdin
-```
+This step is part of the Flux setup — see [Flux CD — Step 3](./flux.md#bootstrap-cluster-key-into-flux-system) for the full command.
 
 > The filename suffix `.agekey` is required — the controller identifies age keys by this suffix.
 
