@@ -1,6 +1,6 @@
 # Deploy Seafile
 
-Prerequisite: [FreshRSS](./freshrss.md) completed. Sealed Secrets should be set up before this step (secrets for DB password and Seafile SECRET_KEY).
+Prerequisite: [FreshRSS](./freshrss.md) completed. [SOPS + age](../platform/05-sops.md) must be set up before this step (secrets for DB password and Seafile SECRET_KEY).
 
 Seafile is the second migration candidate and significantly more complex than FreshRSS: two pods, two volumes, service-to-service communication, and secrets. This makes it the ideal learning step before GitOps.
 
@@ -33,7 +33,7 @@ Seafile is the second migration candidate and significantly more complex than Fr
 |---|---|
 | Multiple Deployments in one Namespace | Seafile + MariaDB as separate workloads |
 | Service-to-service communication | Seafile talks to MariaDB via CoreDNS |
-| Sealed Secrets | DB password and Seafile `SECRET_KEY` must be encrypted in the repo |
+| SOPS + age | DB password and Seafile `SECRET_KEY` must be encrypted in the repo |
 | Startup dependency | MariaDB must be ready before Seafile starts |
 | StatefulSet vs. Deployment | Databases want stable pod names → MariaDB as StatefulSet |
 
@@ -51,7 +51,7 @@ apps/seafile/
 ├── deployment-seafile.yaml   ← seafile-mc container
 ├── service-seafile.yaml      ← ClusterIP → Ingress
 ├── ingress.yaml              ← domain routing
-└── sealed-secret.yaml        ← DB password + SECRET_KEY (encrypted)
+└── seafile-secrets.sops.yaml  ← DB password + SECRET_KEY (SOPS-encrypted)
 ```
 
 ---
@@ -83,7 +83,7 @@ Option A is more explicit and reliable.
 
 ---
 
-## Secrets (Sealed Secrets)
+## Secrets (SOPS)
 
 The following values must exist as a secret in the cluster — **not** in plaintext in the repo:
 
@@ -94,7 +94,7 @@ The following values must exist as a secret in the cluster — **not** in plaint
 | `SEAFILE_ADMIN_PASSWORD` | Seafile admin password | Generate new |
 | `SECRET_KEY` | Django secret key | `openssl rand -hex 32` |
 
-Workflow once Sealed Secrets is set up:
+Workflow with SOPS:
 ```bash
 kubectl create secret generic seafile-secrets \
   --namespace seafile \
@@ -102,11 +102,12 @@ kubectl create secret generic seafile-secrets \
   --from-literal=MYSQL_PASSWORD=<password> \
   --from-literal=SEAFILE_ADMIN_PASSWORD=<password> \
   --from-literal=SECRET_KEY=$(openssl rand -hex 32) \
-  --dry-run=client -o yaml | \
-  kubeseal --format yaml > apps/seafile/sealed-secret.yaml
+  --dry-run=client -o yaml > apps/seafile/seafile-secrets.sops.yaml
 
-git add apps/seafile/sealed-secret.yaml
-git commit -m "feat(seafile): add sealed secrets"
+sops --encrypt --in-place apps/seafile/seafile-secrets.sops.yaml
+
+git add apps/seafile/seafile-secrets.sops.yaml
+git commit -m "feat(seafile): add SOPS-encrypted secrets"
 ```
 
 ---

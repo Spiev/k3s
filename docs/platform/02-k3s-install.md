@@ -162,7 +162,7 @@ ConfigMap
 
 Secret
   └── like ConfigMap, but base64-encoded (≠ encrypted!)
-  └── for passwords, API keys etc. → later: Sealed Secrets
+  └── for passwords, API keys etc. → later: SOPS + age
 
 PersistentVolume (PV)
   └── actual storage (provided by local-path-provisioner)

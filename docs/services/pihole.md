@@ -1,6 +1,6 @@
 # Deploy Pi-hole
 
-Prerequisite: [03 — MetalLB](../platform/03-metallb.md) set up, [05 — Sealed Secrets](../platform/05-sealed-secrets.md) set up, Dual-Stack cluster running (see [02 — Install k3s](../platform/02-k3s-install.md)).
+Prerequisite: [03 — MetalLB](../platform/03-metallb.md) set up, [05 — SOPS + age](../platform/05-sops.md) set up, Dual-Stack cluster running (see [02 — Install k3s](../platform/02-k3s-install.md)).
 
 > [!NOTE]
 > MetalLB is **no longer a hard prerequisite** for Pi-hole. Klipper/ServiceLB (the k3s default) binds port 53 directly to the node IP — that is sufficient for DNS. MetalLB only adds value here when the node is connected via Ethernet (stable VIP independent of the node IP). See [03 — MetalLB](../platform/03-metallb.md).
@@ -20,7 +20,7 @@ Pi-hole runs as the DNS resolver for the entire home network. Since this is a fr
 | Dual-Stack DNS | Pi-hole must respond on IPv4 + IPv6 |
 | Static ULA | Node needs a fixed IPv6 so the DNS IP stays stable |
 | `NET_ADMIN` | Capability required for the DNS listener (and optionally DHCP) |
-| Admin password | From a gitignored secret file (until Sealed Secrets is set up) |
+| Admin password | SOPS-encrypted `pihole-secret.sops.yaml` committed to repo |
 | Custom DNS | A few hostnames — transferred manually |
 
 ---
@@ -66,19 +66,21 @@ apps/pihole/
 ## Step 3 — Create secret for admin password
 
 ```bash
-# Generate SealedSecret (replace <your-password>)
+# Generate plaintext manifest and encrypt with SOPS (replace <your-password>)
 kubectl create secret generic pihole-secret \
   --namespace pihole \
   --from-literal=FTLCONF_webserver_api_password="<your-password>" \
-  --dry-run=client -o yaml \
-  | kubeseal --format yaml > apps/pihole/pihole-sealed-secret.yaml
+  --dry-run=client -o yaml > apps/pihole/pihole-secret.sops.yaml
 
-# Commit to the repo
-git add apps/pihole/pihole-sealed-secret.yaml
-git commit -m "feat(pihole): add sealed secret for admin password"
+SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt \
+  sops --encrypt --in-place apps/pihole/pihole-secret.sops.yaml
+
+# Commit to the repo — encrypted values are safe to push publicly
+git add apps/pihole/pihole-secret.sops.yaml
+git commit -m "feat(pihole): add SOPS-encrypted admin secret"
 ```
 
-> The SealedSecret is deployed in Step 4 — the namespace must exist first.
+> The secret is deployed in Step 4 — Flux decrypts it in memory and applies it together with all other resources in the same reconciliation pass. No ordering problem.
 
 ---
 
@@ -91,7 +93,7 @@ Order matters: namespace first, then secret, then the rest — so the pod starts
 kubectl create namespace pihole --save-config
 
 # 2. Deploy SealedSecret — controller creates the real secret immediately
-kubectl apply -f apps/pihole/pihole-sealed-secret.yaml
+kubectl apply -f apps/pihole/pihole-secret.sops.yaml
 
 # 3. Deploy PVC, Deployment and Services
 kubectl apply -f apps/pihole/pihole.yaml

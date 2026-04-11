@@ -188,14 +188,15 @@ Large volumes (Immich library, Paperless documents) go on the Agent-Node with 2 
 
 No webhook needed. Flux pulls actively — works behind NAT without a public IP for the cluster ingress.
 
-**Sealed Secrets in the GitOps flow:**
+**SOPS in the GitOps flow:**
 ```
-Laptop: kubectl create secret ... | kubeseal → SealedSecret.yaml
+Laptop: kubectl create secret ... --dry-run -o yaml
+        | sops --encrypt → secret.sops.yaml
         git commit + push
         ↓
-Flux deploys SealedSecret into the cluster
+Flux reconciles — kustomize-controller decrypts in memory
         ↓
-Sealed Secrets controller decrypts → real secret in the cluster
+Plain Secret applied to cluster (decrypted value never touches disk)
         ↓
 Pod reads secret (password, API key etc.)
 ```
@@ -240,5 +241,5 @@ Both Pis are identical hardware (Raspi 5, 8 GB RAM) — a full migration to k3s 
 | local-path-provisioner | Storage | Persistent volumes directly on node filesystem | k3s built-in |
 | cert-manager | Controller | Let's Encrypt TLS — only needed when Traefik replaces nginx | Later |
 | Flux CD | GitOps | Automated deployment | Installed via flux CLI |
-| Sealed Secrets | Controller | Secret encryption | Installed via kubectl |
+| SOPS + age | Tool | Secret encryption (built into kustomize-controller) | Flux built-in, age key bootstrapped manually |
 | Prometheus + Grafana | Monitoring | Metrics & dashboards | kube-prometheus-stack |

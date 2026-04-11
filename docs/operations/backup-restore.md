@@ -16,13 +16,13 @@ Unified backup strategy via Restic for all services:
 
 These values **cannot** be recovered from the cluster if etcd is gone. Store them in the password manager — independent of cluster state:
 
-| Secret | How to export | Where to store |
+| Secret | Where to find it | Where to store |
 |---|---|---|
-| Sealed Secrets key | `kubectl get secret -n kube-system -l sealedsecrets.bitnami.com/sealed-secrets-key -o yaml > sealed-secrets-key.yaml` | Password manager |
-| Hetzner S3 credentials | Hetzner Console | Password manager |
-| Restic repo password (S3) | from `.restic.env` | Password manager |
+| SOPS age private key | `~/.config/sops/age/keys.txt` on the laptop | Vaultwarden |
+| Hetzner S3 credentials | Hetzner Console | Vaultwarden |
+| Restic repo password (S3) | from `.restic.env` | Vaultwarden |
 
-> **Never commit** `sealed-secrets-key.yaml` to the repo.
+> The age private key is the only secret that cannot be recovered from the cluster or from Git. Keep it in Vaultwarden. **Never commit it.**
 
 ---
 
@@ -219,11 +219,11 @@ rm -rf /tmp/restore
 
 ### Restore an entire service (after cluster reinstall)
 
-Order after reinstall: **Sealed Secrets → Services → Restic Restore**
+Order after reinstall: **SOPS bootstrap → Flux → Services → Restic Restore**
 
-1. Install Sealed Secrets controller + import key
-2. Deploy service manifests: `kubectl apply -f apps/paperless/`
-3. Wait until pods are running
+1. Run `flux bootstrap` to set up Flux
+2. Import age key from Vaultwarden into the cluster (see [05-sops.md](../platform/05-sops.md#recovery-after-cluster-reinstall))
+3. Flux deploys all services including secrets automatically
 4. Restic restore as above (Steps 1–4)
 
 ---
@@ -253,10 +253,10 @@ rm -rf /tmp/restore
 
 ### After cluster reinstall
 
-Order: **Sealed Secrets → Services → Restic Restore**
+Order: **SOPS bootstrap → Flux → Services → Restic Restore**
 
-1. Install Sealed Secrets controller + import key
-2. Deploy service manifests: `kubectl apply -f apps/freshrss/`
+1. Run `flux bootstrap` + import age key (see [05-sops.md](../platform/05-sops.md#recovery-after-cluster-reinstall))
+2. Flux deploys all services automatically
 3. Restic restore as above
 
 ---
@@ -270,11 +270,9 @@ Checklist before tearing down the cluster:
 source ~/workspace/priv/k3s/scripts/.restic.env
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots --last
 
-# 2. Export Sealed Secrets key
-kubectl get secret -n kube-system \
-  -l sealedsecrets.bitnami.com/sealed-secrets-key \
-  -o yaml > sealed-secrets-key.yaml
-# → store in password manager, do not commit to repo
+# 2. Verify age private key is backed up in Vaultwarden
+# (the key lives at ~/.config/sops/age/keys.txt on the laptop)
+# If in doubt: retrieve from Vaultwarden before proceeding
 ```
 
 ---

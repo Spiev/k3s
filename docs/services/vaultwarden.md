@@ -105,7 +105,7 @@ Namespace: vaultwarden
   ├── Deployment: vaultwarden (Timshel OIDC fork)
   ├── Service: vaultwarden (ClusterIP)
   ├── PVC: vaultwarden-data (local-path)
-  ├── SealedSecret: vaultwarden-secrets
+  ├── vaultwarden-secrets.sops.yaml  (SOPS-encrypted Secret)
   │     ├── ADMIN_TOKEN
   │     ├── OIDC_CLIENT_ID (Google)
   │     ├── OIDC_CLIENT_SECRET (Google)
@@ -261,7 +261,7 @@ tier0.age
     ├── Restic repository password (S3)
     ├── S3 access key + secret
     ├── Vaultwarden master password
-    ├── Sealed Secrets key (YAML)
+    ├── SOPS age private key
     └── RUNBOOK.md — step-by-step restore guide
 ```
 

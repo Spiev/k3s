@@ -25,7 +25,7 @@ Goal: step-by-step introduction to Kubernetes with k3s on two Raspberry Pi 5 (8 
 ### Why Flux CD as GitOps?
 - Lighter than ArgoCD (fits better on a Raspi)
 - Pull-based: no webhook needed, works behind NAT
-- Compatible with Sealed Secrets → secrets can go into the Git repo
+- Compatible with SOPS → encrypted secrets can go into the Git repo
 
 ---
 
@@ -75,7 +75,7 @@ Pod → smallest unit, one or more containers
 Deployment → manages pods (desired count, rolling updates)
 Service → stable network endpoint for pods (ClusterIP / NodePort / LoadBalancer)
 ConfigMap → configuration as key-value pairs (not a secret)
-Secret → like ConfigMap, but base64-encoded (and encryptable with Sealed Secrets)
+Secret → like ConfigMap, but base64-encoded (and encryptable with SOPS + age)
 PersistentVolume (PV) → actual storage
 PersistentVolumeClaim (PVC) → pods "request" storage via PVCs
 Namespace → logical separation of resources
@@ -274,7 +274,7 @@ The official `seafileltd/seafile-mc` image contains Seafile, Seahub **and** memc
 
 - **Multiple Deployments in one Namespace** — Seafile and MariaDB as separate Deployments
 - **Service-to-service communication** — Seafile talks to MariaDB via `mariadb.seafile.svc.cluster.local` (CoreDNS)
-- **Sealed Secrets in practice** — DB password, Seafile `SECRET_KEY`, admin credentials
+- **SOPS in practice** — DB password, Seafile `SECRET_KEY`, admin credentials
 - **Startup ordering** — MariaDB must be ready before Seafile starts (`initContainers` or `startupProbe`)
 
 ### Why Seafile should be migrated carefully despite its sync advantage
@@ -377,34 +377,35 @@ Flux sets itself up and monitors this repository from now on. Every commit to `m
 
 ## Phase 6 — Secrets Management (Week 4)
 
-Secrets in Kubernetes are only base64-encoded, not encrypted. For a public GitHub repo, Sealed Secrets is required.
+Secrets in Kubernetes are only base64-encoded, not encrypted. For a public GitHub repo, SOPS + age is used to encrypt secret values before committing.
 
-### Sealed Secrets
+### SOPS + age
 
-```bash
-# Install controller in the cluster (check version: https://github.com/bitnami-labs/sealed-secrets/releases)
-SEALED_SECRETS_VERSION="v0.27.1"
-kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/${SEALED_SECRETS_VERSION}/controller.yaml
-
-# CLI tool on the laptop (Arch Linux, x86_64)
-KUBESEAL_VERSION="${SEALED_SECRETS_VERSION#v}"
-curl -L "https://github.com/bitnami-labs/sealed-secrets/releases/download/${SEALED_SECRETS_VERSION}/kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz" \
-  | tar xz kubeseal
-sudo install -m 755 kubeseal /usr/local/bin/kubeseal
-```
+SOPS is built into Flux's `kustomize-controller` — no extra controller needed. Secrets are standard Kubernetes `Secret` manifests with encrypted values, stored as `*.sops.yaml` files.
 
 ```bash
-# Encrypt secret → safe to commit to the Git repo
+# Install tools (Arch Linux)
+sudo pacman -S age sops
+
+# Generate age key
+mkdir -p ~/.config/sops/age
+age-keygen -o ~/.config/sops/age/keys.txt
+# → note the public key, add it to .sops.yaml in the repo root
+
+# Encrypt a secret
 kubectl create secret generic pihole-secret \
   --namespace pihole \
-  --from-literal=WEBPASSWORD="secret" \
-  --dry-run=client -o yaml | \
-  kubeseal --format yaml > apps/pihole/pihole-sealed-secret.yaml
+  --from-literal=FTLCONF_webserver_api_password="secret" \
+  --dry-run=client -o yaml > apps/pihole/pihole-secret.sops.yaml
+
+SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt \
+  sops --encrypt --in-place apps/pihole/pihole-secret.sops.yaml
+# → safe to commit to the public repo
 ```
 
-The resulting `SealedSecret` can be safely committed to the public repo. Only the cluster can decrypt it.
+Flux decrypts the `*.sops.yaml` files in memory during reconciliation and applies plain Secrets to the cluster — no decrypted values ever touch disk or Git.
 
-> **Important:** Back up the controller key immediately after installation — details and full recovery procedure: [docs/platform/05-sealed-secrets.md](./platform/05-sealed-secrets.md)
+> **Important:** Back up the age private key immediately — store it in Vaultwarden. Full setup and recovery: [docs/platform/05-sops.md](./platform/05-sops.md)
 
 ---
 
@@ -462,7 +463,7 @@ curl -sfL https://get.k3s.io | K3S_URL=https://<raspi5-ip>:6443 \
 2. `docs/platform/02-k3s-install.md` — k3s with Dual-Stack (IPv4+IPv6), kubectl (local + remote), first steps
 3. `docs/platform/03-metallb.md` — set up MetalLB (LoadBalancer VIPs for bare metal)
 4. `docs/services/freshrss.md` — migrate FreshRSS
-5. `docs/platform/05-sealed-secrets.md` — set up Sealed Secrets (prerequisite for all further secrets)
+5. `docs/platform/05-sops.md` — set up SOPS + age (prerequisite for all further secrets)
 6. `docs/services/pihole.md` — Pi-hole: DNS via LoadBalancer
 7. `docs/services/seafile.md` — migrate Seafile (multi-container, secrets)
 8. `docs/services/immich.md` — migrate Immich (Restic restore strategy, large volume)
