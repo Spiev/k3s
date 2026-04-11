@@ -10,8 +10,8 @@ spec:
   ref:
     branch: main
   secretRef:
-    name: flux-system
-  url: ssh://git@github.com/Spiev/k3s
+    name: github-app-auth
+  url: https://github.com/Spiev/k3s
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
