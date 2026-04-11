@@ -299,8 +299,9 @@ get_unhealthy_pods() {
 get_flux_ready() {
     local not_ready
     not_ready=$(KUBECONFIG="$KUBECONFIG" kubectl get kustomizations -n flux-system \
-        --no-headers 2>/dev/null \
-        | awk '{print $4}' \
+        -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}' \
+        2>/dev/null \
+        | tr ' ' '\n' \
         | { grep -vc "^True$" || true; })
     [[ "${not_ready:-1}" == "0" ]] && echo "OFF" || echo "ON"
 }
