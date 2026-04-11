@@ -132,7 +132,9 @@ sudo systemctl start pcscd
 age-plugin-yubikey --generate --slot 1 --pin-policy once --touch-policy cached
 ```
 
-Note the public key (`age1yubikey1...`) — needed for `.sops.yaml`.
+> On first use, the tool migrates the YubiKey to a PIN-protected management key automatically. A physical touch is required during key generation.
+
+The identity file line (`AGE-PLUGIN-YUBIKEY-...`) is needed later for local decryption — store it in Vaultwarden alongside the PIN.
 
 ### Generate software age key (for cluster)
 
