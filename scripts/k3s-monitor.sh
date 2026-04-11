@@ -401,6 +401,6 @@ EOF
 )
 
 echo "Sending state..."
-mqtt_pub "$STATE_TOPIC" "$PAYLOAD"
+mqtt_pub "$STATE_TOPIC" "$PAYLOAD" retain
 
 echo "Script completed at $(date --iso-8601=ns)"
