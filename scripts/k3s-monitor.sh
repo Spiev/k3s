@@ -317,12 +317,22 @@ get_flux_revision() {
 
 # Flux: timestamp of last successful reconciliation for apps kustomization
 get_flux_last_sync() {
-    KUBECONFIG="$KUBECONFIG" kubectl get kustomization apps -n flux-system \
-        -o jsonpath='{.status.lastHandledReconcileAt}' 2>/dev/null \
-        | grep -E '^\d{4}' \
-        || kubectl get kustomization apps -n flux-system \
-            -o jsonpath='{.status.conditions[?(@.type=="Ready")].lastTransitionTime}' 2>/dev/null \
-        || echo ""
+    local ts
+    ts=$(KUBECONFIG="$KUBECONFIG" kubectl get kustomization apps -n flux-system \
+        -o jsonpath='{.status.lastAttemptedRevisionDigest}' 2>/dev/null)
+    # Fall back to Ready condition lastTransitionTime
+    ts=$(KUBECONFIG="$KUBECONFIG" kubectl get kustomization apps -n flux-system \
+        -o json 2>/dev/null \
+        | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+conds = d.get('status', {}).get('conditions', [])
+for c in conds:
+    if c.get('type') == 'Ready' and c.get('status') == 'True':
+        print(c.get('lastTransitionTime', ''))
+        break
+" 2>/dev/null)
+    echo "${ts:-}"
 }
 
 # Count PVCs not in Bound state
