@@ -2,4 +2,5 @@ creation_rules:
   - path_regex: .*\.sops\.yaml$
     encrypted_regex: ^(data|stringData)$
     age: >-
-      <REPLACE_WITH_YOUR_AGE_PUBLIC_KEY>
+      age1yubikey1qvj2qyvcuk9a5h4mnw5g2kx29ar6r76jxf70z7p6ueywvs5x5pjy6veqz6s,
+      age1k7zs63jjpdchkw83achsfhpuhssk27s5rakwwkdnge5apgdsdy7q7fpy84
