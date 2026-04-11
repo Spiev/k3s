@@ -1,6 +1,6 @@
-# 03 — Set up MetalLB
+# Set up MetalLB
 
-Prerequisite: [02 — Install k3s](./02-k3s-install.md) completed.
+Prerequisite: [Install k3s](./k3s-install.md) completed.
 
 MetalLB is a load balancer for bare-metal Kubernetes. k3s includes a built-in load balancer (Klipper/ServiceLB) that simply binds services to the node IP. MetalLB replaces Klipper and assigns dedicated virtual IPs (VIPs) instead — stable, independent of the node IP, and failover-capable in multi-node setups.
 

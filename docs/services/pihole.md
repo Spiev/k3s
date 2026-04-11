@@ -1,9 +1,9 @@
 # Deploy Pi-hole
 
-Prerequisite: [03 — MetalLB](../platform/03-metallb.md) set up, [05 — SOPS + age](../platform/05-sops.md) set up, Dual-Stack cluster running (see [02 — Install k3s](../platform/02-k3s-install.md)).
+Prerequisite: [MetalLB](../platform/metallb.md) set up, [SOPS + age](../platform/sops.md) set up, Dual-Stack cluster running (see [Install k3s](../platform/k3s-install.md)).
 
 > [!NOTE]
-> MetalLB is **no longer a hard prerequisite** for Pi-hole. Klipper/ServiceLB (the k3s default) binds port 53 directly to the node IP — that is sufficient for DNS. MetalLB only adds value here when the node is connected via Ethernet (stable VIP independent of the node IP). See [03 — MetalLB](../platform/03-metallb.md).
+> MetalLB is **no longer a hard prerequisite** for Pi-hole. Klipper/ServiceLB (the k3s default) binds port 53 directly to the node IP — that is sufficient for DNS. MetalLB only adds value here when the node is connected via Ethernet (stable VIP independent of the node IP). See [MetalLB](../platform/metallb.md).
 
 Pi-hole runs as the DNS resolver for the entire home network. Since this is a fresh deployment (no complex data to migrate), the volume is provisioned directly with `local-path`.
 
@@ -65,20 +65,7 @@ apps/pihole/
 
 ## Step 3 — Create secret for admin password
 
-```bash
-# Generate plaintext manifest and encrypt with SOPS (replace <your-password>)
-kubectl create secret generic pihole-secret \
-  --namespace pihole \
-  --from-literal=FTLCONF_webserver_api_password="<your-password>" \
-  --dry-run=client -o yaml > apps/pihole/pihole-secret.sops.yaml
-
-SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt \
-  sops --encrypt --in-place apps/pihole/pihole-secret.sops.yaml
-
-# Commit to the repo — encrypted values are safe to push publicly
-git add apps/pihole/pihole-secret.sops.yaml
-git commit -m "feat(pihole): add SOPS-encrypted admin secret"
-```
+Create and encrypt the secret following the [SOPS workflow](../platform/sops.md#step-6--creating-an-encrypted-secret) — use `pihole-secret` as the name, `pihole` as the namespace, and `FTLCONF_webserver_api_password` as the key.
 
 > The secret is deployed in Step 4 — Flux decrypts it in memory and applies it together with all other resources in the same reconciliation pass. No ordering problem.
 

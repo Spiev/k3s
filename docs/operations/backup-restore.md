@@ -219,12 +219,7 @@ rm -rf /tmp/restore
 
 ### Restore an entire service (after cluster reinstall)
 
-Order after reinstall: **SOPS bootstrap → Flux → Services → Restic Restore**
-
-1. Run `flux bootstrap` to set up Flux
-2. Import age key from Vaultwarden into the cluster (see [05-sops.md](../platform/05-sops.md#recovery-after-cluster-reinstall))
-3. Flux deploys all services including secrets automatically
-4. Restic restore as above (Steps 1–4)
+First complete the [SOPS recovery](../platform/sops.md#recovery-after-cluster-reinstall) (Flux bootstrap + age key import), then Restic restore as above (Steps 1-4).
 
 ---
 
@@ -253,11 +248,7 @@ rm -rf /tmp/restore
 
 ### After cluster reinstall
 
-Order: **SOPS bootstrap → Flux → Services → Restic Restore**
-
-1. Run `flux bootstrap` + import age key (see [05-sops.md](../platform/05-sops.md#recovery-after-cluster-reinstall))
-2. Flux deploys all services automatically
-3. Restic restore as above
+First complete the [SOPS recovery](../platform/sops.md#recovery-after-cluster-reinstall), then Restic restore as above.
 
 ---
 
@@ -299,22 +290,3 @@ kubectl get pods -n paperless
 tail -100 /var/log/k3s-backup.log
 ```
 
----
-
-## Note: nginx resolver.conf with Dual-Stack (FreshRSS)
-
-The linuxserver.io FreshRSS image generates `/config/nginx/resolver.conf` on first start. In a Dual-Stack cluster this file contains IPv6 addresses without square brackets — nginx rejects them:
-
-```
-invalid port in resolver "fd43::a"
-```
-
-Fix — run once after the first start:
-
-```bash
-kubectl exec -n freshrss <pod-name> -- sh -c \
-  'echo "resolver 10.43.0.10 valid=30s;" > /config/nginx/resolver.conf'
-kubectl rollout restart deployment freshrss -n freshrss
-```
-
-Since the file is in `/config` (persistent volume) and only generated on first start, this fix is permanent.

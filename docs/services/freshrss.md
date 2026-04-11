@@ -1,6 +1,6 @@
 # Deploy & Migrate FreshRSS
 
-Prerequisite: [02 — Install k3s](../platform/02-k3s-install.md) completed, cluster is running.
+Prerequisite: [Install k3s](../platform/k3s-install.md) completed, cluster is running.
 
 FreshRSS is the first service migrated from Docker to k3s. It has a single volume (`/config`) and no external database — ideal as a starting point.
 
@@ -237,6 +237,15 @@ kubectl describe pvc -n freshrss freshrss-config
 
 # FreshRSS shows wrong URLs (http instead of https)?
 # nginx must set X-Forwarded-Proto: https — check proxy-headers.conf
+
+# nginx resolver.conf Dual-Stack bug:
+# The linuxserver.io image generates /config/nginx/resolver.conf on first start.
+# In a Dual-Stack cluster this contains IPv6 addresses without brackets — nginx rejects them.
+# Fix (run once after first start):
+kubectl exec -n freshrss <pod-name> -- sh -c \
+  'echo "resolver 10.43.0.10 valid=30s;" > /config/nginx/resolver.conf'
+kubectl rollout restart deployment freshrss -n freshrss
+# The file is in /config (persistent volume) — fix is permanent.
 ```
 
 ---

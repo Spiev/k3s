@@ -1,6 +1,6 @@
-# 05 — Secret Management with SOPS + age
+# Secret Management with SOPS + age
 
-Prerequisite: [03 — MetalLB](./03-metallb.md) completed, cluster is running.
+Prerequisite: [MetalLB](./metallb.md) completed, cluster is running.
 
 SOPS (Secrets OPerationS) + age is the chosen secret management approach for this repo. Secrets are encrypted at the value level — key names stay visible in Git, only values are ciphertext. Flux CD decrypts them natively in memory before applying, so no extra controller is needed.
 
@@ -215,36 +215,6 @@ kubectl apply -f infrastructure/flux/kustomize-controller-sops-patch.yaml
 
 # 4. Trigger Flux reconciliation — all secrets are now decryptable
 flux reconcile kustomization flux-system --with-source
-```
-
----
-
-## Migration from Sealed Secrets (Pi-hole)
-
-Pi-hole currently uses a `SealedSecret`. The migration happens as part of the Flux CD setup:
-
-```bash
-# 1. Retrieve the current password from the running cluster
-kubectl get secret pihole-secret -n pihole \
-  -o jsonpath='{.data.FTLCONF_webserver_api_password}' | base64 -d
-
-# 2. Create and encrypt the new secret
-kubectl create secret generic pihole-secret \
-  --namespace pihole \
-  --from-literal=FTLCONF_webserver_api_password="<password-from-step-1>" \
-  --dry-run=client -o yaml > apps/pihole/pihole-secret.sops.yaml
-sops --encrypt --in-place apps/pihole/pihole-secret.sops.yaml
-
-# 3. Remove the old SealedSecret
-git rm apps/pihole/pihole-sealed-secret.yaml
-
-# 4. Commit and push — Flux will apply the new secret and the pod continues running
-git add apps/pihole/pihole-secret.sops.yaml
-git commit -m "feat(pihole): migrate secret from Sealed Secrets to SOPS"
-git push
-
-# 5. Once no SealedSecrets remain, remove the Sealed Secrets controller
-kubectl delete -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.27.1/controller.yaml
 ```
 
 ---

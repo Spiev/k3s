@@ -1,6 +1,6 @@
-# 02 — Install k3s (Dual-Stack: IPv4 + IPv6)
+# Install k3s (Dual-Stack: IPv4 + IPv6)
 
-Prerequisite: [01 — OS Setup](./01-os-setup.md) completed. Pi is running Raspberry Pi OS Bookworm (64-bit) from NVMe, cgroups active, no swap.
+Prerequisite: [OS Setup](./os-setup.md) completed. Pi is running Raspberry Pi OS Bookworm (64-bit) from NVMe, cgroups active, no swap.
 
 ---
 
@@ -138,42 +138,11 @@ Flannel (CNI) runs as a kernel module, not as a pod. `local-path-provisioner` is
 
 ---
 
-## 5. Core concepts — the most important objects
+## 5. Core concepts
 
-```
-Pod
-  └── smallest deployable unit; one or more containers
-  └── ephemeral, restarted on problems
+The key Kubernetes objects used in this repo: **Pod** (container), **Deployment** (manages pods), **Service** (stable network endpoint), **Namespace** (logical separation), **ConfigMap/Secret** (configuration), **PVC** (storage request), **IngressRoute** (HTTP routing).
 
-Deployment
-  └── manages a desired number of identical pods
-  └── handles rolling updates and rollbacks
-
-Service
-  └── stable network endpoint for a group of pods
-  └── pods come and go, the service IP stays the same
-  └── types: ClusterIP (internal), NodePort (open a node port), LoadBalancer (external IP)
-
-Namespace
-  └── logical separation of resources (e.g. one namespace per service)
-
-ConfigMap
-  └── configuration as key-value pairs, in plaintext
-
-Secret
-  └── like ConfigMap, but base64-encoded (≠ encrypted!)
-  └── for passwords, API keys etc. → later: SOPS + age
-
-PersistentVolume (PV)
-  └── actual storage (provided by local-path-provisioner)
-
-PersistentVolumeClaim (PVC)
-  └── pods "request" storage via PVCs
-  └── PVC binds to a matching PV
-
-Ingress / IngressRoute
-  └── external HTTP(S) routing → which domain goes to which service
-```
+→ [Kubernetes Concepts](https://kubernetes.io/docs/concepts/) — particularly Workloads, Services & Networking, Storage
 
 ---
 
@@ -337,4 +306,4 @@ kubectl top nodes
 
 ---
 
-## Next: [03 — MetalLB](./03-metallb.md)
+## Next: [MetalLB](./metallb.md)

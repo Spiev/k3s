@@ -1,6 +1,6 @@
 # Deploy Seafile
 
-Prerequisite: [FreshRSS](./freshrss.md) completed. [SOPS + age](../platform/05-sops.md) must be set up before this step (secrets for DB password and Seafile SECRET_KEY).
+Prerequisite: [FreshRSS](./freshrss.md) completed. [SOPS + age](../platform/sops.md) must be set up before this step (secrets for DB password and Seafile SECRET_KEY).
 
 Seafile is the second migration candidate and significantly more complex than FreshRSS: two pods, two volumes, service-to-service communication, and secrets. This makes it the ideal learning step before GitOps.
 
@@ -94,21 +94,7 @@ The following values must exist as a secret in the cluster — **not** in plaint
 | `SEAFILE_ADMIN_PASSWORD` | Seafile admin password | Generate new |
 | `SECRET_KEY` | Django secret key | `openssl rand -hex 32` |
 
-Workflow with SOPS:
-```bash
-kubectl create secret generic seafile-secrets \
-  --namespace seafile \
-  --from-literal=MYSQL_ROOT_PASSWORD=<password> \
-  --from-literal=MYSQL_PASSWORD=<password> \
-  --from-literal=SEAFILE_ADMIN_PASSWORD=<password> \
-  --from-literal=SECRET_KEY=$(openssl rand -hex 32) \
-  --dry-run=client -o yaml > apps/seafile/seafile-secrets.sops.yaml
-
-sops --encrypt --in-place apps/seafile/seafile-secrets.sops.yaml
-
-git add apps/seafile/seafile-secrets.sops.yaml
-git commit -m "feat(seafile): add SOPS-encrypted secrets"
-```
+Create and encrypt using the [SOPS workflow](../platform/sops.md#step-6--creating-an-encrypted-secret) with secret name `seafile-secrets` in namespace `seafile`. Generate `SECRET_KEY` with `openssl rand -hex 32`.
 
 ---
 
@@ -175,4 +161,4 @@ This is the simpler path — and since Seafile is not yet in the docker-runtime,
 
 ---
 
-## Next: [Learning Path — Phase 5: GitOps with Flux CD](../learning-path.md#phase-5--gitops-with-flux-cd-week-45)
+## Next: [Learning Path — Phase 5: GitOps with Flux CD](../learning-path.md#phase-5--gitops-with-flux-cd)

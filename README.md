@@ -14,16 +14,16 @@ Kubernetes infrastructure on a Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration
 |---|---|
 | [Architecture Overview](docs/architecture.md) | Big picture, network flow, components — good starting point |
 | [Learning Path](docs/learning-path.md) | Learning path and architecture decisions |
-| [01 — OS Setup](docs/platform/01-os-setup.md) | Raspberry Pi OS on NVMe, EEPROM, cgroups |
-| [02 — Install k3s](docs/platform/02-k3s-install.md) | k3s with Dual-Stack (IPv4+IPv6), kubectl, core concepts |
-| [03 — MetalLB](docs/platform/03-metallb.md) | LoadBalancer VIPs for Bare Metal (DNS, stable service IPs) |
+| [OS Setup](docs/platform/os-setup.md) | Raspberry Pi OS on NVMe, EEPROM, cgroups |
+| [Install k3s](docs/platform/k3s-install.md) | k3s with Dual-Stack (IPv4+IPv6), kubectl, first steps |
+| [MetalLB](docs/platform/metallb.md) | LoadBalancer VIPs for Bare Metal (DNS, stable service IPs) |
 | [Storage Decision](docs/decisions/storage.md) | local-path instead of Longhorn — rationale and trade-offs |
 | **Service Migrations** | |
 | [FreshRSS](docs/services/freshrss.md) ✅ | Migration: deploying FreshRSS |
 | [Pi-hole](docs/services/pihole.md) ✅ | Migration: Pi-hole, DNS via LoadBalancer + Ingress |
 | [Seafile](docs/services/seafile.md) | Migration: Seafile, multi-container, Secrets |
 | [Immich](docs/services/immich.md) | Migration: Immich, Restic restore strategy (1.5 TB library) |
-| [SOPS + age](docs/platform/05-sops.md) | Encrypting secrets for a public Git repo |
+| [SOPS + age](docs/platform/sops.md) | Encrypting secrets for a public Git repo |
 | [Vaultwarden](docs/services/vaultwarden.md) | Password manager: concept, SSO, YubiKey, backup, Tier-0 emergency plan |
 | **Operations** | |
 | [Shutdown & Startup](docs/operations/shutdown-startup.md) | Gracefully shutting down and starting up the cluster |

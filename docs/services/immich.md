@@ -58,7 +58,7 @@ Immich deployment in k3s
 ### Phase 2 — Reinstall Agent-Node
 
 1. Flash Raspberry Pi OS Lite (64-bit, Bookworm) to NVMe
-2. Enable cgroups, disable swap (→ [01-os-setup.md](../platform/01-os-setup.md))
+2. Enable cgroups, disable swap (→ [os-setup.md](../platform/os-setup.md))
 3. Install k3s agent and join the cluster (→ [learning-path.md Phase 8](../learning-path.md))
 
 ### Phase 3 — Create local-path PVC
