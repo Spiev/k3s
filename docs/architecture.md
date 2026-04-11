@@ -96,77 +96,13 @@ Traefik then takes over everything nginx does today. Fail2ban can run as a Daemo
 
 ---
 
-## Kubernetes objects per service
+## Storage
 
-Every migrated service consists of the same building blocks:
+`local-path-provisioner` (k3s built-in) stores data at `/var/lib/rancher/k3s/storage/<pvc-name>/` — directly on NVMe, directly backupable with Restic. PVCs automatically get `nodeAffinity` for the node they were created on.
 
-```
-Namespace
-  ├── Deployment          ← "run N copies of this container"
-  │     └── Pod(s)        ← the actual container
-  ├── Service             ← stable internal network endpoint
-  ├── PersistentVolumeClaim (PVC)  ← "I need X GB of storage"
-  │     └── PersistentVolume (PV)  ← provisioned by local-path
-  ├── ConfigMap           ← configuration (not a secret)
-  ├── SealedSecret        ← encrypted secret (safe to commit to Git)
-  └── IngressRoute        ← "this domain goes to this service"
-```
+Large volumes (Immich, Paperless) go on the Agent-Node (2 TB NVMe) via `nodeSelector`. Small volumes (FreshRSS, Seafile) go on the Server-Node.
 
-Example FreshRSS (simplest case, 1 container):
-```
-Namespace: freshrss
-  ├── Deployment: freshrss (1 pod, image: lscr.io/linuxserver/freshrss)
-  ├── Service: freshrss (ClusterIP → port 80)
-  ├── PVC: freshrss-config (5Gi, local-path)
-  └── IngressRoute: freshrss.example.com → Service freshrss
-```
-
-Example Seafile (2 containers, service-to-service):
-```
-Namespace: seafile
-  ├── Deployment: seafile (seafileltd/seafile-mc)
-  │     └── talks to MariaDB via: mariadb.seafile.svc.cluster.local
-  ├── Deployment: mariadb
-  ├── Service: seafile (ClusterIP)
-  ├── Service: mariadb (ClusterIP, cluster-internal only)
-  ├── PVC: seafile-data
-  ├── PVC: mariadb-data
-  ├── SealedSecret: seafile-secrets (DB password, SECRET_KEY)
-  └── IngressRoute: seafile.example.com → Service seafile
-```
-
----
-
-## Storage: local-path
-
-k3s ships with the `local-path-provisioner` built in. Data lives directly on the node filesystem:
-
-```
-Pod writes data
-       │
-       ▼
-  PVC (request: "5Gi, ReadWriteOnce")
-       │  local-path fulfils the request
-       ▼
-  /var/lib/rancher/k3s/storage/<pvc-name>/   ← directly on the NVMe
-```
-
-PVCs automatically receive a `nodeAffinity` for the node on which they were created. This technically enforces what is already intended in this setup: services are pinned to a fixed node (due to hardware or storage capacity).
-
-**Storage planning with 2 nodes:**
-Large volumes (Immich library, Paperless documents) go on the Agent-Node with 2 TB NVMe — via an explicit `nodeSelector` in the Deployment. Small volumes (FreshRSS, Seafile) go on the Server-Node.
-
-→ Migration strategy for Immich (1.5 TB library): [`docs/services/immich.md`](services/immich.md)
-
-**Backup strategy:**
-```
-/var/lib/rancher/k3s/storage/<pvc-name>/
-       │  directly readable (like Docker volumes)
-       ▼
-  Restic → Hetzner S3
-```
-
-→ Decision against Longhorn: [`docs/decisions/storage.md`](decisions/storage.md)
+→ [Storage Decision](decisions/storage.md) · [Immich Migration](services/immich.md) · [Backup & Restore](operations/backup-restore.md)
 
 ---
 
@@ -188,17 +124,7 @@ Large volumes (Immich library, Paperless documents) go on the Agent-Node with 2 
 
 No webhook needed. Flux pulls actively — works behind NAT without a public IP for the cluster ingress.
 
-**Sealed Secrets in the GitOps flow:**
-```
-Laptop: kubectl create secret ... | kubeseal → SealedSecret.yaml
-        git commit + push
-        ↓
-Flux deploys SealedSecret into the cluster
-        ↓
-Sealed Secrets controller decrypts → real secret in the cluster
-        ↓
-Pod reads secret (password, API key etc.)
-```
+Secrets are encrypted with SOPS + age and committed as `*.sops.yaml` files. Flux decrypts them in memory during reconciliation — decrypted values never touch disk or Git. → [SOPS + age](platform/sops.md)
 
 ---
 
@@ -240,5 +166,5 @@ Both Pis are identical hardware (Raspi 5, 8 GB RAM) — a full migration to k3s 
 | local-path-provisioner | Storage | Persistent volumes directly on node filesystem | k3s built-in |
 | cert-manager | Controller | Let's Encrypt TLS — only needed when Traefik replaces nginx | Later |
 | Flux CD | GitOps | Automated deployment | Installed via flux CLI |
-| Sealed Secrets | Controller | Secret encryption | Installed via kubectl |
+| SOPS + age | Tool | Secret encryption (built into kustomize-controller) | Flux built-in, age key bootstrapped manually |
 | Prometheus + Grafana | Monitoring | Metrics & dashboards | kube-prometheus-stack |
