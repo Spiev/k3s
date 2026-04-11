@@ -57,7 +57,9 @@ Install Flux CLI on the Pi:
 ssh stefan@k3s.fritz.box "curl -s https://fluxcd.io/install.sh | sudo bash"
 ```
 
-`flux bootstrap github` does not support GitHub App flags directly — a short-lived installation token must be generated first:
+`flux bootstrap github` does not support GitHub App flags directly — a short-lived installation token must be generated first. The token is only used for the bootstrap push itself; after bootstrap, Flux uses the GitHub App secret for all ongoing pulls (see Step 2b).
+
+> **Branch Protection:** On personal GitHub accounts, bypass actors are not available. Temporarily disable the branch protection rule for `main` before running bootstrap, then re-enable it afterwards.
 
 ```bash
 ssh stefan@k3s.fritz.box "
@@ -84,12 +86,11 @@ GITHUB_TOKEN=\$TOKEN flux bootstrap github \
   --repository=k3s \
   --branch=main \
   --path=clusters/raspi \
-  --token-auth \
   --personal
 "
 ```
 
-> **Branch Protection:** On personal GitHub accounts, bypass actors are not available. Temporarily disable the branch protection rule for `main` before running bootstrap, then re-enable it afterwards.
+> **Do not use `--token-auth`** — that flag stores the short-lived installation token in the cluster, which expires after 1 hour and breaks Flux pulls. Without the flag, bootstrap creates an SSH deploy key by default, which we immediately replace in Step 2b.
 
 Flux:
 1. Installs itself into the cluster (`flux-system` namespace)
@@ -102,6 +103,62 @@ Verify:
 ssh stefan@k3s.fritz.box "flux check"
 ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl get pods -n flux-system"
 ```
+
+---
+
+## Step 2b — Switch to GitHub App auth (no SSH keys)
+
+After bootstrap, Flux uses an SSH deploy key by default. Replace it immediately with the GitHub App for proper token rotation and no static keys.
+
+**Create the GitHub App secret on the cluster:**
+
+```bash
+ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl create secret generic github-app-auth \
+  --namespace=flux-system \
+  --from-literal=githubAppID=<APP_ID> \
+  --from-literal=githubAppInstallationID=<INSTALLATION_ID> \
+  --from-file=githubAppPrivateKey=\$HOME/.config/flux-github-app.pem"
+```
+
+**Delete the SSH deploy key secret:**
+
+```bash
+ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl delete secret flux-system -n flux-system"
+```
+
+**Patch the GitRepository to use the GitHub App secret** (and HTTPS, not SSH):
+
+```bash
+ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl patch gitrepository flux-system -n flux-system \
+  --type=merge \
+  -p '{\"spec\":{\"provider\":\"github\",\"url\":\"https://github.com/Spiev/k3s\",\"secretRef\":{\"name\":\"github-app-auth\"}}}'"
+```
+
+**Update `clusters/raspi/flux-system/gotk-sync.yaml`** to match (so the next bootstrap doesn't revert this):
+
+```yaml
+spec:
+  interval: 1m0s
+  provider: github
+  ref:
+    branch: main
+  secretRef:
+    name: github-app-auth
+  url: https://github.com/Spiev/k3s
+```
+
+Commit and push, then re-enable branch protection.
+
+**Delete the SSH deploy key** from GitHub → Repository Settings → Deploy keys.
+
+Verify:
+
+```bash
+ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config flux get sources git -A"
+# READY=True, MESSAGE: stored artifact for revision 'main@sha1:...'
+```
+
+Flux now auto-refreshes GitHub App tokens — no expiry, no static keys.
 
 ---
 
