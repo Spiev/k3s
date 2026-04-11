@@ -36,7 +36,7 @@ Flux needs write access to the repo to commit its own manifests during bootstrap
 
 After creation:
 1. Note the **App ID** (shown on the app page under "About")
-2. Generate a **private key** (bottom of the app page) — save the `.pem` file securely in Vaultwarden
+2. Generate a **private key** (bottom of the app page) → save the `.pem` file in Vaultwarden
 3. **Install the app** on the `k3s` repository (Settings → Install App)
 4. Note the **Installation ID** from the URL after installation: `github.com/settings/installations/<INSTALLATION_ID>`
 
@@ -44,25 +44,52 @@ After creation:
 
 ## Step 2 — Bootstrap Flux (on the Pi)
 
-Copy the private key `.pem` to the Pi temporarily:
+Copy the private key `.pem` to the Pi:
 
 ```bash
 scp k3s-flux.pem stefan@k3s.fritz.box:~/.config/flux-github-app.pem
-chmod 600 ~/.config/flux-github-app.pem
+ssh stefan@k3s.fritz.box "chmod 600 ~/.config/flux-github-app.pem"
 ```
 
-Run bootstrap:
+Install Flux CLI on the Pi:
 
 ```bash
-flux bootstrap github \
+ssh stefan@k3s.fritz.box "curl -s https://fluxcd.io/install.sh | sudo bash"
+```
+
+`flux bootstrap github` does not support GitHub App flags directly — a short-lived installation token must be generated first:
+
+```bash
+ssh stefan@k3s.fritz.box "
+APP_ID=<APP_ID>
+INSTALLATION_ID=<INSTALLATION_ID>
+PEM=~/.config/flux-github-app.pem
+
+NOW=\$(date +%s)
+IAT=\$((NOW - 60))
+EXP=\$((NOW + 600))
+HEADER=\$(echo -n '{\"alg\":\"RS256\",\"typ\":\"JWT\"}' | base64 -w0 | tr -d '=' | tr '/+' '_-')
+PAYLOAD=\$(echo -n \"{\\\"iat\\\":\${IAT},\\\"exp\\\":\${EXP},\\\"iss\\\":\\\"\${APP_ID}\\\"}\" | base64 -w0 | tr -d '=' | tr '/+' '_-')
+SIG_INPUT=\"\${HEADER}.\${PAYLOAD}\"
+SIG=\$(echo -n \"\$SIG_INPUT\" | openssl dgst -sha256 -sign \$PEM | base64 -w0 | tr -d '=' | tr '/+' '_-')
+JWT=\"\${SIG_INPUT}.\${SIG}\"
+
+TOKEN=\$(curl -s -X POST \
+  -H \"Authorization: Bearer \$JWT\" \
+  -H \"Accept: application/vnd.github+json\" \
+  https://api.github.com/app/installations/\${INSTALLATION_ID}/access_tokens | jq -r '.token')
+
+GITHUB_TOKEN=\$TOKEN flux bootstrap github \
   --owner=Spiev \
   --repository=k3s \
   --branch=main \
   --path=clusters/raspi \
-  --app-id=<APP_ID> \
-  --app-installation-id=<INSTALLATION_ID> \
-  --app-private-key-path=~/.config/flux-github-app.pem
+  --token-auth \
+  --personal
+"
 ```
+
+> **Branch Protection:** On personal GitHub accounts, bypass actors are not available. Temporarily disable the branch protection rule for `main` before running bootstrap, then re-enable it afterwards.
 
 Flux:
 1. Installs itself into the cluster (`flux-system` namespace)
@@ -72,35 +99,127 @@ Flux:
 Verify:
 
 ```bash
-flux check
-kubectl get pods -n flux-system
-# All pods: Running
+ssh stefan@k3s.fritz.box "flux check"
+ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl get pods -n flux-system"
 ```
 
 ---
 
-## Step 3 — Bootstrap the age key for SOPS
+## Step 3 — Set up age keys for SOPS
 
-This must happen before Flux reconciles any encrypted secrets. See [SOPS + age — Step 4](./sops.md#step-4--bootstrap-the-age-key-into-the-cluster-one-time-manual):
+Two keys are needed:
+- **YubiKey age identity** — for local encryption/decryption on the laptop (hardware-bound, private key never leaves YubiKey)
+- **Software age key** — for the cluster (Flux decrypts without a physical YubiKey)
+
+### Prerequisites
+
+```bash
+# Arch Linux
+sudo pacman -S age-plugin-yubikey yubikey-manager ccid pcsc-tools
+sudo systemctl start pcscd
+```
+
+> **Note:** The YubiKey PIV PIN is **separate** from the FIDO2/WebAuthn PIN used for passkeys and Windows Hello. Default PIV PIN: `123456`, default PUK: `12345678`. Change both before use:
+> ```bash
+> ykman piv access change-pin
+> ykman piv access change-puk
+> ```
+> Store both in Vaultwarden.
+
+### Generate YubiKey age identity
+
+```bash
+age-plugin-yubikey --generate --slot 1 --pin-policy once --touch-policy cached
+```
+
+> On first use, the tool migrates the YubiKey to a PIN-protected management key automatically. A physical touch is required during key generation.
+
+The identity file line (`AGE-PLUGIN-YUBIKEY-...`) is needed later for local decryption — store it in Vaultwarden alongside the PIN.
+
+### Generate software age key (for cluster)
+
+```bash
+# Arch Linux
+sudo pacman -S age
+
+mkdir -p ~/.config/sops/age
+age-keygen -o ~/.config/sops/age/keys.txt
+# Public key is shown in output: age1abc...
+# Private key → back up to Vaultwarden immediately
+# Do NOT delete the file yet — it is needed to bootstrap the cluster secret below
+```
+
+### Update .sops.yaml
+
+Add both public keys as recipients:
+
+```yaml
+creation_rules:
+  - path_regex: .*\.sops\.yaml$
+    encrypted_regex: ^(data|stringData)$
+    age: >-
+      age1yubikey1...,
+      age1abc...
+```
+
+Commit:
+
+```bash
+git add .sops.yaml
+git commit -m "feat(sops): add age public keys (YubiKey + cluster)"
+git push
+```
+
+### Bootstrap cluster key into flux-system
+
+Run from the laptop — pipes the local key file directly into the cluster via SSH:
 
 ```bash
 cat ~/.config/sops/age/keys.txt | \
-  kubectl create secret generic sops-age \
+  ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl create secret generic sops-age \
     --namespace=flux-system \
-    --from-file=age.agekey=/dev/stdin
+    --from-file=age.agekey=/dev/stdin"
 ```
 
-Then apply the kustomize-controller patch (Step 5 in sops.md):
+Verify:
+```bash
+ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl get secret sops-age -n flux-system \
+  -o jsonpath='{.data.age\.agekey}' | base64 -d | head -2"
+# Should show: # public key: age1abc...
+```
+
+The private key file can be kept at `~/.config/sops/age/keys.txt` for local SOPS operations. It is never committed to Git.
+
+### Apply kustomize-controller SOPS patch
+
+Create `infrastructure/flux/kustomize-controller-sops-patch.yaml`:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kustomize-controller
+  namespace: flux-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: manager
+          args:
+            - --sops-age-secret=sops-age
+```
+
+Apply directly (or via Flux once infrastructure Kustomization exists):
 
 ```bash
-kubectl apply -f infrastructure/flux/kustomize-controller-sops-patch.yaml
+ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl apply -f infrastructure/flux/kustomize-controller-sops-patch.yaml"
 ```
 
 ---
 
 ## Step 4 — Point Flux at the apps directory
 
-Create `clusters/raspi/apps.yaml` to tell Flux which directories to deploy:
+Create `clusters/raspi/apps.yaml`:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -218,16 +337,16 @@ Push → Flux deploys Traefik automatically within 1 minute.
 
 ```bash
 # Show all Flux Kustomizations and their sync status
-flux get kustomizations
+ssh stefan@k3s.fritz.box "flux get kustomizations"
 
 # Show all HelmReleases
-flux get helmreleases -A
+ssh stefan@k3s.fritz.box "flux get helmreleases -A"
 
 # Force a manual reconciliation
-flux reconcile kustomization flux-system --with-source
+ssh stefan@k3s.fritz.box "flux reconcile kustomization flux-system --with-source"
 
 # Watch Flux logs
-flux logs --follow
+ssh stefan@k3s.fritz.box "flux logs --follow"
 ```
 
 ---
