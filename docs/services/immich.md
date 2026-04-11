@@ -58,7 +58,7 @@ Immich deployment in k3s
 ### Phase 2 — Reinstall Agent-Node
 
 1. Flash Raspberry Pi OS Lite (64-bit, Bookworm) to NVMe
-2. Enable cgroups, disable swap (→ [01-os-setup.md](../platform/01-os-setup.md))
+2. Enable cgroups, disable swap (→ [os-setup.md](../platform/os-setup.md))
 3. Install k3s agent and join the cluster (→ [learning-path.md Phase 8](../learning-path.md))
 
 ### Phase 3 — Create local-path PVC
@@ -120,7 +120,7 @@ restic -r /backup/restic-repo restore latest \
 - `immich-postgres` PVC → `/var/lib/postgresql/data`
 - `model-cache` PVC → `/cache` in the machine-learning container
 
-**Secrets (Sealed Secrets):**
+**Secrets (SOPS):**
 - `DB_PASSWORD`
 - `DB_USERNAME`, `DB_DATABASE_NAME`
 
@@ -140,5 +140,5 @@ restic -r /backup/restic-repo restore latest \
 ## Dependencies
 
 - All other Docker services must be migrated first (Agent-Node must be free for reinstall)
-- Sealed Secrets must be set up (→ Phase 6 in learning-path)
+- SOPS + age must be set up (→ Phase 6 in learning-path)
 - Flux CD optional, but recommended before Immich is migrated

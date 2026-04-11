@@ -96,135 +96,29 @@ Recommended HA automations:
 
 ## 2. kube-prometheus-stack (optional/exploratory)
 
-The standard Kubernetes monitoring stack: **Prometheus + Grafana + Alertmanager**, installed via the **kube-prometheus-stack** Helm chart.
-
-```
-Node Exporter        → metrics from the Raspi host (CPU, RAM, disk, temperature)
-kube-state-metrics   → metrics about K8s objects (pods, deployments, PVCs)
-Prometheus           → collects and stores all metrics (time-series database)
-Alertmanager         → processes alerts from Prometheus
-Grafana              → dashboards and visualisation
-```
-
-### 2.1 Install Helm
-
-Helm is the package manager for Kubernetes — similar to `apt` for Debian.
+The standard Kubernetes monitoring stack: **Prometheus + Grafana + Alertmanager**, installed via Helm. Useful for learning and deep Kubernetes metrics, but no permanent operation planned.
 
 ```bash
-# Arch Linux (laptop)
+# Install Helm (Arch Linux)
 sudo pacman -S helm
 
-# On the Raspi (if Helm is needed there)
-curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-```
-
----
-
-### 2.2 Install kube-prometheus-stack
-
-```bash
-# Add Helm repository
+# Install stack
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
-
-# Install stack in the monitoring namespace
 helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-  --namespace monitoring \
-  --create-namespace \
+  --namespace monitoring --create-namespace \
   --set grafana.adminPassword=<set-password>
-```
 
-Installation takes 2–3 minutes. Monitor progress:
-
-```bash
-kubectl get pods -n monitoring -w
-# All pods must reach Running
-```
-
-What gets installed:
-
-| Pod | Function |
-|---|---|
-| `prometheus-*` | Metrics database |
-| `grafana-*` | Dashboard UI |
-| `alertmanager-*` | Alert processing |
-| `node-exporter-*` (DaemonSet) | Host metrics per node |
-| `kube-state-metrics-*` | K8s object metrics |
-
----
-
-### 2.3 Access Grafana
-
-Port-forward for first access:
-
-```bash
+# Access Grafana
 kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
-```
+# Browser: http://localhost:3000 (admin / <password>)
 
-Browser: `http://localhost:3000`
-
-- Username: `admin`
-- Password: the password set during installation
-
-From another machine on the network:
-```bash
-ssh -L 3000:localhost:3000 <user>@<raspi-hostname>
-# Then: http://localhost:3000 in the browser on the laptop
-```
-
-> Grafana will later be made permanently accessible via Traefik (with auth). Port-forward is sufficient for now.
-
----
-
-### 2.4 Pre-built dashboards
-
-kube-prometheus-stack ships many dashboards out of the box. The most relevant for this setup:
-
-| Dashboard | Content |
-|---|---|
-| **Kubernetes / Nodes** | CPU, RAM, disk, network per node |
-| **Kubernetes / Pods** | Resource usage per pod |
-| **Kubernetes / Persistent Volumes** | PVC status and storage usage |
-| **Node Exporter Full** | Detailed host metrics including temperature |
-
-Raspberry Pi CPU temperature is found under **Node Exporter Full → Hardware → Thermal** (`node_thermal_zone_temp`).
-
----
-
-### 2.5 Configure persistence
-
-By default Prometheus stores metrics only in memory — they are gone after a pod restart. Persistence is configured via a Helm values file (all settings for Prometheus, Grafana, and Alertmanager in one place):
-
-```bash
+# Configure persistence via Helm values
 helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-  --namespace monitoring \
-  --values infrastructure/monitoring/values.yaml
+  --namespace monitoring --values infrastructure/monitoring/values.yaml
 ```
 
-The values file `infrastructure/monitoring/values.yaml` configures:
-- Prometheus: 10 Gi, `local-path`, 30 days retention
-- Grafana: 2 Gi, `local-path`
-- Alertmanager: 1 Gi, `local-path`
-
-local-path provisions the PVCs automatically — no separate PVC YAML needed.
-
----
-
-### 2.6 Final check
-
-```bash
-# All monitoring pods running
-kubectl get pods -n monitoring
-
-# Prometheus Targets — are all metrics being scraped?
-# Port-forward to Prometheus:
-kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090:9090
-# Browser: http://localhost:9090/targets → all targets should be "UP"
-
-# Grafana reachable
-kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
-# Browser: http://localhost:3000 → dashboards present
-```
+Ships with pre-built dashboards for nodes, pods, PVCs, and host metrics (including Raspi CPU temperature via `node_thermal_zone_temp`).
 
 ---
 

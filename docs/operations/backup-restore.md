@@ -16,13 +16,13 @@ Unified backup strategy via Restic for all services:
 
 These values **cannot** be recovered from the cluster if etcd is gone. Store them in the password manager — independent of cluster state:
 
-| Secret | How to export | Where to store |
+| Secret | Where to find it | Where to store |
 |---|---|---|
-| Sealed Secrets key | `kubectl get secret -n kube-system -l sealedsecrets.bitnami.com/sealed-secrets-key -o yaml > sealed-secrets-key.yaml` | Password manager |
-| Hetzner S3 credentials | Hetzner Console | Password manager |
-| Restic repo password (S3) | from `.restic.env` | Password manager |
+| SOPS age private key | `~/.config/sops/age/keys.txt` on the laptop | Vaultwarden |
+| Hetzner S3 credentials | Hetzner Console | Vaultwarden |
+| Restic repo password (S3) | from `.restic.env` | Vaultwarden |
 
-> **Never commit** `sealed-secrets-key.yaml` to the repo.
+> The age private key is the only secret that cannot be recovered from the cluster or from Git. Keep it in Vaultwarden. **Never commit it.**
 
 ---
 
@@ -219,12 +219,7 @@ rm -rf /tmp/restore
 
 ### Restore an entire service (after cluster reinstall)
 
-Order after reinstall: **Sealed Secrets → Services → Restic Restore**
-
-1. Install Sealed Secrets controller + import key
-2. Deploy service manifests: `kubectl apply -f apps/paperless/`
-3. Wait until pods are running
-4. Restic restore as above (Steps 1–4)
+First complete the [SOPS recovery](../platform/sops.md#recovery-after-cluster-reinstall) (Flux bootstrap + age key import), then Restic restore as above (Steps 1-4).
 
 ---
 
@@ -253,11 +248,7 @@ rm -rf /tmp/restore
 
 ### After cluster reinstall
 
-Order: **Sealed Secrets → Services → Restic Restore**
-
-1. Install Sealed Secrets controller + import key
-2. Deploy service manifests: `kubectl apply -f apps/freshrss/`
-3. Restic restore as above
+First complete the [SOPS recovery](../platform/sops.md#recovery-after-cluster-reinstall), then Restic restore as above.
 
 ---
 
@@ -270,11 +261,9 @@ Checklist before tearing down the cluster:
 source ~/workspace/priv/k3s/scripts/.restic.env
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots --last
 
-# 2. Export Sealed Secrets key
-kubectl get secret -n kube-system \
-  -l sealedsecrets.bitnami.com/sealed-secrets-key \
-  -o yaml > sealed-secrets-key.yaml
-# → store in password manager, do not commit to repo
+# 2. Verify age private key is backed up in Vaultwarden
+# (the key lives at ~/.config/sops/age/keys.txt on the laptop)
+# If in doubt: retrieve from Vaultwarden before proceeding
 ```
 
 ---
@@ -301,22 +290,3 @@ kubectl get pods -n paperless
 tail -100 /var/log/k3s-backup.log
 ```
 
----
-
-## Note: nginx resolver.conf with Dual-Stack (FreshRSS)
-
-The linuxserver.io FreshRSS image generates `/config/nginx/resolver.conf` on first start. In a Dual-Stack cluster this file contains IPv6 addresses without square brackets — nginx rejects them:
-
-```
-invalid port in resolver "fd43::a"
-```
-
-Fix — run once after the first start:
-
-```bash
-kubectl exec -n freshrss <pod-name> -- sh -c \
-  'echo "resolver 10.43.0.10 valid=30s;" > /config/nginx/resolver.conf'
-kubectl rollout restart deployment freshrss -n freshrss
-```
-
-Since the file is in `/config` (persistent volume) and only generated on first start, this fix is permanent.

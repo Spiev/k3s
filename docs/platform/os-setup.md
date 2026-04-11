@@ -1,4 +1,4 @@
-# 01 — Raspberry Pi 5: OS & NVMe Boot
+# Raspberry Pi 5: OS & NVMe Boot
 
 Hardware: Raspberry Pi 5 (8 GB RAM), M.2 HAT+, 256 GB NVMe SSD.
 
@@ -202,4 +202,4 @@ sudo systemctl reload ssh
 
 ---
 
-## Next: [02 — Install k3s](./02-k3s-install.md)
+## Next: [Install k3s](./k3s-install.md)

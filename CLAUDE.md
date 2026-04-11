@@ -12,7 +12,7 @@ Private k3s (lightweight Kubernetes) infrastructure repository. Target hardware:
 - **local-path-provisioner** (k3s built-in) for persistent storage — files stored directly on node filesystem
 - **Traefik** (k3s built-in) as ingress controller with cert-manager for Let's Encrypt
 - **Flux CD** for GitOps (pull-based, bootstrapped from this repo)
-- **Sealed Secrets** for encrypting secrets that can be committed to this public repo
+- **SOPS + age** for encrypting secrets that can be committed to this public repo (built into Flux's kustomize-controller, no extra controller needed)
 
 ### Repository Structure (target)
 
@@ -44,6 +44,6 @@ Blocked on Agent-Node join:
 - YAML indentation: 2 spaces
 - All Kubernetes resources need `namespace` and `labels` set explicitly
 - Service Namespaces must have `type: service` label — enables `kubectl get ns -l type=service` for bulk operations (e.g. shutdown)
-- Secrets: always use Sealed Secrets (`kubeseal`), never plain `Secret` objects in git
+- Secrets: always use SOPS (`sops --encrypt --in-place`), file suffix `*.sops.yaml`, never plain `Secret` objects in git
 - Storage: `storageClassName: local-path` in all PVCs — files at `/var/lib/rancher/k3s/storage/<pvc-name>/`
 - **No Kustomize** — single manifest file per service (e.g. `apps/freshrss/freshrss.yaml`), Ingress in separate `*-ingress.yaml` excluded via `.gitignore`; deploy with `kubectl apply -f apps/<service>/`
