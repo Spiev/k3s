@@ -25,18 +25,7 @@ docs/               ← learning path and setup guides
 
 ## Services Migration Status
 
-Coming from `../docker-runtime`.
-
-Completed:
-- **FreshRSS** ✅ — single volume (`./config`), no DB cluster
-- **Pi-hole** ✅ — DNS via LoadBalancer, admin UI via Traefik Ingress
-
-Next:
-- **Seafile** — 2 containers (`seafile-mc` + MariaDB), 2 PVCs, Secrets; sync-based so file blobs survive on clients even if cluster is down (DB metadata/history does not)
-
-Blocked on Agent-Node join:
-- **Immich** — 1.5 TB library, Restic restore strategy documented in `docs/services/immich.md`
-- **Home Assistant** — requires `hostNetwork` + `nodeAffinity` for Zigbee dongle on Agent-Node
+Current status is tracked in the [README — Migration Status](README.md#migration-status). Services are migrated from `../docker-runtime`.
 
 ## Conventions
 

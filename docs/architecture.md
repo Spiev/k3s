@@ -128,10 +128,10 @@ Secrets are encrypted with SOPS + age and committed as `*.sops.yaml` files. Flux
 
 ---
 
-## Current state vs. target state
+## Starting point vs. target state
 
 ```
-Today                               Target (after migration)
+Starting point (all Docker)         Target (all k3s)
 ──────────────────────────────      ──────────────────────────────────────
 Raspi 5 "new" (256 GB)              Raspi 5 "new": k3s Server-Node
   └── k3s (empty)                     └── Control Plane, Traefik, CoreDNS
@@ -150,6 +150,8 @@ Raspi 5 "old" (2 TB)                Raspi 5 "old": k3s Agent-Node
 ```
 
 Both Pis are identical hardware (Raspi 5, 8 GB RAM) — a full migration to k3s is realistic. Home Assistant runs on the Agent-Node with `hostNetwork: true` and `nodeAffinity` for the Zigbee dongle — no re-plugging needed. nginx stays as the external proxy for now, and can be replaced by Traefik later.
+
+→ Current migration progress: [README — Migration Status](../README.md#migration-status)
 
 ---
 

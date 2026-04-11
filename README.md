@@ -19,8 +19,8 @@ Kubernetes infrastructure on a Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration
 | [MetalLB](docs/platform/metallb.md) | LoadBalancer VIPs for Bare Metal (DNS, stable service IPs) |
 | [Storage Decision](docs/decisions/storage.md) | local-path instead of Longhorn — rationale and trade-offs |
 | **Service Migrations** | |
-| [FreshRSS](docs/services/freshrss.md) ✅ | Migration: deploying FreshRSS |
-| [Pi-hole](docs/services/pihole.md) ✅ | Migration: Pi-hole, DNS via LoadBalancer + Ingress |
+| [FreshRSS](docs/services/freshrss.md) | Deploy & migrate FreshRSS |
+| [Pi-hole](docs/services/pihole.md) | Pi-hole: DNS via LoadBalancer + Ingress |
 | [Seafile](docs/services/seafile.md) | Migration: Seafile, multi-container, Secrets |
 | [Immich](docs/services/immich.md) | Migration: Immich, Restic restore strategy (1.5 TB library) |
 | [SOPS + age](docs/platform/sops.md) | Encrypting secrets for a public Git repo |
