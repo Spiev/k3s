@@ -37,6 +37,14 @@ The script `scripts/k3s-monitor.sh` runs on the k3s server node, collects metric
 | Unhealthy Pods | `kubectl get pods -A` | `sensor.k3s_unhealthy_pods` |
 | Unbound PVCs | `kubectl get pvc -A` | `sensor.k3s_unbound_pvcs` |
 
+**Flux CD:**
+
+| Sensor | Source | HA entity |
+|---|---|---|
+| Flux Ready | all kustomizations Ready? | `binary_sensor.k3s_flux_ready` (problem class: ON = Problem) |
+| Flux Revision | `lastAppliedRevision` of apps kustomization | `sensor.k3s_flux_revision` |
+| Flux Last Sync | `lastTransitionTime` of Ready condition | `sensor.k3s_flux_last_sync` |
+
 > hwmon paths (`hwmon0`, `hwmon1` etc.) are resolved dynamically by name — no hardcoding, stays stable across reboots.
 
 ### Prerequisites
