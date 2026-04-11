@@ -65,6 +65,8 @@ Introduces multi-container setups, service-to-service communication (CoreDNS), S
 
 Flux monitors this repo and deploys automatically on every push. Traefik is moved from k3s built-in to a Flux-managed HelmRelease for independent version management and Renovate tracking.
 
+→ [Flux CD](./platform/flux.md)
+
 ## Phase 6 — Secrets Management
 
 SOPS + age encrypts secret values in standard Kubernetes Secret manifests — safe to commit to a public repo. Built into Flux's kustomize-controller, no extra controller needed.
