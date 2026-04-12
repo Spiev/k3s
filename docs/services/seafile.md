@@ -89,7 +89,7 @@ The following values must exist as a secret in the cluster — **not** in plaint
 | `SEAFILE_ADMIN_EMAIL` | Seafile admin email | Your email address |
 | `SEAFILE_ADMIN_PASSWORD` | Seafile admin password | Generate new |
 | `SEAFILE_SERVER_HOSTNAME` | Public hostname | e.g. `seafile.fritz.box` |
-| `SECRET_KEY` | Django secret key | `openssl rand -hex 32` |
+| `JWT_PRIVATE_KEY` | JWT signing key (min. 32 chars) | `openssl rand -base64 40` |
 
 Create and encrypt using the [SOPS workflow](../platform/sops.md#step-6--creating-an-encrypted-secret) with secret name `seafile-secrets` in namespace `seafile`:
 
@@ -101,7 +101,7 @@ kubectl create secret generic seafile-secrets \
   --from-literal=SEAFILE_ADMIN_EMAIL=<deine-email> \
   --from-literal=SEAFILE_ADMIN_PASSWORD=<passwort> \
   --from-literal=SEAFILE_SERVER_HOSTNAME=<hostname> \
-  --from-literal=SECRET_KEY=$(openssl rand -hex 32) \
+  --from-literal=JWT_PRIVATE_KEY=$(openssl rand -base64 40) \
   --dry-run=client -o yaml > apps/seafile/seafile-secrets.sops.yaml
 sops --encrypt --in-place apps/seafile/seafile-secrets.sops.yaml
 ```

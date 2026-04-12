@@ -164,6 +164,11 @@ spec:
                 secretKeyRef:
                   name: seafile-secrets
                   key: SEAFILE_SERVER_HOSTNAME
+            - name: JWT_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: seafile-secrets
+                  key: JWT_PRIVATE_KEY
             - name: TIME_ZONE
               value: Europe/Berlin
           ports:
