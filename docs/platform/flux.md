@@ -452,23 +452,13 @@ Push → Flux deploys Traefik automatically within 1 minute.
 
 ---
 
-## Flux CLI — local vs. remote
+## Flux CLI (local)
 
-The Flux CLI is installed on the Pi (Step 2), but not locally. For day-to-day use there are two options:
+The Flux CLI is installed on the Pi during bootstrap, but for day-to-day use install it locally — `kubectl` is already configured against the Pi cluster, so Flux works directly:
 
-**Option A — via SSH (no local install needed):**
 ```bash
-ssh k3s "flux get kustomizations --watch"
-ssh k3s "flux reconcile kustomization apps --with-source"
+sudo pacman -S fluxcd
 ```
-
-**Option B — local install (Arch Linux):**
-```bash
-sudo pacman -S flux-scm
-# or via AUR: yay -S flux-bin
-```
-
-Since `kubectl` is already configured locally against the Pi cluster, the Flux CLI works directly without SSH.
 
 ---
 
@@ -476,16 +466,16 @@ Since `kubectl` is already configured locally against the Pi cluster, the Flux C
 
 ```bash
 # Show all Flux Kustomizations and their sync status
-ssh k3s "flux get kustomizations"
+flux get kustomizations
 
 # Show all HelmReleases
-ssh k3s "flux get helmreleases -A"
+flux get helmreleases -A
 
 # Force a manual reconciliation
-ssh k3s "flux reconcile kustomization apps --with-source"
+flux reconcile kustomization apps --with-source
 
 # Watch Flux logs
-ssh k3s "flux logs --follow"
+flux logs --follow
 ```
 
 ---
