@@ -124,6 +124,11 @@ Voraussetzungen:
 sops --decrypt apps/seafile/seafile-secrets.sops.yaml
 ```
 
+> **Hinweis**: Die Werte im `data`-Feld sind base64-kodiert (k8s-Standard). Einzelnen Wert dekodieren:
+> ```bash
+> sops --decrypt --extract '["data"]["JWT_PRIVATE_KEY"]' apps/seafile/seafile-secrets.sops.yaml | base64 -d
+> ```
+
 ---
 
 ## Deployment via Flux

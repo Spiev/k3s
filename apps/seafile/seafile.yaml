@@ -175,7 +175,7 @@ spec:
           command: ['sh', '-c', 'until nc -z redis 6379; do echo "waiting for redis..."; sleep 2; done']
       containers:
         - name: seafile
-          image: seafileltd/seafile-mc:13.0.20@sha256:eaa7c22f08efbeb88c3829a284d9565559153bc0bb9099464e4eda444dabae70  # TODO vor Deployment prüfen: ARM64-Support? Stabile Tags sind ggf. nur amd64. Aktuelle Tags: hub.docker.com/r/seafileltd/seafile-mc/tags
+          image: seafileltd/seafile-mc:13.0.20@sha256:eaa7c22f08efbeb88c3829a284d9565559153bc0bb9099464e4eda444dabae70
           env:
             - name: SEAFILE_MYSQL_DB_HOST
               value: mariadb
