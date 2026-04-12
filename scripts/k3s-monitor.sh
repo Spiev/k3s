@@ -29,6 +29,11 @@ DEVICE_ID="k3s_server_node"
 DEVICE_NAME="k3s Server Node"
 
 KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
+KUBECTL="kubectl --request-timeout=10s"
+
+# Cache files for Flux sensors — preserves last known values when kubectl fails
+FLUX_REVISION_CACHE="$SCRIPT_DIR/.flux_revision_cache"
+FLUX_LAST_SYNC_CACHE="$SCRIPT_DIR/.flux_last_sync_cache"
 
 # ============================================================================
 # Load Credentials & Environment Config
@@ -275,7 +280,7 @@ get_undervoltage() {
 # k3s node Ready status
 get_node_ready() {
     local status
-    status=$(KUBECONFIG="$KUBECONFIG" kubectl get nodes \
+    status=$(KUBECONFIG="$KUBECONFIG" $KUBECTL get nodes \
         --no-headers -o custom-columns="STATUS:.status.conditions[-1].type,READY:.status.conditions[-1].status" \
         2>/dev/null | head -1)
     if echo "$status" | grep -q "Ready.*True"; then
@@ -288,7 +293,7 @@ get_node_ready() {
 # Count pods not in Running/Succeeded/Completed phase
 get_unhealthy_pods() {
     local result
-    result=$(KUBECONFIG="$KUBECONFIG" kubectl get pods --all-namespaces --no-headers 2>/dev/null \
+    result=$(KUBECONFIG="$KUBECONFIG" $KUBECTL get pods --all-namespaces --no-headers 2>/dev/null \
         | awk '{print $4}' \
         | { grep -vcE "^(Running|Succeeded|Completed)$" || true; })
     echo "${result:-0}"
@@ -298,7 +303,7 @@ get_unhealthy_pods() {
 # Returns ON (no problem) or OFF (problem detected — inverted for HA problem device_class)
 get_flux_ready() {
     local not_ready
-    not_ready=$(KUBECONFIG="$KUBECONFIG" kubectl get kustomizations -n flux-system \
+    not_ready=$(KUBECONFIG="$KUBECONFIG" $KUBECTL get kustomizations -n flux-system \
         -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}' \
         2>/dev/null \
         | tr ' ' '\n' \
@@ -309,17 +314,24 @@ get_flux_ready() {
 # Flux: short SHA of last applied revision for apps kustomization
 get_flux_revision() {
     local rev
-    rev=$(KUBECONFIG="$KUBECONFIG" kubectl get kustomization apps -n flux-system \
+    rev=$(KUBECONFIG="$KUBECONFIG" $KUBECTL get kustomization apps -n flux-system \
         -o jsonpath='{.status.lastAppliedRevision}' 2>/dev/null)
-    if [[ -z "$rev" ]]; then echo "-"; return; fi
+    if [[ -z "$rev" ]]; then
+        # kubectl failed — return last known value from cache, or "-" if no cache
+        [[ -f "$FLUX_REVISION_CACHE" ]] && cat "$FLUX_REVISION_CACHE" || echo "-"
+        return
+    fi
     # Extract short SHA: "main@sha256:ee7755bb..." or "main@sha1:ee7755bb..." → "ee7755bb"
-    echo "$rev" | sed 's/.*sha[0-9]*://' | cut -c1-8
+    local short
+    short=$(echo "$rev" | sed 's/.*sha[0-9]*://' | cut -c1-8)
+    echo "$short" > "$FLUX_REVISION_CACHE"
+    echo "$short"
 }
 
 # Flux: timestamp of last Ready condition transition for apps kustomization
 get_flux_last_sync() {
     local ts
-    ts=$(KUBECONFIG="$KUBECONFIG" kubectl get kustomization apps -n flux-system \
+    ts=$(KUBECONFIG="$KUBECONFIG" $KUBECTL get kustomization apps -n flux-system \
         -o json 2>/dev/null \
         | python3 -c "
 import sys, json
@@ -330,13 +342,19 @@ for c in conds:
         print(c.get('lastTransitionTime', ''))
         break
 " 2>/dev/null)
-    echo "${ts:-}"
+    if [[ -n "$ts" ]]; then
+        echo "$ts" > "$FLUX_LAST_SYNC_CACHE"
+        echo "$ts"
+    elif [[ -f "$FLUX_LAST_SYNC_CACHE" ]]; then
+        # kubectl failed — return last known timestamp to avoid HA showing Unknown
+        cat "$FLUX_LAST_SYNC_CACHE"
+    fi
 }
 
 # Count PVCs not in Bound state
 get_unbound_pvcs() {
     local result
-    result=$(KUBECONFIG="$KUBECONFIG" kubectl get pvc --all-namespaces --no-headers 2>/dev/null \
+    result=$(KUBECONFIG="$KUBECONFIG" $KUBECTL get pvc --all-namespaces --no-headers 2>/dev/null \
         | awk '{print $3}' \
         | { grep -vc "^Bound$" || true; })
     echo "${result:-0}"
