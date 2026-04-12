@@ -173,11 +173,11 @@ kubectl describe svc -n pihole pihole-dns
 # → without MetalLB: klipper-lb (k3s built-in ServiceLB) takes over — service binds to node IP
 
 # Port 53 already in use on the node?
-ssh stefan@k3s.fritz.box "sudo ss -tulpn | grep :53"
+ssh k3s "sudo ss -tulpn | grep :53"
 # → systemd-resolved listens on 127.0.0.53, not on the network interface → no conflict
 
 # IPv6 DNS not responding?
-ssh stefan@k3s.fritz.box "ip addr | grep <ULA-PREFIX>"
+ssh k3s "ip addr | grep <ULA-PREFIX>"
 # → ULA address <ULA-PREFIX>::1/64 must be present (on wlan0 or eth0)
 ```
 

@@ -81,7 +81,7 @@ crontab -e
 ```
 
 ```
-*/5 * * * * /home/stefan/k3s/scripts/k3s-monitor.sh >> /home/stefan/logs/k3s-monitor.log 2>&1
+*/5 * * * * /home/<your-user>/k3s/scripts/k3s-monitor.sh >> /home/<your-user>/logs/k3s-monitor.log 2>&1
 ```
 
 Create the log directory if needed:

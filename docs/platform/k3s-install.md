@@ -24,7 +24,7 @@ Create the k3s configuration before installing — k3s reads it automatically on
 sudo mkdir -p /etc/rancher/k3s
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
 tls-san:
-  - k3s.fritz.box
+  - <node-hostname>
 cluster-cidr: "10.42.0.0/16,fd42::/56"
 service-cidr: "10.43.0.0/16,fd43::/112"
 EOF
@@ -32,7 +32,7 @@ EOF
 
 | Parameter | Value | Meaning |
 |---|---|---|
-| `tls-san` | `k3s.fritz.box` | Hostname in the TLS certificate — enables remote kubectl |
+| `tls-san` | `<node-hostname>` | Hostname in the TLS certificate — enables remote kubectl |
 | `cluster-cidr` | `10.42.0.0/16,fd42::/56` | Pod network (IPv4 + IPv6) |
 | `service-cidr` | `10.43.0.0/16,fd43::/112` | Service ClusterIPs (IPv4 + IPv6) |
 
@@ -91,13 +91,21 @@ Install kubectl (Arch Linux):
 sudo pacman -S kubectl
 ```
 
+**Configure SSH alias** — all commands in this guide use `k3s` as a short alias for the node. Add this once to `~/.ssh/config`:
+
+```
+Host k3s
+    HostName <node-hostname>   # e.g. 192.168.1.100 or your local DNS name
+    User <your-username>
+```
+
 Copy the kubeconfig from the Pi and update the server address from `127.0.0.1` to the hostname:
 
 ```bash
 # Run on the laptop:
 mkdir -p ~/.kube
-scp <user>@k3s.fritz.box:~/.kube/config ~/.kube/config-raspi
-sed -i 's/127.0.0.1/k3s.fritz.box/g' ~/.kube/config-raspi
+scp k3s:~/.kube/config ~/.kube/config-raspi
+sed -i 's/127.0.0.1/<node-hostname>/g' ~/.kube/config-raspi
 ```
 
 Set `KUBECONFIG` — for fish:
