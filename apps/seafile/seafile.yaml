@@ -77,8 +77,8 @@ spec:
             - name: data
               mountPath: /var/lib/mysql
           readinessProbe:
-            exec:
-              command: ["mysqladmin", "ping", "-h", "localhost"]
+            tcpSocket:
+              port: 3306
             initialDelaySeconds: 20
             periodSeconds: 10
             failureThreshold: 6
@@ -139,14 +139,20 @@ spec:
                   name: seafile-secrets
                   key: MYSQL_ROOT_PASSWORD
             - name: SEAFILE_ADMIN_EMAIL
-              value: admin@example.com    # MUST CHANGED BEFORE DEPLOYMENT
+              valueFrom:
+                secretKeyRef:
+                  name: seafile-secrets
+                  key: SEAFILE_ADMIN_EMAIL
             - name: SEAFILE_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: seafile-secrets
                   key: SEAFILE_ADMIN_PASSWORD
             - name: SEAFILE_SERVER_HOSTNAME
-              value: seafile.example.com  # <-- deine Domain eintragen
+              valueFrom:
+                secretKeyRef:
+                  name: seafile-secrets
+                  key: SEAFILE_SERVER_HOSTNAME
             - name: TIME_ZONE
               value: Europe/Berlin
           ports:
