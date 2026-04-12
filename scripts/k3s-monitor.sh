@@ -311,17 +311,14 @@ get_flux_revision() {
     local rev
     rev=$(KUBECONFIG="$KUBECONFIG" kubectl get kustomization apps -n flux-system \
         -o jsonpath='{.status.lastAppliedRevision}' 2>/dev/null)
-    if [[ -z "$rev" ]]; then echo "unknown"; return; fi
-    # Extract short SHA: "main@sha1:ee7755bb..." → "ee7755bb"
-    echo "$rev" | sed 's/.*sha1://' | cut -c1-8
+    if [[ -z "$rev" ]]; then echo "-"; return; fi
+    # Extract short SHA: "main@sha256:ee7755bb..." or "main@sha1:ee7755bb..." → "ee7755bb"
+    echo "$rev" | sed 's/.*sha[0-9]*://' | cut -c1-8
 }
 
-# Flux: timestamp of last successful reconciliation for apps kustomization
+# Flux: timestamp of last Ready condition transition for apps kustomization
 get_flux_last_sync() {
     local ts
-    ts=$(KUBECONFIG="$KUBECONFIG" kubectl get kustomization apps -n flux-system \
-        -o jsonpath='{.status.lastAttemptedRevisionDigest}' 2>/dev/null)
-    # Fall back to Ready condition lastTransitionTime
     ts=$(KUBECONFIG="$KUBECONFIG" kubectl get kustomization apps -n flux-system \
         -o json 2>/dev/null \
         | python3 -c "
@@ -329,7 +326,7 @@ import sys, json
 d = json.load(sys.stdin)
 conds = d.get('status', {}).get('conditions', [])
 for c in conds:
-    if c.get('type') == 'Ready' and c.get('status') == 'True':
+    if c.get('type') == 'Ready':
         print(c.get('lastTransitionTime', ''))
         break
 " 2>/dev/null)
