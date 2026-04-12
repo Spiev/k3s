@@ -28,6 +28,8 @@ The script `scripts/k3s-monitor.sh` runs on the k3s server node, collects metric
 | Fan RPM | `hwmon` (`pwmfan/fan1_input`) | `sensor.fan_speed` |
 | Fan PWM | `hwmon` (`pwmfan/pwm1`) | `sensor.fan_pwm` |
 | Undervoltage | `hwmon` (`rpi_volt`) | `binary_sensor.k3s_undervoltage` |
+| System Updates | `apt update` (cached 1 h) | `sensor.k3s_system_updates` |
+| EEPROM Status | `rpi-eeprom-update` | `sensor.k3s_eeprom_status` |
 
 **k3s cluster status:**
 
@@ -55,6 +57,19 @@ sudo apt install -y mosquitto-clients
 ```
 
 `kubectl` is already present, kubeconfig is at `~/.kube/config`.
+
+The `System Updates` and `EEPROM Status` sensors require passwordless `sudo` for two commands:
+
+```bash
+sudo visudo -f /etc/sudoers.d/k3s-monitor
+```
+
+```
+stefan ALL=(ALL) NOPASSWD: /usr/bin/apt update
+stefan ALL=(ALL) NOPASSWD: /usr/bin/rpi-eeprom-update
+```
+
+> `apt update` results are cached in `scripts/.apt_updates_cache` for 1 hour — so only one `apt update` per hour despite the 5-minute cron interval.
 
 ### Setup
 

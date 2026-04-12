@@ -35,6 +35,10 @@ KUBECTL="kubectl --request-timeout=10s"
 FLUX_REVISION_CACHE="$SCRIPT_DIR/.flux_revision_cache"
 FLUX_LAST_SYNC_CACHE="$SCRIPT_DIR/.flux_last_sync_cache"
 
+# Cache for apt update results — refreshed at most once per hour
+APT_CACHE="$SCRIPT_DIR/.apt_updates_cache"
+APT_CACHE_MAX_AGE=3600
+
 # ============================================================================
 # Load Credentials & Environment Config
 # ============================================================================
@@ -170,6 +174,10 @@ send_discovery() {
     # Flux CD metrics
     send_sensor_discovery "k3s_flux_revision"    "Flux Revision"       ""     "mdi:source-branch"
     send_sensor_discovery "k3s_flux_last_sync"   "Flux Last Sync"      ""     "mdi:sync"          "timestamp"
+
+    # OS update sensors
+    send_sensor_discovery "k3s_system_updates"   "System Updates"      "updates" "mdi:package-up"
+    send_sensor_discovery "k3s_eeprom_status"    "EEPROM Status"       ""        "mdi:chip"
 
     # Binary sensors
     send_binary_discovery "k3s_node_ready"       "k3s Node Ready"      "mdi:kubernetes"        "connectivity"
@@ -351,6 +359,35 @@ for c in conds:
     fi
 }
 
+# Available system updates — cached for APT_CACHE_MAX_AGE seconds to avoid running apt every 5 min
+get_system_updates() {
+    local now cache_age
+    now=$(date +%s)
+    if [[ -f "$APT_CACHE" ]]; then
+        cache_age=$(( now - $(stat -c %Y "$APT_CACHE") ))
+        if [[ $cache_age -lt $APT_CACHE_MAX_AGE ]]; then
+            cat "$APT_CACHE"
+            return
+        fi
+    fi
+    local count
+    count=$(sudo /usr/bin/apt update 2>/dev/null \
+        | grep "can be upgraded" \
+        | awk '{print $1}')
+    count="${count:-0}"
+    echo "$count" > "$APT_CACHE"
+    echo "$count"
+}
+
+# EEPROM bootloader update status
+get_eeprom_status() {
+    local status
+    status=$(sudo /usr/bin/rpi-eeprom-update 2>/dev/null \
+        | grep "BOOTLOADER:" \
+        | awk '{print $2,$3,$4}')
+    echo "${status:-unknown}"
+}
+
 # Count PVCs not in Bound state
 get_unbound_pvcs() {
     local result
@@ -384,6 +421,8 @@ UNBOUND_PVCS=$(get_unbound_pvcs)
 FLUX_READY=$(get_flux_ready)
 FLUX_REVISION=$(get_flux_revision)
 FLUX_LAST_SYNC=$(get_flux_last_sync)
+SYSTEM_UPDATES=$(get_system_updates)
+EEPROM_STATUS=$(get_eeprom_status)
 
 echo "CPU: ${CPU_USAGE}%, RAM: ${RAM_USAGE}%, Disk: ${DISK_USAGE}% (${DISK_FREE_GB} GB free)"
 echo "CPU temp: ${CPU_TEMP}°C, NVMe temp: ${NVME_TEMP}°C"
@@ -391,6 +430,7 @@ echo "Fan: ${FAN_RPM} RPM (${FAN_PWM}%)"
 echo "Node ready: ${NODE_READY}, Unhealthy pods: ${UNHEALTHY_PODS}, Unbound PVCs: ${UNBOUND_PVCS}"
 echo "Undervoltage: ${UNDERVOLTAGE}"
 echo "Flux ready: ${FLUX_READY}, revision: ${FLUX_REVISION}, last sync: ${FLUX_LAST_SYNC}"
+echo "System updates: ${SYSTEM_UPDATES}, EEPROM: ${EEPROM_STATUS}"
 
 PAYLOAD=$(cat <<EOF
 {
@@ -410,6 +450,8 @@ PAYLOAD=$(cat <<EOF
   "k3s_flux_ready": "$FLUX_READY",
   "k3s_flux_revision": "$FLUX_REVISION",
   "k3s_flux_last_sync": "$FLUX_LAST_SYNC",
+  "k3s_system_updates": $SYSTEM_UPDATES,
+  "k3s_eeprom_status": "$EEPROM_STATUS",
   "last_updated": "$(date --iso-8601=seconds)"
 }
 EOF
