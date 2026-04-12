@@ -248,4 +248,4 @@ flux reconcile kustomization flux-system --with-source
 
 ---
 
-## Next: [Deploy Pi-hole](../services/pihole.md)
+## Next: [Flux CD](./flux.md)

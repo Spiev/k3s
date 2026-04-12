@@ -4,7 +4,7 @@ Kubernetes infrastructure on a Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration
 
 **Hardware:** 2× Raspberry Pi 5 (8 GB RAM) — Server-Node 256 GB NVMe, Agent-Node 2 TB NVMe
 
-**Stack:** k3s · local-path · Traefik · Flux CD · SOPS
+**Stack:** k3s · local-path · Traefik · SOPS · Flux CD
 
 ---
 
