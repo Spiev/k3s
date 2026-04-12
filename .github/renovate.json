@@ -1,7 +1,18 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
-  "enabledManagers": ["github-actions", "kubernetes"],
+  "enabledManagers": ["github-actions", "kubernetes", "custom.regex"],
+  "customManagers": [
+    {
+      "description": "Track k3s releases",
+      "customType": "regex",
+      "fileMatch": ["^infrastructure/k3s-version\\.env$"],
+      "matchStrings": ["K3S_VERSION=(?<currentValue>[^\\n]+)"],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "k3s-io/k3s",
+      "versioningTemplate": "loose"
+    }
+  ],
   "kubernetes": {
     "fileMatch": ["apps/.+\\.yaml$", "infrastructure/.+\\.yaml$"]
   },
