@@ -470,4 +470,4 @@ ssh k3s "flux logs --follow"
 
 ---
 
-## Next: [Deploy Seafile](../services/seafile.md)
+## Next: [Deploy FreshRSS](../services/freshrss.md)

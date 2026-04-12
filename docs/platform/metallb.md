@@ -116,4 +116,4 @@ A table of assigned VIPs helps keep track:
 
 ---
 
-## Next: [Deploy Pi-hole](../services/pihole.md)
+## Next: [Storage Decision](../decisions/storage.md)
