@@ -13,7 +13,6 @@ Kubernetes infrastructure on a Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration
 | Document | Content |
 |---|---|
 | [Architecture Overview](docs/architecture.md) | Big picture, network flow, components — good starting point |
-| [Learning Path](docs/learning-path.md) | Learning path and architecture decisions |
 | [OS Setup](docs/platform/os-setup.md) | Raspberry Pi OS on NVMe, EEPROM, cgroups |
 | [Install k3s](docs/platform/k3s-install.md) | k3s with Dual-Stack (IPv4+IPv6), kubectl, first steps |
 | [MetalLB](docs/platform/metallb.md) | LoadBalancer VIPs for Bare Metal (DNS, stable service IPs) |
