@@ -18,34 +18,36 @@ The script `scripts/k3s-monitor.sh` runs on the k3s server node, collects metric
 
 **Node metrics (Linux):**
 
-| Sensor | Source | HA entity |
-|---|---|---|
-| CPU Usage | `/proc/stat` | `sensor.cpu_usage` |
-| RAM Usage | `/proc/meminfo` | `sensor.ram_usage` |
-| NVMe Disk Usage | `df /` | `sensor.nvme_usage` |
-| CPU Temperature | `hwmon` (`cpu_thermal`) | `sensor.cpu_temperature` |
-| NVMe Temperature | `hwmon` (`nvme`) | `sensor.nvme_temperature` |
-| Fan RPM | `hwmon` (`pwmfan/fan1_input`) | `sensor.fan_speed` |
-| Fan PWM | `hwmon` (`pwmfan/pwm1`) | `sensor.fan_pwm` |
-| Undervoltage | `hwmon` (`rpi_volt`) | `binary_sensor.k3s_undervoltage` |
-| System Updates | `apt update` (cached 1 h) | `sensor.k3s_system_updates` |
-| EEPROM Status | `rpi-eeprom-update` | `sensor.k3s_eeprom_status` |
+| Sensor | Source |
+|---|---|
+| CPU Usage | `/proc/stat` |
+| RAM Usage | `/proc/meminfo` |
+| NVMe Disk Usage | `df /` |
+| CPU Temperature | `hwmon` (`cpu_thermal`) |
+| NVMe Temperature | `hwmon` (`nvme`) |
+| Fan RPM | `hwmon` (`pwmfan/fan1_input`) |
+| Fan PWM | `hwmon` (`pwmfan/pwm1`) |
+| Undervoltage | `hwmon` (`rpi_volt`) |
+| System Updates | `apt update` (cached 1 h) |
+| EEPROM Status | `rpi-eeprom-update` |
 
 **k3s cluster status:**
 
-| Sensor | Source | HA entity |
-|---|---|---|
-| Node Ready | `kubectl get nodes` | `binary_sensor.k3s_node_ready` |
-| Unhealthy Pods | `kubectl get pods -A` | `sensor.k3s_unhealthy_pods` |
-| Unbound PVCs | `kubectl get pvc -A` | `sensor.k3s_unbound_pvcs` |
+| Sensor | Source |
+|---|---|
+| Node Ready | `kubectl get nodes` |
+| Unhealthy Pods | `kubectl get pods -A` |
+| Unbound PVCs | `kubectl get pvc -A` |
 
 **Flux CD:**
 
-| Sensor | Source | HA entity |
-|---|---|---|
-| Flux Ready | all kustomizations Ready? | `binary_sensor.k3s_flux_ready` (problem class: ON = Problem) |
-| Flux Revision | `lastAppliedRevision` of apps kustomization | `sensor.k3s_flux_revision` |
-| Flux Last Sync | `lastTransitionTime` of Ready condition | `sensor.k3s_flux_last_sync` |
+| Sensor | Source |
+|---|---|
+| Flux Ready | all kustomizations Ready? (problem class: ON = Problem) |
+| Flux Revision | `lastAppliedRevision` of apps kustomization |
+| Flux Last Sync | `lastTransitionTime` of Ready condition |
+
+> All sensors are grouped under the **k3s Server Node** device in HA (Settings → Devices & Services → MQTT → k3s Server Node). Entity IDs are not predictable — look them up there.
 
 > hwmon paths (`hwmon0`, `hwmon1` etc.) are resolved dynamically by name — no hardcoding, stays stable across reboots.
 
@@ -108,6 +110,10 @@ mkdir -p ~/logs
 ### Result in Home Assistant
 
 After the first run, the device **"k3s Server Node"** appears automatically in HA (MQTT Discovery). All sensors are immediately available — no manual setup needed.
+
+> **Entity naming:** HA derives entity IDs from the `object_id` in the discovery config, sometimes prefixed with the device name (e.g. `sensor.k3s_server_node_flux_ready`) and sometimes not (e.g. `sensor.k3s_fan_pwm`). All entities end up grouped under the **k3s Server Node** device regardless. Look up the actual entity ID in Settings → Devices & Services → MQTT → k3s Server Node.
+
+> **After adding new sensors:** HA only processes retained MQTT discovery messages on connect. If a new sensor doesn't appear after running the script, reload the MQTT integration: Settings → Devices & Services → MQTT → ⋮ → Reload.
 
 Recommended HA automations:
 - Notification when `binary_sensor.k3s_node_ready` switches to `OFF`
