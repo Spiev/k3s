@@ -133,6 +133,10 @@ spec:
           env:
             - name: SEAFILE_MYSQL_DB_HOST
               value: mariadb
+            - name: SEAFILE_MYSQL_DB_PORT
+              value: "3306"
+            - name: SEAFILE_MYSQL_DB_USER
+              value: seafile
             - name: INIT_SEAFILE_MYSQL_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
