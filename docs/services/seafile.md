@@ -2,7 +2,7 @@
 
 Prerequisite: [FreshRSS](./freshrss.md) completed. [SOPS + age](../platform/sops.md) must be set up before this step (secrets for DB password and Seafile SECRET_KEY).
 
-Seafile is the second migration candidate and significantly more complex than FreshRSS: two pods, two volumes, service-to-service communication, and secrets. This makes it the ideal learning step before GitOps.
+Seafile is significantly more complex than FreshRSS: two pods, two volumes, service-to-service communication, and secrets. It is set up directly in k3s (no migration from docker-runtime).
 
 ---
 
@@ -39,19 +39,14 @@ Seafile is the second migration candidate and significantly more complex than Fr
 
 ---
 
-## Manifest overview (planned)
+## Manifest overview
 
 ```
 apps/seafile/
-├── namespace.yaml
-├── pvc-seafile.yaml          ← /shared/seafile (file blobs)
-├── pvc-mariadb.yaml          ← /var/lib/mysql
-├── statefulset-mariadb.yaml  ← MariaDB as StatefulSet
-├── service-mariadb.yaml      ← ClusterIP, only reachable internally
-├── deployment-seafile.yaml   ← seafile-mc container
-├── service-seafile.yaml      ← ClusterIP → Ingress
-├── ingress.yaml              ← domain routing
-└── seafile-secrets.sops.yaml  ← DB password + SECRET_KEY (SOPS-encrypted)
+├── seafile.yaml                  ← Namespace, PVCs, StatefulSet (MariaDB), Deployment (Seafile), Services
+├── seafile-secrets.sops.yaml     ← alle Secrets SOPS-verschlüsselt (nicht im Repo)
+├── seafile-ingress.yaml          ← .gitignore (Hostname bleibt lokal)
+└── seafile-ingress.yaml.example  ← Template für den Ingress
 ```
 
 ---
@@ -91,73 +86,61 @@ The following values must exist as a secret in the cluster — **not** in plaint
 |---|---|---|
 | `MYSQL_ROOT_PASSWORD` | MariaDB root password | Generate new |
 | `MYSQL_PASSWORD` | Seafile DB user password | Generate new |
+| `SEAFILE_ADMIN_EMAIL` | Seafile admin email | Your email address |
 | `SEAFILE_ADMIN_PASSWORD` | Seafile admin password | Generate new |
+| `SEAFILE_SERVER_HOSTNAME` | Public hostname | e.g. `seafile.fritz.box` |
 | `SECRET_KEY` | Django secret key | `openssl rand -hex 32` |
 
-Create and encrypt using the [SOPS workflow](../platform/sops.md#step-6--creating-an-encrypted-secret) with secret name `seafile-secrets` in namespace `seafile`. Generate `SECRET_KEY` with `openssl rand -hex 32`.
+Create and encrypt using the [SOPS workflow](../platform/sops.md#step-6--creating-an-encrypted-secret) with secret name `seafile-secrets` in namespace `seafile`:
+
+```bash
+kubectl create secret generic seafile-secrets \
+  --namespace seafile \
+  --from-literal=MYSQL_ROOT_PASSWORD=<passwort> \
+  --from-literal=MYSQL_PASSWORD=<passwort> \
+  --from-literal=SEAFILE_ADMIN_EMAIL=<deine-email> \
+  --from-literal=SEAFILE_ADMIN_PASSWORD=<passwort> \
+  --from-literal=SEAFILE_SERVER_HOSTNAME=<hostname> \
+  --from-literal=SECRET_KEY=$(openssl rand -hex 32) \
+  --dry-run=client -o yaml > apps/seafile/seafile-secrets.sops.yaml
+sops --encrypt --in-place apps/seafile/seafile-secrets.sops.yaml
+```
 
 ---
-
-## Data migration (if an existing Seafile instance exists)
-
-Seafile has two independent data areas:
-
-```
-File blobs  →  /shared/seafile/   → PVC seafile-data
-Metadata    →  MariaDB database   → PVC mariadb-data
-```
-
-**Both must be migrated consistently** — a MariaDB dump without the matching blobs (or vice versa) results in a broken state.
-
-### Migration strategy
-
-```
-1. Put old Seafile instance into read-only mode
-   (prevents writes during migration)
-2. Create MariaDB dump
-3. Rsync file blobs
-4. Import MariaDB into k3s
-5. Copy blobs into PVC
-6. Test Seafile client on one device
-7. Switch DNS / nginx
-8. Shut down old instance
-```
-
-### Enable read-only mode in Seafile
-
-```bash
-# On the old instance
-seafile-admin maintenance --enable
-```
-
-This allows clients to still read/sync but prevents new writes — no data loss during migration.
-
-### MariaDB dump
-
-```bash
-# On the old instance (Docker):
-docker exec seafile-db mysqldump -u root -p --all-databases > seafile-dump.sql
-```
-
-### Rsync blobs
-
-Since Seafile is sync-based, clients have all file blobs locally. The blobs on the server are however the canonical source for version history and sharing links.
-
-```bash
-rsync -av /path/to/seafile/data/ <user>@<raspi-hostname>:/tmp/seafile-data/
-```
 
 ---
 
 ## Fresh installation (no existing Seafile)
 
-If Seafile is being set up directly in k3s (no migration):
-1. Apply manifests
-2. Seafile initialises itself on first start
-3. Set up admin account via the web UI
-4. Connect Seafile clients and configure sync
+Since Seafile was never in docker-runtime, this is the relevant path.
 
-This is the simpler path — and since Seafile is not yet in the docker-runtime, possibly the more relevant one.
+```bash
+# 1. SOPS Secret erstellen (siehe Abschnitt Secrets oben)
+
+# 2. Namespace anlegen
+kubectl create namespace seafile --save-config
+
+# 3. Secret deployen
+kubectl apply -f apps/seafile/seafile-secrets.sops.yaml
+
+# 4. Manifeste deployen (direkt aus dem Repo, kein Anpassen nötig)
+kubectl apply -f apps/seafile/seafile.yaml
+
+# 5. Ingress erstellen (gitignored — Hostname bleibt lokal)
+cp apps/seafile/seafile-ingress.yaml.example apps/seafile/seafile-ingress.yaml
+vim apps/seafile/seafile-ingress.yaml  # Hostname eintragen
+kubectl apply -f apps/seafile/seafile-ingress.yaml
+```
+
+Monitor status:
+```bash
+kubectl get pods -n seafile -w
+# Warten bis beide Pods (mariadb-0 und seafile) Running sind
+
+kubectl get svc -n seafile
+```
+
+Seafile initialisiert sich beim ersten Start automatisch. Admin-Account ist über die Web UI zugänglich.
 
 ---
 
