@@ -6,6 +6,60 @@ Flux monitors this Git repository and automatically deploys any change pushed to
 
 ---
 
+## How authentication works
+
+Flux authenticates against GitHub using a **GitHub App** (`k3s-flux`), installed on this repository. The App's private key is stored as a Kubernetes Secret in the cluster — no static tokens, no SSH deploy keys.
+
+```
+  flux-system namespace
+ ┌─────────────────────────────────────────────┐
+ │                                             │
+ │  ┌──────────────────────┐                  │
+ │  │  github-app-auth     │                  │
+ │  │  Secret              │                  │
+ │  │                      │                  │
+ │  │  - App ID            │                  │
+ │  │  - Installation ID   │                  │
+ │  │  - Private Key (.pem)│                  │
+ │  └──────────┬───────────┘                  │
+ │             │ reads                         │
+ │  ┌──────────▼───────────┐                  │
+ │  │  source-controller   │                  │
+ │  └──────────┬───────────┘                  │
+ │             │                               │
+ └─────────────┼───────────────────────────────┘
+               │
+               │ 1) POST /app/installations/{id}/access_tokens
+               │    (JWT signed with private key)
+               ▼
+        ┌──────────────┐
+        │  GitHub API  │  ──────────────────────────────────┐
+        └──────────────┘                                    │
+                                    2) short-lived token    │
+               ┌────────────────────────────────────────────┘
+               │
+               │ 3) git fetch via HTTPS + token  (every 1 min)
+               ▼
+        ┌──────────────────────┐
+        │  github.com/Spiev/k3s│
+        └──────────────────────┘
+
+  Token expires after 1h → source-controller repeats step 1 automatically
+```
+
+**Why GitHub App instead of a Personal Access Token or SSH key?**
+
+| | PAT | SSH Deploy Key | GitHub App |
+|---|---|---|---|
+| Expires | optional / never | never | auto-refreshed (1h) |
+| Scope | account-wide | per repo | per repo |
+| Revokable without impact | no | yes | yes |
+| Audit trail | no | no | yes |
+
+The private key never leaves the cluster Secret — Flux generates a fresh token via the GitHub API before each token expiry.
+
+---
+
 ## Why Flux instead of ArgoCD?
 
 - Lighter resource footprint (fits on a Raspi)
@@ -47,22 +101,22 @@ After creation:
 Copy the private key `.pem` to the Pi:
 
 ```bash
-scp k3s-flux.pem stefan@k3s.fritz.box:~/.config/flux-github-app.pem
-ssh stefan@k3s.fritz.box "chmod 600 ~/.config/flux-github-app.pem"
+scp k3s-flux.pem k3s:~/.config/flux-github-app.pem
+ssh k3s "chmod 600 ~/.config/flux-github-app.pem"
 ```
 
 Install Flux CLI on the Pi:
 
 ```bash
-ssh stefan@k3s.fritz.box "curl -s https://fluxcd.io/install.sh | sudo bash"
+ssh k3s "curl -s https://fluxcd.io/install.sh | sudo bash"
 ```
 
-`flux bootstrap github` does not support GitHub App flags directly — a short-lived installation token must be generated first. The token is only used for the bootstrap push itself; after bootstrap, Flux uses the GitHub App secret for all ongoing pulls (see Step 2b).
+`flux bootstrap github` does not support GitHub App flags directly — a short-lived installation token must be generated first. The token is only used for the bootstrap push itself; after bootstrap, Flux uses the GitHub App secret for all ongoing pulls (see Step 3).
 
 > **Branch Protection:** On personal GitHub accounts, bypass actors are not available. Temporarily disable the branch protection rule for `main` before running bootstrap, then re-enable it afterwards.
 
 ```bash
-ssh stefan@k3s.fritz.box "
+ssh k3s "
 APP_ID=<APP_ID>
 INSTALLATION_ID=<INSTALLATION_ID>
 PEM=~/.config/flux-github-app.pem
@@ -90,7 +144,7 @@ GITHUB_TOKEN=\$TOKEN flux bootstrap github \
 "
 ```
 
-> **Do not use `--token-auth`** — that flag stores the short-lived installation token in the cluster, which expires after 1 hour and breaks Flux pulls. Without the flag, bootstrap creates an SSH deploy key by default, which we immediately replace in Step 2b.
+> **Do not use `--token-auth`** — that flag stores the short-lived installation token in the cluster, which expires after 1 hour and breaks Flux pulls. Without the flag, bootstrap creates an SSH deploy key by default, which we immediately replace in Step 3.
 
 Flux:
 1. Installs itself into the cluster (`flux-system` namespace)
@@ -100,20 +154,20 @@ Flux:
 Verify:
 
 ```bash
-ssh stefan@k3s.fritz.box "flux check"
-ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl get pods -n flux-system"
+ssh k3s "flux check"
+ssh k3s "KUBECONFIG=~/.kube/config kubectl get pods -n flux-system"
 ```
 
 ---
 
-## Step 2b — Switch to GitHub App auth (no SSH keys)
+## Step 3 — Switch to GitHub App auth (no SSH keys)
 
 After bootstrap, Flux uses an SSH deploy key by default. Replace it immediately with the GitHub App for proper token rotation and no static keys.
 
 **Create the GitHub App secret on the cluster:**
 
 ```bash
-ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl create secret generic github-app-auth \
+ssh k3s "KUBECONFIG=~/.kube/config kubectl create secret generic github-app-auth \
   --namespace=flux-system \
   --from-literal=githubAppID=<APP_ID> \
   --from-literal=githubAppInstallationID=<INSTALLATION_ID> \
@@ -123,13 +177,13 @@ ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl create secret generi
 **Delete the SSH deploy key secret:**
 
 ```bash
-ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl delete secret flux-system -n flux-system"
+ssh k3s "KUBECONFIG=~/.kube/config kubectl delete secret flux-system -n flux-system"
 ```
 
 **Patch the GitRepository to use the GitHub App secret** (and HTTPS, not SSH):
 
 ```bash
-ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl patch gitrepository flux-system -n flux-system \
+ssh k3s "KUBECONFIG=~/.kube/config kubectl patch gitrepository flux-system -n flux-system \
   --type=merge \
   -p '{\"spec\":{\"provider\":\"github\",\"url\":\"https://github.com/Spiev/k3s\",\"secretRef\":{\"name\":\"github-app-auth\"}}}'"
 ```
@@ -151,10 +205,18 @@ Commit and push, then re-enable branch protection.
 
 **Delete the SSH deploy key** from GitHub → Repository Settings → Deploy keys.
 
+**Delete the `.pem` from the node filesystem** — Flux reads the private key from the Kubernetes Secret, not from disk. The file is no longer needed:
+
+```bash
+ssh k3s "rm ~/.config/flux-github-app.pem"
+```
+
+> The private key is backed up in Bitwarden. For a cluster rebuild: temporarily copy it back, recreate the Secret, then delete it again.
+
 Verify:
 
 ```bash
-ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config flux get sources git -A"
+ssh k3s "KUBECONFIG=~/.kube/config flux get sources git -A"
 # READY=True, MESSAGE: stored artifact for revision 'main@sha1:...'
 ```
 
@@ -162,7 +224,7 @@ Flux now auto-refreshes GitHub App tokens — no expiry, no static keys.
 
 ---
 
-## Step 3 — Set up age keys for SOPS
+## Step 4 — Set up age keys for SOPS
 
 Two keys are needed:
 - **YubiKey age identity** — for local encryption/decryption on the laptop (hardware-bound, private key never leaves YubiKey)
@@ -233,14 +295,14 @@ Run from the laptop — pipes the local key file directly into the cluster via S
 
 ```bash
 cat ~/.config/sops/age/keys.txt | \
-  ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl create secret generic sops-age \
+  ssh k3s "KUBECONFIG=~/.kube/config kubectl create secret generic sops-age \
     --namespace=flux-system \
     --from-file=age.agekey=/dev/stdin"
 ```
 
 Verify:
 ```bash
-ssh stefan@k3s.fritz.box "KUBECONFIG=~/.kube/config kubectl get secret sops-age -n flux-system \
+ssh k3s "KUBECONFIG=~/.kube/config kubectl get secret sops-age -n flux-system \
   -o jsonpath='{.data.age\.agekey}' | base64 -d | head -2"
 # Should show: # public key: age1abc...
 ```
@@ -272,7 +334,7 @@ This is already committed to the repo — no manual `kubectl apply` needed.
 
 ---
 
-## Step 4 — Point Flux at the apps directory
+## Step 5 — Point Flux at the apps directory
 
 Create `clusters/raspi/apps.yaml`:
 
@@ -394,16 +456,16 @@ Push → Flux deploys Traefik automatically within 1 minute.
 
 ```bash
 # Show all Flux Kustomizations and their sync status
-ssh stefan@k3s.fritz.box "flux get kustomizations"
+ssh k3s "flux get kustomizations"
 
 # Show all HelmReleases
-ssh stefan@k3s.fritz.box "flux get helmreleases -A"
+ssh k3s "flux get helmreleases -A"
 
 # Force a manual reconciliation
-ssh stefan@k3s.fritz.box "flux reconcile kustomization flux-system --with-source"
+ssh k3s "flux reconcile kustomization flux-system --with-source"
 
 # Watch Flux logs
-ssh stefan@k3s.fritz.box "flux logs --follow"
+ssh k3s "flux logs --follow"
 ```
 
 ---
