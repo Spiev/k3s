@@ -4,6 +4,49 @@ metadata:
   name: seafile
   labels:
     app: seafile
+    type: service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: seafile
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.4@sha256:5dc9a363f3a89e03a9d80b0aea1d60b35ddd96ce59b2bad428f93f2e5882e608
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: seafile
+  labels:
+    app: redis
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -127,6 +170,9 @@ spec:
         - name: wait-for-mariadb
           image: alpine:3.23@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
           command: ['sh', '-c', 'until nc -z mariadb 3306; do echo "waiting for mariadb..."; sleep 2; done']
+        - name: wait-for-redis
+          image: alpine:3.23@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
+          command: ['sh', '-c', 'until nc -z redis 6379; do echo "waiting for redis..."; sleep 2; done']
       containers:
         - name: seafile
           image: seafileltd/seafile-mc:13.0.20@sha256:eaa7c22f08efbeb88c3829a284d9565559153bc0bb9099464e4eda444dabae70  # TODO vor Deployment prüfen: ARM64-Support? Stabile Tags sind ggf. nur amd64. Aktuelle Tags: hub.docker.com/r/seafileltd/seafile-mc/tags
@@ -173,6 +219,12 @@ spec:
                 secretKeyRef:
                   name: seafile-secrets
                   key: JWT_PRIVATE_KEY
+            - name: CACHE_PROVIDER
+              value: redis
+            - name: REDIS_HOST
+              value: redis
+            - name: REDIS_PORT
+              value: "6379"
             - name: TIME_ZONE
               value: Europe/Berlin
           ports:
