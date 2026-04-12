@@ -92,7 +92,7 @@ crontab -e
 
 Entry:
 ```
-30 2 * * * /home/stefan/workspace/priv/k3s/scripts/backup.sh >> /var/log/k3s-backup.log 2>&1
+30 2 * * * /home/<your-user>/k3s/scripts/backup.sh >> /var/log/k3s-backup.log 2>&1
 ```
 
 **Test the first backup run:**
