@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: cluster-vars
+    namespace: flux-system
+    labels:
+        app: cluster-vars
+        managed-by: flux
+stringData:
+    PROXY_IP: ENC[AES256_GCM,data:6Q+iYW1xvF4F/lqgpClx,iv:uXJNdQGWhM92MTFRti3hdHhpz9VFO2/GOa9Llvvw6Pg=,tag:vkPqzdLHrZSM6Jk83HdVQA==,type:str]
+    K3S_IP: ENC[AES256_GCM,data:FMDAfwZD6+JHLRa4qLZ+,iv:/ruL5bv9TVp4sd9GUDeAilInS1VwKa4/x/LFXtZam0Y=,tag:kRx3fJS/ovNxhTAMgacuQw==,type:str]
+sops:
+    age:
+        - recipient: age1yubikey1qvj2qyvcuk9a5h4mnw5g2kx29ar6r76jxf70z7p6ueywvs5x5pjy6veqz6s
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHBpdi1wMjU2IDRlUFVMdyBBOSt4QnJ1
+            ZVowQkpaY2cxMTh5Z0Qrb2FEbFNNdWxRTTRKT0R0THkrSHg2NQpCQW52YTJRNG13
+            VlpzWlNzMmtCMnB3NVMzck9mcE9LT2hydU9nRWU4L3J3Ci0tLSA1QjhlUjFPK3BT
+            aUxGZmdWajUraTZtWWtzS1l1cm4rd3FKNktyRlVETEtZChYCliQqnntpuBSoPo6Z
+            PbHjhA3V2lPn7ohVeTxcCrC63ZzHhObE6PySNLTcpqbAjFs1dtKBq3FUaVe1lrgW
+            Y5o=
+            -----END AGE ENCRYPTED FILE-----
+        - recipient: age1k7zs63jjpdchkw83achsfhpuhssk27s5rakwwkdnge5apgdsdy7q7fpy84
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBSUWdIS3lZSkZrNXlnMlZK
+            NTM1WXphTElzSzlrV1hMSndYVG1OUUM1c2h3CmI1TmJwcHJKd1ZLNTMzcVpwUmRL
+            VzUwaWtobXdnUmVvcHBCYzZsa2I3WVEKLS0tIFgyOGJZdU4yM2k1blQxRVpMWE9i
+            TmFJV1FkTE1XY0lZeHZIU0h3bWxZdW8KcudL2syHJkYXo+9FOhtCR/4gL3Oo0RHf
+            DL9/yvHwgtuV/Gz70ZhnQbw0fRE3xTgIoJ8MTIpejVShvOXUtfzvdQ==
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2026-04-13T18:22:01Z"
+    mac: ENC[AES256_GCM,data:7EqPcp12Xmtg8FCng4vx8llloYZVPzgEq45ns211ZxDiUFYVNUWBa/wvsGpsUsovJmI3KobUyYiwx5vMSg9UMBozsY72e+FpOj6jICMWicPcXvShpWCD4GyAjcLhzBjK4m9UDvOc00aWlVbtXzMpCPlL9WDbVWNveyiOOBNtBZA=,iv:dnhbDFhnuFs/gvQpk4v6yecdcp469T9WuW0GCxCaFbY=,tag:Ac4YpmeinRcgbH7jcOAapQ==,type:str]
+    encrypted_regex: ^(data|stringData)$
+    version: 3.12.2
