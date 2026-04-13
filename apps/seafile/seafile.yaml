@@ -227,6 +227,8 @@ spec:
               value: "6379"
             - name: TIME_ZONE
               value: Europe/Berlin
+            - name: SEAFILE_SERVER_PROTOCOL
+              value: https
           ports:
             - containerPort: 80
           volumeMounts:
