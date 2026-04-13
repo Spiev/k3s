@@ -336,20 +336,12 @@ get_flux_revision() {
     echo "$short"
 }
 
-# Flux: timestamp of last Ready condition transition for apps kustomization
+# Flux: timestamp when source-controller last fetched a new commit from GitHub
+# Uses GitRepository artifact.lastUpdateTime — updates on every new push, not just state transitions
 get_flux_last_sync() {
     local ts
-    ts=$(KUBECONFIG="$KUBECONFIG" $KUBECTL get kustomization apps -n flux-system \
-        -o json 2>/dev/null \
-        | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-conds = d.get('status', {}).get('conditions', [])
-for c in conds:
-    if c.get('type') == 'Ready':
-        print(c.get('lastTransitionTime', ''))
-        break
-" 2>/dev/null)
+    ts=$(KUBECONFIG="$KUBECONFIG" $KUBECTL get gitrepository flux-system -n flux-system \
+        -o jsonpath='{.status.artifact.lastUpdateTime}' 2>/dev/null)
     if [[ -n "$ts" ]]; then
         echo "$ts" > "$FLUX_LAST_SYNC_CACHE"
         echo "$ts"
