@@ -163,6 +163,7 @@ Seafile initialisiert sich beim ersten Start automatisch (DB-Setup, Admin-Accoun
 
 ## Hinweise
 
+- **`SEAFILE_SERVER_PROTOCOL`** muss im Deployment gesetzt sein (`http` oder `https`) — fehlt diese Variable, generiert das Image `SERVICE_URL` und `FILE_SERVER_ROOT` nicht korrekt, und der Browser bekommt eine `localhost`-URL für Uploads (Network Error). Der Wert ist nicht sensitiv und steht direkt im Manifest.
 - **`seafile-secrets.sops.yaml` darf keine k8s-Laufzeit-Metadaten enthalten** (`uid`, `resourceVersion`, `creationTimestamp`) — diese verursachen Konflikte beim Flux-Apply.
 - **Readiness Probe**: Der Seafile-Pod bleibt bis zu ~2 Minuten auf `0/1`, während Seahub startet. Das ist normal.
 - **JWT_PRIVATE_KEY**: Kein abgeleiteter Wert — ein unabhängig generierter Zufalls-String für die JWT-Token-Signierung.
