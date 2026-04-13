@@ -131,19 +131,27 @@ From this point on, Flux automatically decrypts any `*.sops.yaml` file it encoun
 
 ## Step 6 — Creating an encrypted secret
 
-The workflow for every service:
+Always use `stringData` (not `data`) — values stay human-readable after decryption, no base64 step needed. Write the manifest directly instead of using `kubectl create --dry-run` (which always outputs base64-encoded `data`):
 
 ```bash
-# 1. Generate the plaintext manifest (dry-run, never applied directly)
-kubectl create secret generic pihole-secret \
-  --namespace pihole \
-  --from-literal=FTLCONF_webserver_api_password="<your-password>" \
-  --dry-run=client -o yaml > apps/pihole/pihole-secret.sops.yaml
+# 1. Write the plaintext manifest with stringData
+cat > apps/pihole/pihole-secret.sops.yaml <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pihole-secret
+  namespace: pihole
+  labels:
+    app: pihole
+    managed-by: flux
+stringData:
+  FTLCONF_webserver_api_password: "<your-password>"
+EOF
 
 # 2. Encrypt in place — reads public key from .sops.yaml automatically, no private key needed
 sops --encrypt --in-place apps/pihole/pihole-secret.sops.yaml
 
-# 3. Verify it decrypts correctly
+# 3. Verify it decrypts correctly — values are immediately readable, no base64 -d needed
 SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt \
   sops --decrypt apps/pihole/pihole-secret.sops.yaml
 
@@ -184,19 +192,19 @@ rm /tmp/yubikey-identity.txt
 
 ---
 
-## ⚠️ base64 trap — Kubernetes Secret data fields
+## ⚠️ base64 trap — never use `kubectl create --dry-run` for SOPS secrets
 
-`kubectl create secret --from-literal` stores values **base64-encoded** in the `data` field. SOPS encrypts that base64 value. After decrypting, you see the encoded form — not the plaintext.
+`kubectl create secret --from-literal` stores values **base64-encoded** in the `data` field. SOPS then encrypts that base64 value. After decrypting, you see the encoded form — not the plaintext — which makes secrets unreadable without an extra `| base64 -d`.
 
-To read the actual value:
+**Always use `stringData` instead** (see Step 6). Kubernetes encodes to base64 internally when applying — in the YAML and after SOPS-decrypt the values stay human-readable.
+
+If you encounter an existing `data`-based secret and need to read the value:
 
 ```bash
 SOPS_AGE_KEY_FILE=/tmp/yubikey-identity.txt \
   sops --decrypt --extract '["data"]["FTLCONF_webserver_api_password"]' \
   apps/pihole/pihole-secret.sops.yaml | base64 -d
 ```
-
-Alternatively use `stringData` in the manifest (plaintext stored, Kubernetes encodes automatically) — but `kubectl create --dry-run` always outputs `data`.
 
 ---
 
