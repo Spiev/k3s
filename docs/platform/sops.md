@@ -29,7 +29,7 @@ kind: Secret
 metadata:
   name: pihole-secret
   namespace: pihole
-data:
+stringData:
   FTLCONF_webserver_api_password: ENC[AES256_GCM,data:abc123...,type:str]
 sops:
   age:
@@ -164,30 +164,26 @@ git commit -m "feat(pihole): add SOPS-encrypted admin secret"
 
 ## Editing an existing secret
 
+The software private key is intentionally **not stored on disk** — the YubiKey is the only local decryption key. SOPS finds the YubiKey identity automatically via `age-plugin-yubikey`:
+
 ```bash
+# YubiKey must be plugged in, pcscd must be running
+sudo systemctl start pcscd
+
 # SOPS decrypts to a temp file, opens $EDITOR, re-encrypts on save
-SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt \
-  sops apps/pihole/pihole-secret.sops.yaml
+sops apps/pihole/pihole-secret.sops.yaml
 ```
 
 ---
 
-## Decrypting with YubiKey (local, no software key needed)
-
-The software private key is intentionally **not stored on disk** after bootstrapping the cluster secret — the YubiKey is the only local decryption key.
+## Decrypting for inspection (local, YubiKey)
 
 ```bash
-# 1. YubiKey must be plugged in, pcscd must be running
+# YubiKey must be plugged in, pcscd must be running
 sudo systemctl start pcscd
 
-# 2. Write identity string from Vaultwarden to a temp file
-echo "AGE-PLUGIN-YUBIKEY-19Z4D5QYZU83AGTCJ9PR2Q" > /tmp/yubikey-identity.txt
-
-# 3. Decrypt — YubiKey will ask for PIV PIN and a touch
-SOPS_AGE_KEY_FILE=/tmp/yubikey-identity.txt \
-  sops --decrypt apps/pihole/pihole-secret.sops.yaml
-
-rm /tmp/yubikey-identity.txt
+# Decrypt — YubiKey will ask for PIV PIN
+sops --decrypt apps/pihole/pihole-secret.sops.yaml
 ```
 
 ---
@@ -208,28 +204,33 @@ SOPS_AGE_KEY_FILE=/tmp/yubikey-identity.txt \
 
 ---
 
-## Adding a YubiKey as a second recipient (optional, after YubiKey procurement)
+## Two-recipient setup (YubiKey + cluster key)
 
-Once YubiKeys are available, the YubiKey can be added as a second recipient for local editing. The cluster always uses the software key.
+All secrets are encrypted for two recipients:
+- **YubiKey** (`age1yubikey1...`) — for local editing and inspection on the laptop
+- **Cluster key** (`age1k7z...`) — used by Flux's `kustomize-controller` for automated decryption
+
+This is configured in `.sops.yaml`:
+
+```yaml
+creation_rules:
+  - path_regex: .*\.sops\.yaml$
+    encrypted_regex: ^(data|stringData)$
+    age: >-
+      age1yubikey1...,
+      age1k7z...
+```
+
+When adding a new service secret, `sops --encrypt` picks up both recipients automatically. To add the YubiKey to existing single-recipient files:
 
 ```bash
-# Get the YubiKey age public key
-age-plugin-yubikey --list
-
-# Add to .sops.yaml (comma-separated)
-# age: >-
-#   age1software...,
-#   age1yubikey...
-
 # Update all existing encrypted files to add the new recipient
 for f in $(find apps/ -name "*.sops.yaml"); do
-  SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops updatekeys "$f"
+  sops updatekeys "$f"
 done
 
 git add -A && git commit -m "feat(sops): add YubiKey as second recipient"
 ```
-
-This is a non-breaking change — the cluster software key continues to work unchanged.
 
 ---
 

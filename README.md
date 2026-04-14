@@ -40,7 +40,7 @@ Kubernetes infrastructure on a Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration
 apps/           Kubernetes manifests per service
   freshrss/     Namespace, PVC, Deployment, Service, Ingress
   pihole/       Namespace, Deployment, Service (LoadBalancer + Ingress)
-  seafile/      (planned)
+  seafile/      Namespace, PVCs, StatefulSet (MariaDB), Deployments (Seafile, Redis)
 
 docs/           Guides and architecture documentation
 
@@ -59,9 +59,9 @@ clusters/       Flux CD configuration
 |---|---|---|
 | FreshRSS | ✅ Migrated | Running on k3s, volume migration |
 | Pi-hole | ✅ Migrated | DNS via LoadBalancer + Ingress |
-| Seafile | In Progress | Set up directly in k3s |
+| Seafile | ✅ Migrated | Set up directly in k3s |
 | Immich | Open | Restic restore strategy (no space to copy) — after Agent-Node join |
 | Paperless | Open | |
 | Teslamate | Open | |
 | Home Assistant | Planned (Agent-Node) | `hostNetwork` + `nodeAffinity` for Zigbee dongle |
-| Vaultwarden | Concept | Google SSO (OIDC fork), YubiKey 2FA — after YubiKey procurement |
+| Vaultwarden | Concept | Google SSO (OIDC fork), YubiKey 2FA — Kubernetes deployment pending |

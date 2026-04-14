@@ -46,9 +46,9 @@ Seafile is significantly more complex than FreshRSS: three pods, two volumes, se
 ```
 apps/seafile/
 ├── seafile.yaml                  ← Namespace, PVCs, StatefulSet (MariaDB), Deployments (Seafile, Redis), Services
-├── seafile-secrets.sops.yaml     ← alle Secrets SOPS-verschlüsselt
-├── seafile-ingress.yaml          ← .gitignore (Hostname bleibt lokal)
-└── seafile-ingress.yaml.example  ← Template für den Ingress
+├── seafile-secrets.sops.yaml     ← all Secrets SOPS-encrypted
+├── seafile-ingress.yaml          ← .gitignore (hostname stays local)
+└── seafile-ingress.yaml.example  ← Ingress template
 ```
 
 ---
@@ -90,80 +90,79 @@ The following values must exist as a secret in the cluster — **not** in plaint
 | `SEAFILE_SERVER_HOSTNAME` | Public hostname | e.g. `seafile.fritz.box` |
 | `JWT_PRIVATE_KEY` | JWT signing key (min. 32 chars) | `openssl rand -base64 40` |
 
-### Secret erstellen und verschlüsseln
+### Create and encrypt the secret
+
+Always use `stringData` — values are human-readable after decryption, no base64 step needed (see [SOPS — base64 trap](../platform/sops.md#️-base64-trap--never-use-kubectl-create---dry-run-for-sops-secrets)).
 
 ```bash
-# 1. Secret direkt im Cluster anlegen
-kubectl create secret generic seafile-secrets \
-  --namespace seafile \
-  --from-literal=MYSQL_ROOT_PASSWORD=<passwort> \
-  --from-literal=MYSQL_PASSWORD=<passwort> \
-  --from-literal=SEAFILE_ADMIN_EMAIL=<deine-email> \
-  --from-literal=SEAFILE_ADMIN_PASSWORD=<passwort> \
-  --from-literal=SEAFILE_SERVER_HOSTNAME=<hostname> \
-  --from-literal=JWT_PRIVATE_KEY=$(openssl rand -base64 40)
+# 1. Write plaintext manifest with stringData
+cat > apps/seafile/seafile-secrets.sops.yaml <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: seafile-secrets
+  namespace: seafile
+  labels:
+    app: seafile
+    managed-by: flux
+stringData:
+  MYSQL_ROOT_PASSWORD: "<password>"
+  MYSQL_PASSWORD: "<password>"
+  SEAFILE_ADMIN_EMAIL: "<your-email>"
+  SEAFILE_ADMIN_PASSWORD: "<password>"
+  SEAFILE_SERVER_HOSTNAME: "<hostname>"
+  JWT_PRIVATE_KEY: "$(openssl rand -base64 40)"
+EOF
 
-# 2. Exportieren, bereinigen und verschlüsseln
-kubectl get secret seafile-secrets -n seafile -o yaml \
-  | grep -v 'creationTimestamp\|resourceVersion\|uid\|managedFields\|annotations' \
-  > apps/seafile/seafile-secrets.sops.yaml
-
+# 2. Encrypt in place — picks up both recipients (YubiKey + cluster key) from .sops.yaml
 sops --encrypt --in-place apps/seafile/seafile-secrets.sops.yaml
 ```
 
-SOPS verschlüsselt automatisch für beide Empfänger (YubiKey + Cluster-Key) gemäß `.sops.yaml`.
-
-### Secret entschlüsseln (lokal lesen)
-
-Voraussetzungen:
-- YubiKey eingesteckt
-- `pcscd` läuft: `sudo systemctl start pcscd`
-- age-plugin-yubikey Identity hinterlegt: `age-plugin-yubikey --identity >> ~/.config/sops/age/keys.txt`
+### Decrypt for inspection (local, YubiKey)
 
 ```bash
-sops --decrypt apps/seafile/seafile-secrets.sops.yaml
-```
+# YubiKey must be plugged in, pcscd must be running
+sudo systemctl start pcscd
 
-> **Hinweis**: Die Werte im `data`-Feld sind base64-kodiert (k8s-Standard). Einzelnen Wert dekodieren:
-> ```bash
-> sops --decrypt --extract '["data"]["JWT_PRIVATE_KEY"]' apps/seafile/seafile-secrets.sops.yaml | base64 -d
-> ```
+sops --decrypt apps/seafile/seafile-secrets.sops.yaml
+# Values are immediately readable — no base64 -d needed
+```
 
 ---
 
 ## Deployment via Flux
 
-Seafile wird wie alle anderen Services über Flux CD deployed — kein manuelles `kubectl apply` nötig.
+Seafile is deployed like all other services via Flux CD — no manual `kubectl apply` needed.
 
 ```bash
-# 1. Secret erstellen und verschlüsseln (siehe oben)
+# 1. Create and encrypt the secret (see above)
 
-# 2. Ingress vorbereiten (gitignored — Hostname bleibt lokal)
+# 2. Prepare ingress (gitignored — hostname stays local)
 cp apps/seafile/seafile-ingress.yaml.example apps/seafile/seafile-ingress.yaml
-vim apps/seafile/seafile-ingress.yaml  # Hostname eintragen
+vim apps/seafile/seafile-ingress.yaml  # fill in hostname
 kubectl apply -f apps/seafile/seafile-ingress.yaml
 
-# 3. Committen und pushen → Flux reconciled automatisch
+# 3. Commit and push → Flux reconciles automatically
 git add apps/seafile/seafile-secrets.sops.yaml
 git commit -m "feat(seafile): add encrypted secrets"
 git push
 
-# 4. Optional: Reconcile manuell anstoßen
+# 4. Optional: trigger reconciliation manually
 flux reconcile kustomization apps --with-source
 ```
 
-Status beobachten:
+Watch pod status:
 ```bash
 kubectl get pods -n seafile -w
 ```
 
-Seafile initialisiert sich beim ersten Start automatisch (DB-Setup, Admin-Account). Der erste Start dauert ca. 1–2 Minuten. Admin-Account ist danach über die Web UI zugänglich.
+Seafile initialises automatically on first start (DB setup, admin account). First startup takes ~1–2 minutes. The admin account is then accessible via the web UI.
 
 ---
 
-## Hinweise
+## Notes
 
-- **`SEAFILE_SERVER_PROTOCOL`** muss im Deployment gesetzt sein (`http` oder `https`) — fehlt diese Variable, generiert das Image `SERVICE_URL` und `FILE_SERVER_ROOT` nicht korrekt, und der Browser bekommt eine `localhost`-URL für Uploads (Network Error). Der Wert ist nicht sensitiv und steht direkt im Manifest.
-- **`seafile-secrets.sops.yaml` darf keine k8s-Laufzeit-Metadaten enthalten** (`uid`, `resourceVersion`, `creationTimestamp`) — diese verursachen Konflikte beim Flux-Apply.
-- **Readiness Probe**: Der Seafile-Pod bleibt bis zu ~2 Minuten auf `0/1`, während Seahub startet. Das ist normal.
-- **JWT_PRIVATE_KEY**: Kein abgeleiteter Wert — ein unabhängig generierter Zufalls-String für die JWT-Token-Signierung.
+- **`SEAFILE_SERVER_PROTOCOL`** must be set in the Deployment (`http` or `https`) — without this variable the image generates `SERVICE_URL` and `FILE_SERVER_ROOT` incorrectly, and the browser receives a `localhost` URL for uploads (Network Error). The value is not sensitive and lives directly in the manifest.
+- **`seafile-secrets.sops.yaml` must not contain k8s runtime metadata** (`uid`, `resourceVersion`, `creationTimestamp`) — these cause conflicts during Flux apply.
+- **Readiness Probe**: The Seafile pod stays at `0/1` for up to ~2 minutes while Seahub starts. This is normal.
+- **JWT_PRIVATE_KEY**: Not a derived value — an independently generated random string for JWT token signing.
