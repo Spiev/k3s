@@ -14,6 +14,7 @@ Kubernetes infrastructure on a Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration
 |---|---|
 | **Architecture** | |
 | [Architecture Overview](docs/architecture.md) | Big picture, network flow, components — good starting point |
+| [Decision: Container Orchestration](docs/decisions/container-orchestration.md) | k3s instead of Docker Compose / Swarm / Nomad |
 | [Decision: Storage](docs/decisions/storage.md) | local-path instead of Longhorn — rationale and trade-offs |
 | [Decision: Ingress Security](docs/decisions/ingress-security.md) | CrowdSec instead of fail2ban — Traefik-native security layer |
 | **Platform Setup** | |
