@@ -62,7 +62,7 @@ If the Agent-Node joins and these requirements emerge, Longhorn can be introduce
 - "Moving" a service means: delete PVC, copy data, recreate — a manual operation
 - Backup: Restic backs up files directly from the filesystem, no snapshot mechanism required
 - DNS redundancy: two Pi-hole instances (one per node) behind a MetalLB VIP — storage backend is irrelevant for this
-- **Migration from Longhorn to local-path:** For running services (FreshRSS, Pi-hole) a one-time data migration is required — a migration pod mounts the old Longhorn PVC and the new local-path PVC, copies the data, then Longhorn is uninstalled. Details: [`docs/operations/longhorn-migration.md`](../operations/longhorn-migration.md)
+- **No Longhorn migration needed:** The decision was made before any Longhorn deployment. FreshRSS and Pi-hole were set up directly with `local-path` — no data migration was required.
 
 ---
 

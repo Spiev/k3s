@@ -2,7 +2,7 @@
 
 This document describes the concept and implementation of a self-hosted password manager based on Vaultwarden — including security architecture, backup strategy, and Tier-0 emergency plan.
 
-> **Status:** Concept — not yet implemented. YubiKeys are being procured.
+> **Status:** Concept — Kubernetes deployment not yet implemented. YubiKeys procured and in use (SOPS + age).
 
 ---
 
@@ -335,12 +335,12 @@ The signpost is public. The actual guide is safely inside `tier0.age`.
 
 ## Open items / TODO
 
-- [ ] Procure YubiKeys (2 more, 1 already owned)
-- [ ] Set up age-plugin-yubikey, configure PIV slots
+- [x] Procure YubiKeys — done, all 3 keys in use
+- [x] Set up age-plugin-yubikey, configure PIV slots — done (SOPS encryption active)
 - [ ] Create tier0.age and upload to Proton Drive + Google Drive
 - [ ] Create RESTORE.md in this repo (public)
 - [ ] Vaultwarden Kubernetes manifest (`apps/vaultwarden/vaultwarden.yaml`)
 - [ ] Create Google OAuth2 client ID for Vaultwarden
-- [ ] Create SealedSecret for Vaultwarden credentials
+- [ ] Create SOPS secret for Vaultwarden credentials (`apps/vaultwarden/vaultwarden-secrets.sops.yaml`)
 - [ ] Add Vaultwarden block to backup.sh (docker-runtime repo)
 - [ ] Add VW_* variables to `.restic.env.example`
