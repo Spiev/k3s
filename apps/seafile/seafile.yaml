@@ -168,17 +168,17 @@ spec:
       initContainers:
         # Warten bis MariaDB bereit ist, bevor Seafile startet
         - name: wait-for-mariadb
-          image: alpine:3.23@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
+          image: alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
           command: ['sh', '-c', 'until nc -z mariadb 3306; do echo "waiting for mariadb..."; sleep 2; done']
         - name: wait-for-redis
-          image: alpine:3.23@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
+          image: alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
           command: ['sh', '-c', 'until nc -z redis 6379; do echo "waiting for redis..."; sleep 2; done']
         # CSRF_TRUSTED_ORIGINS wird von seafile-mc nicht als Env-Variable unterstützt
         # und muss direkt in seahub_settings.py stehen (Django-Einstellung).
         # Beim allerersten Start (leerer PVC) greift dies erst nach einem Pod-Neustart,
         # da seahub_settings.py erst vom Startup-Script erstellt wird.
         - name: patch-seahub-settings
-          image: alpine:3.23@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
+          image: alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
           command:
             - sh
             - -c
