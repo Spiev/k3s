@@ -34,6 +34,8 @@ KUBECTL="kubectl --request-timeout=10s"
 # Cache files for Flux sensors — preserves last known values when kubectl fails
 FLUX_REVISION_CACHE="$SCRIPT_DIR/.flux_revision_cache"
 FLUX_LAST_SYNC_CACHE="$SCRIPT_DIR/.flux_last_sync_cache"
+# Tracks which revision was current when flux_last_sync was last updated
+FLUX_LAST_SYNC_REVISION_CACHE="$SCRIPT_DIR/.flux_last_sync_revision_cache"
 
 # Cache for apt update results — refreshed at most once per hour
 APT_CACHE="$SCRIPT_DIR/.apt_updates_cache"
@@ -336,18 +338,33 @@ get_flux_revision() {
     echo "$short"
 }
 
-# Flux: timestamp when source-controller last fetched a new commit from GitHub
-# Uses GitRepository artifact.lastUpdateTime — updates on every new push, not just state transitions
+# Flux: timestamp when the apps kustomization last applied a new revision to the cluster.
+# Detects changes in lastAppliedRevision and records the current time when it changes.
+# This gives "when did a change actually arrive in the cluster" rather than just "when was git fetched".
 get_flux_last_sync() {
-    local ts
-    ts=$(KUBECONFIG="$KUBECONFIG" $KUBECTL get gitrepository flux-system -n flux-system \
-        -o jsonpath='{.status.artifact.lastUpdateTime}' 2>/dev/null)
-    if [[ -n "$ts" ]]; then
-        echo "$ts" > "$FLUX_LAST_SYNC_CACHE"
-        echo "$ts"
-    elif [[ -f "$FLUX_LAST_SYNC_CACHE" ]]; then
+    local rev
+    rev=$(KUBECONFIG="$KUBECONFIG" $KUBECTL get kustomization apps -n flux-system \
+        -o jsonpath='{.status.lastAppliedRevision}' 2>/dev/null)
+
+    if [[ -z "$rev" ]]; then
         # kubectl failed — return last known timestamp to avoid HA showing Unknown
-        cat "$FLUX_LAST_SYNC_CACHE"
+        [[ -f "$FLUX_LAST_SYNC_CACHE" ]] && cat "$FLUX_LAST_SYNC_CACHE"
+        return
+    fi
+
+    local cached_rev=""
+    [[ -f "$FLUX_LAST_SYNC_REVISION_CACHE" ]] && cached_rev=$(cat "$FLUX_LAST_SYNC_REVISION_CACHE")
+
+    if [[ "$rev" != "$cached_rev" ]]; then
+        # Revision changed — record when we first noticed this new revision
+        local now
+        now=$(date --iso-8601=seconds)
+        echo "$rev" > "$FLUX_LAST_SYNC_REVISION_CACHE"
+        echo "$now" > "$FLUX_LAST_SYNC_CACHE"
+        echo "$now"
+    else
+        # Same revision as before — return the timestamp from when it was applied
+        [[ -f "$FLUX_LAST_SYNC_CACHE" ]] && cat "$FLUX_LAST_SYNC_CACHE"
     fi
 }
 
