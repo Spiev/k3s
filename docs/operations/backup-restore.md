@@ -6,21 +6,23 @@ Unified backup strategy via Restic for all services:
 
 | Strategy | Tool | Services | Restore granularity |
 |---|---|---|---|
-| File backup | Restic → Hetzner S3 | All services | individual files, entire service |
+| DB dump + Restic → Hetzner S3 | Restic | Teslamate, Paperless | individual files, entire service |
 
-`local-path` volumes live directly on the node filesystem (`/var/lib/rancher/k3s/storage/<pvc-name>/`) — Restic can back them up directly without a snapshot mechanism.
+The backup script runs as a cron job on the k3s node. It creates DB dumps via `kubectl exec` and uploads them to Hetzner S3 via Restic. Each service gets its own MQTT sensor in Home Assistant.
+
+**Hetzner project:** `k3s-homelab` — S3 bucket: `<your-bucket-name>`
 
 ---
 
 ## Critical secrets outside the cluster
 
-These values **cannot** be recovered from the cluster if etcd is gone. Store them in the password manager — independent of cluster state:
+These values **cannot** be recovered from the cluster if etcd is gone. Store them in Vaultwarden — independent of cluster state:
 
 | Secret | Where to find it | Where to store |
 |---|---|---|
 | SOPS age private key | `~/.config/sops/age/keys.txt` on the laptop | Vaultwarden |
-| Hetzner S3 credentials | Hetzner Console | Vaultwarden |
-| Restic repo password (S3) | from `.restic.env` | Vaultwarden |
+| Hetzner S3 credentials | Hetzner Console → k3s-homelab project | Vaultwarden |
+| Restic repo password (S3) | `~/k3s/scripts/.restic.env` on k3s node | Vaultwarden |
 
 > The age private key is the only secret that cannot be recovered from the cluster or from Git. Keep it in Vaultwarden. **Never commit it.**
 
@@ -30,44 +32,47 @@ These values **cannot** be recovered from the cluster if etcd is gone. Store the
 
 ### How it works
 
-The backup script runs as a cron job directly on the Pi node and:
-1. Connects via `kubectl exec` to the database pod and creates a `pg_dumpall` dump
-2. Copies application data via `kubectl cp` from the app pod
-3. Backs everything up with Restic to the Hetzner S3 bucket
+The backup script (`scripts/backup.sh`) runs as a cron job on the k3s node and:
+1. Auto-detects which known services have running pods
+2. Creates a `pg_dump` dump via `kubectl exec` into a staging directory
+3. Uploads the staging directory to Hetzner S3 via Restic
 4. Reports status per service via MQTT to Home Assistant
+5. Cleans up the staging directory
 
-Each service gets its own HA sensor (`backup_paperless`, `backup_teslamate`, `backup_overall`).
+Each service gets its own HA sensor (`backup_teslamate`, `backup_paperless`, `backup_overall`).
 
 ### Setup
 
-**Prerequisite:** Hetzner S3 bucket exists (create manually in the Hetzner Cloud Console).
+**Prerequisite:** Hetzner S3 bucket exists (create in Hetzner Cloud Console, project `k3s-homelab`).
 
-**Install dependencies on the Pi node:**
+**Install dependencies on the k3s node:**
 
 ```bash
 sudo apt install restic bc mosquitto-clients
 ```
 
-**Set up the script:**
+**Set up the scripts:**
 
 ```bash
-cd ~/workspace/priv/k3s/scripts
+cd ~/k3s/scripts
 
 cp backup.sh.example backup.sh
 chmod 700 backup.sh
 
 cp .restic.env.example .restic.env
 chmod 600 .restic.env
-# Fill in .restic.env with your values
+# Fill in: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, RESTIC_REPO_S3, RESTIC_PASSWORD_S3
+# RESTIC_REPO_S3 format: s3:https://nbg1.your-objectstorage.com/YOUR_BUCKET/restic-repo
 
-cp .mqtt_credentials.example .mqtt_credentials
-chmod 600 .mqtt_credentials
-# Fill in .mqtt_credentials with MQTT_USER and MQTT_PASSWORD
+cp .mqtt.env.example .mqtt.env
+chmod 600 .mqtt.env
+# Fill in: MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_PASSWORD
 ```
 
 **Initialise Restic S3 repo** (once):
 
 ```bash
+cd ~/k3s/scripts
 source .restic.env
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" init
 ```
@@ -78,180 +83,119 @@ RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" init
 crontab -e
 ```
 
-Entry:
 ```
-30 2 * * * /home/<your-user>/k3s/scripts/backup.sh >> /var/log/k3s-backup.log 2>&1
+30 2 * * * /home/stefan/k3s/scripts/backup.sh >> /var/log/k3s-backup.log 2>&1
 ```
 
-**Test the first backup run:**
+**Test:**
 
 ```bash
-~/workspace/priv/k3s/scripts/backup.sh
+~/k3s/scripts/backup.sh
 ```
 
-Verify snapshots exist:
+Verify snapshots:
 ```bash
-source ~/workspace/priv/k3s/scripts/.restic.env
+cd ~/k3s/scripts && source .restic.env
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots
 ```
 
 ### Adding a new service
 
 When another service is migrated to k3s:
-1. Add the service to `BACKUP_SERVICES` in `scripts/.restic.env`
-2. Add a `backup_<service>()` function in `scripts/backup.sh` (analogous to `backup_paperless`)
-3. Register the function in the `case` block below
+1. Add the service name to `KNOWN_SERVICES` in `scripts/backup.sh.example`
+2. Add a `service_display_name()` case for it
+3. Add a `backup_<service>()` function (analogous to `backup_teslamate`)
+4. Add a case to the dispatch block in Main
+5. Copy the changes to `~/k3s/scripts/backup.sh` on the k3s node
+
+The script auto-detects running services — no manual enable/disable needed after onboarding.
 
 ### Home Assistant dashboard
 
-A sensor for each service and the overall status appears automatically in HA (via MQTT Discovery). Example card for the dashboard:
+Sensors appear automatically via MQTT Discovery after the first backup run. Example card:
 
 ```yaml
 type: entities
 title: Restic Backup
 entities:
   - entity: sensor.backup_overall
-  - entity: sensor.backup_paperless
   - entity: sensor.backup_teslamate
+  - entity: sensor.backup_paperless
 ```
 
 ---
 
-## Restore — Restic
-
-### List available snapshots
+## Restore — Teslamate
 
 ```bash
-source ~/workspace/priv/k3s/scripts/.restic.env
-RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots
-```
+cd ~/k3s/scripts && source .restic.env
 
-Filter by service:
-```bash
-RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots --tag paperless
-RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots --tag teslamate
-```
-
-### Restore a single file / directory
-
-```bash
-# Get snapshot ID from `restic snapshots`, e.g. abc12345
-SNAPSHOT="abc12345"
-
-# List contents of a snapshot
+# 1. Restore staging directory
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
-  ls "$SNAPSHOT"
+  restore latest --tag teslamate --target /tmp/restore
 
-# Restore a single file / directory to /tmp
-RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
-  restore "$SNAPSHOT" \
-  --include "/tmp/k3s-backup/paperless/media/documents/originals/2025/01/invoice.pdf" \
-  --target /tmp/restore
+# 2. Scale down, drop and recreate DB
+kubectl scale deployment teslamate teslamate-grafana -n teslamate --replicas=0
+kubectl wait --for=delete pod -n teslamate -l app=teslamate --timeout=60s
+DB_POD=$(kubectl get pod -n teslamate -l app=teslamate-db -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n teslamate "$DB_POD" -- psql -U teslamate -c "DROP DATABASE teslamate;" postgres
+kubectl exec -n teslamate "$DB_POD" -- psql -U teslamate -c "CREATE DATABASE teslamate OWNER teslamate;" postgres
+
+# 3. Import dump
+zcat /tmp/restore/tmp/k3s-backup/teslamate/teslamate_db_*.sql.gz \
+  | kubectl exec -i -n teslamate "$DB_POD" -- psql -U teslamate teslamate
+
+# 4. Scale back up and verify
+kubectl scale deployment teslamate teslamate-grafana -n teslamate --replicas=1
+kubectl exec -n teslamate "$DB_POD" -- psql -U teslamate -c 'SELECT count(*) FROM drives;' teslamate
+
+rm -rf /tmp/restore
 ```
 
-### Restore an entire service (cluster running)
+---
 
-**Step 1 — Restore staging directory from Restic:**
+## Restore — Paperless
 
 ```bash
+cd ~/k3s/scripts && source .restic.env
+
+# 1. Restore staging directory
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
-  restore latest \
-  --tag paperless \
-  --target /tmp/restore
-```
+  restore latest --tag paperless --target /tmp/restore
 
-The staging directory is at `/tmp/restore/tmp/k3s-backup/paperless/`.
-
-**Step 2 — Import DB dump into the running DB pod:**
-
-```bash
-# Stop service (prevents write conflicts during restore)
-kubectl scale deployment paperless -n paperless --replicas=0
-kubectl scale deployment paperless-db -n paperless --replicas=0
-
-# Wait until pods are gone
+# 2. Scale down
+kubectl scale deployment paperless paperless-db -n paperless --replicas=0
 kubectl wait --for=delete pod -n paperless -l app=paperless --timeout=60s
 
-# Start DB pod again (without app)
+# 3. Start DB, import dump
 kubectl scale deployment paperless-db -n paperless --replicas=1
 kubectl wait --for=condition=Ready pod -n paperless -l app=paperless-db --timeout=60s
-
-# Import dump
 DB_POD=$(kubectl get pod -n paperless -l app=paperless-db -o jsonpath='{.items[0].metadata.name}')
 zcat /tmp/restore/tmp/k3s-backup/paperless/paperless_db_*.sql.gz \
   | kubectl exec -i -n paperless "$DB_POD" -- psql -U paperless
-```
 
-**Step 3 — Copy media files back:**
-
-```bash
-# Start app pod
+# 4. Start app, copy media back
 kubectl scale deployment paperless -n paperless --replicas=1
 kubectl wait --for=condition=Ready pod -n paperless -l app=paperless --timeout=90s
-
 APP_POD=$(kubectl get pod -n paperless -l app=paperless -o jsonpath='{.items[0].metadata.name}')
-
-# Copy media directory back
 kubectl cp /tmp/restore/tmp/k3s-backup/paperless/media \
   "paperless/$APP_POD:/usr/src/paperless/media"
-```
 
-**Step 4 — Verify:**
-
-Check documents and tags in the Paperless UI.
-
-```bash
-# Clean up
 rm -rf /tmp/restore
 ```
-
-### Restore an entire service (after cluster reinstall)
-
-First complete the [SOPS recovery](../platform/sops.md#recovery-after-cluster-reinstall) (Flux bootstrap + age key import), then Restic restore as above (Steps 1-4).
-
----
-
-## Restore — Restic (FreshRSS, Pi-hole)
-
-FreshRSS and Pi-hole have no database process — their data is configuration files on the local-path volume. Restore follows the same Restic restore process as above, analogous to Paperless.
-
-### Restore FreshRSS (cluster running)
-
-```bash
-# 1. Stop deployment
-kubectl scale deployment freshrss -n freshrss --replicas=0
-
-# 2. Restore Restic snapshot
-RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
-  restore latest --tag freshrss --target /tmp/restore
-
-# 3. Copy data back
-kubectl cp /tmp/restore/var/lib/rancher/k3s/storage/freshrss-config/. \
-  freshrss/$(kubectl get pod -n freshrss -l app=freshrss -o jsonpath='{.items[0].metadata.name}'):/config/
-
-# 4. Start deployment and verify
-kubectl scale deployment freshrss -n freshrss --replicas=1
-rm -rf /tmp/restore
-```
-
-### After cluster reinstall
-
-First complete the [SOPS recovery](../platform/sops.md#recovery-after-cluster-reinstall), then Restic restore as above.
 
 ---
 
 ## Before a cluster rebuild
 
-Checklist before tearing down the cluster:
-
 ```bash
-# 1. Restic: check last successful backup run
-source ~/workspace/priv/k3s/scripts/.restic.env
+cd ~/k3s/scripts && source .restic.env
+
+# 1. Check last successful backup
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots --last
 
-# 2. Verify age private key is backed up in Vaultwarden
-# (the key lives at ~/.config/sops/age/keys.txt on the laptop)
-# If in doubt: retrieve from Vaultwarden before proceeding
+# 2. Verify age private key is in Vaultwarden
+# 3. Verify Hetzner S3 credentials and Restic repo password are in Vaultwarden
 ```
 
 ---
@@ -259,22 +203,20 @@ RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots --la
 ## Troubleshooting
 
 ```bash
-# Restic: show snapshot details
-source ~/workspace/priv/k3s/scripts/.restic.env
-RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots --verbose
+cd ~/k3s/scripts && source .restic.env
 
-# Restic: check repository integrity
+# Show snapshots
+RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots
+
+# Check repository integrity
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" check
 
-# Restic: remove stale locks (after aborted backup)
+# Remove stale locks (after aborted backup)
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" unlock
-
-# kubectl exec not working?
-#   → kubectl must be reachable on the node as the cron user
-#   → check KUBECONFIG: echo $KUBECONFIG (or default /etc/rancher/k3s/k3s.yaml)
-kubectl get pods -n paperless
 
 # View backup log
 tail -100 /var/log/k3s-backup.log
-```
 
+# KUBECONFIG not set? (symptom: "no running pods" despite services being up)
+export KUBECONFIG=~/.kube/config
+```
