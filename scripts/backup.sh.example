@@ -382,7 +382,7 @@ echo "=========================================="
 REPO_STATS=$(RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" \
     restic -r "$RESTIC_REPO_S3" stats --mode raw-data --json 2>/dev/null || echo "{}")
 REPO_SIZE_BYTES=$(echo "$REPO_STATS" | jq -r '.total_size // 0')
-REPO_SIZE_GB=$(echo "scale=2; $REPO_SIZE_BYTES / 1024 / 1024 / 1024" | bc)
+REPO_SIZE_GB=$(echo "scale=2; $REPO_SIZE_BYTES / 1024 / 1024 / 1024" | bc | awk '{printf "%.2f", $0}')
 SNAPSHOT_COUNT=$(RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" \
     restic -r "$RESTIC_REPO_S3" snapshots --json 2>/dev/null | jq '. | length' || echo "0")
 
