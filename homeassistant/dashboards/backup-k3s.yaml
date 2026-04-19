@@ -1,0 +1,76 @@
+title: Backup k3s
+path: backup-k3s
+icon: mdi:kubernetes
+type: masonry
+cards:
+  - type: vertical-stack
+    cards:
+      - type: entity
+        entity: sensor.backup_overall
+        name: Backup k3s — Gesamt
+        icon: mdi:backup-restore
+        state_color: true
+      - type: markdown
+        title: Letzter Lauf
+        content: >
+          | | |
+
+          |---|---|
+
+          | **Zeitpunkt** | {{ state_attr('sensor.backup_overall',
+          'last_run') | as_datetime | relative_time }} |
+
+          | **Dauer** | {{ state_attr('sensor.backup_overall',
+          'duration_seconds') }}s |
+
+          | **Aktive Services** | {{ state_attr('sensor.backup_overall',
+          'active_services') }} |
+
+      - type: markdown
+        title: Repository (Hetzner S3)
+        content: >
+          | | |
+
+          |---|---|
+
+          | **Größe** | {{ state_attr('sensor.backup_overall',
+          'repository_size_gb') }} GB |
+
+          | **Snapshots** | {{ state_attr('sensor.backup_overall',
+          'snapshot_count') }} |
+
+          | **Neue Dateien** | {{ state_attr('sensor.backup_overall',
+          'files_new') }} |
+
+          | **Geänderte Dateien** | {{ state_attr('sensor.backup_overall',
+          'files_changed') }} |
+
+  - type: vertical-stack
+    title: Services
+    cards:
+      - type: entity
+        entity: sensor.backup_teslamate
+        name: Teslamate
+        icon: mdi:car-electric
+        state_color: true
+      - type: markdown
+        content: >
+          | | |
+
+          |---|---|
+
+          | **Letzter Lauf** | {{ state_attr('sensor.backup_teslamate',
+          'last_run') | as_datetime | relative_time }} |
+
+          | **Neue Dateien** | {{ state_attr('sensor.backup_teslamate',
+          'files_new') }} |
+
+          | **Geänderte Dateien** | {{ state_attr('sensor.backup_teslamate',
+          'files_changed') }} |
+
+  - type: logbook
+    title: Backup-Verlauf
+    entities:
+      - sensor.backup_overall
+      - sensor.backup_teslamate
+    hours_to_show: 168
