@@ -124,16 +124,16 @@ send_discovery() {
     local payload
     payload=$(cat <<EOF
 {
-  "name": "Status",
+  "name": "${display_name}",
   "object_id": "backup_${service}",
   "unique_id": "backup_${service}",
   "state_topic": "$(mqtt_state_topic "$service")",
   "json_attributes_topic": "$(mqtt_attributes_topic "$service")",
   "icon": "mdi:backup-restore",
   "device": {
-    "identifiers": ["backup_${service}"],
-    "name": "Backup ${display_name}",
-    "model": "Restic k3s Backup",
+    "identifiers": ["k3s_backup"],
+    "name": "k3s Backup",
+    "model": "Restic → Hetzner S3",
     "manufacturer": "Homelab"
   }
 }
