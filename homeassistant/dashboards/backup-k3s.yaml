@@ -17,14 +17,14 @@ cards:
 
           |---|---|
 
-          | **Zeitpunkt** | {{ state_attr('sensor.backup_overall',
-          'last_run') | as_datetime | relative_time }} |
+          | **Zeitpunkt** | {% set t = state_attr('sensor.backup_overall',
+          'last_run') %}{{ t | as_datetime | relative_time if t else '—' }} |
 
           | **Dauer** | {{ state_attr('sensor.backup_overall',
-          'duration_seconds') }}s |
+          'duration_seconds') | default('—') }}s |
 
           | **Aktive Services** | {{ state_attr('sensor.backup_overall',
-          'active_services') }} |
+          'active_services') | default('—') }} |
 
       - type: markdown
         title: Repository (Hetzner S3)
@@ -34,16 +34,16 @@ cards:
           |---|---|
 
           | **Größe** | {{ state_attr('sensor.backup_overall',
-          'repository_size_gb') }} GB |
+          'repository_size_gb') | default('—') }} GB |
 
           | **Snapshots** | {{ state_attr('sensor.backup_overall',
-          'snapshot_count') }} |
+          'snapshot_count') | default('—') }} |
 
           | **Neue Dateien** | {{ state_attr('sensor.backup_overall',
-          'files_new') }} |
+          'files_new') | default('—') }} |
 
           | **Geänderte Dateien** | {{ state_attr('sensor.backup_overall',
-          'files_changed') }} |
+          'files_changed') | default('—') }} |
 
   - type: vertical-stack
     title: Services
@@ -59,14 +59,14 @@ cards:
 
           |---|---|
 
-          | **Letzter Lauf** | {{ state_attr('sensor.backup_teslamate',
-          'last_run') | as_datetime | relative_time }} |
+          | **Letzter Lauf** | {% set t = state_attr('sensor.backup_teslamate',
+          'last_run') %}{{ t | as_datetime | relative_time if t else '—' }} |
 
           | **Neue Dateien** | {{ state_attr('sensor.backup_teslamate',
-          'files_new') }} |
+          'files_new') | default('—') }} |
 
           | **Geänderte Dateien** | {{ state_attr('sensor.backup_teslamate',
-          'files_changed') }} |
+          'files_changed') | default('—') }} |
 
   - type: logbook
     title: Backup-Verlauf
