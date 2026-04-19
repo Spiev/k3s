@@ -4,5 +4,5 @@ apps/*/**-ingress.yaml
 
 # Secrets and credentials — never commit
 scripts/.credentials
-scripts/.restic.env
-scripts/.mqtt.env
+**/.env
+**/*.env
