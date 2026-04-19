@@ -60,6 +60,8 @@ service_is_running() {
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
+
 mqtt_state_topic()      { echo "homeassistant/sensor/backup_${1}/state"; }
 mqtt_attributes_topic() { echo "homeassistant/sensor/backup_${1}/attributes"; }
 mqtt_discovery_topic()  { echo "homeassistant/sensor/backup_${1}/config"; }
