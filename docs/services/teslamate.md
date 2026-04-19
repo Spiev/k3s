@@ -45,7 +45,7 @@ ssh raspberrypi "tar czf /tmp/teslamate-grafana.tar.gz -C ~/docker/teslamate/gra
 
 ## Deployment auf k3s
 
-### 1. Secret anpassen und verschlüsseln
+### 1. Secret anpassen und verschlüsseln (schon erledigt, ist redundant)
 
 `GRAFANA_ROOT_URL` in `apps/teslamate/teslamate-secrets.sops.yaml` eintragen (muss mit der tatsächlichen Grafana-Domain übereinstimmen), dann verschlüsseln:
 
