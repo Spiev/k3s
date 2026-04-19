@@ -48,8 +48,6 @@ apps/           Kubernetes manifests per service
   seafile/      Namespace, PVCs, StatefulSet (MariaDB), Deployments (Seafile, Redis)
   teslamate/    Namespace, PVCs, Deployments (Teslamate, PostgreSQL, Grafana)
 
-homeassistant/  HA dashboards and configuration for k3s infrastructure
-
 docs/           Guides and architecture documentation
 
 infrastructure/ Cluster infrastructure (Monitoring, Traefik config)
