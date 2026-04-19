@@ -34,8 +34,10 @@ Kubernetes infrastructure on a Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration
 | [Shutdown & Startup](docs/operations/shutdown-startup.md) | Gracefully shutting down and starting up the cluster |
 | [Monitoring](docs/operations/monitoring.md) | kube-prometheus-stack, Grafana, Alertmanager |
 | [Renovate](docs/operations/renovate.md) | Automated dependency updates via GitHub Action |
-| [Backup & Restore](docs/operations/backup-restore.md) | Cluster rebuild, volume restore, critical secrets |
+| [Backup & Restore](docs/operations/backup-restore.md) | Restic → Hetzner S3, DB dumps, restore procedures |
 | [Image Updates](docs/operations/update-images.md) | Manual image update, crictl pre-pull for RWO PVCs |
+| **Home Assistant** | |
+| [HA Dashboards](homeassistant/README.md) | Dashboards for k3s infrastructure monitoring |
 
 ---
 
@@ -46,6 +48,9 @@ apps/           Kubernetes manifests per service
   freshrss/     Namespace, PVC, Deployment, Service, Ingress
   pihole/       Namespace, Deployment, Service (LoadBalancer + Ingress)
   seafile/      Namespace, PVCs, StatefulSet (MariaDB), Deployments (Seafile, Redis)
+  teslamate/    Namespace, PVCs, Deployments (Teslamate, PostgreSQL, Grafana)
+
+homeassistant/  HA dashboards and configuration for k3s infrastructure
 
 docs/           Guides and architecture documentation
 
