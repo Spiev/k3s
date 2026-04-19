@@ -67,6 +67,6 @@ clusters/       Flux CD configuration
 | Seafile | ✅ Migrated | Set up directly in k3s |
 | Immich | Open | Restic restore strategy (no space to copy) — after Agent-Node join |
 | Paperless | Open | |
-| Teslamate | Open | Manifeste fertig — Migration ausstehend |
+| Teslamate | ✅ Migrated | Running on k3s, DB restore from pg_dump |
 | Home Assistant | Planned (Agent-Node) | `hostNetwork` + `nodeAffinity` for Zigbee dongle |
 | Vaultwarden | Concept | Google SSO (OIDC fork), YubiKey 2FA — Kubernetes deployment pending |
