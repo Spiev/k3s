@@ -1,17 +1,17 @@
-# MetalLB Konfiguration — Layer 2 Modus, Dual-Stack
+# MetalLB configuration — Layer 2 mode, Dual-Stack
 #
-# Voraussetzung: MetalLB Controller ist installiert (siehe docs/02b-metallb.md)
-# und k3s ServiceLB (Klipper) ist deaktiviert.
+# Prerequisite: MetalLB controller is installed (see docs/02b-metallb.md)
+# and k3s ServiceLB (Klipper) is disabled.
 #
-# ANPASSEN: Adressen an das eigene Heimnetz anpassen.
-# Der Pool-Bereich muss außerhalb des DHCP-Bereichs der Fritz!Box liegen.
+# ADJUST: Set addresses to match your home network.
+# The pool range must be outside the DHCP range of your router (Fritz!Box).
 
 ---
-# IPAddressPool — der IP-Vorrat für LoadBalancer-Services
+# IPAddressPool — the IP pool for LoadBalancer services
 #
-# MetalLB weist IPs aus diesem Pool als EXTERNAL-IP zu wenn ein Service
-# type: LoadBalancer anfragt. Der Bereich muss außerhalb des DHCP-Bereichs
-# der Fritz!Box liegen.
+# MetalLB assigns IPs from this pool as EXTERNAL-IP when a service of
+# type: LoadBalancer requests one. The range must be outside the DHCP
+# range of the Fritz!Box.
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
@@ -21,20 +21,20 @@ metadata:
     app: metallb
 spec:
   addresses:
-    - <METALLB-IPV4-START>-<METALLB-IPV4-END>   # IPv4: außerhalb DHCP-Bereich
-    - <ULA-PREFIX>::<RANGE-START>-<ULA-PREFIX>::<RANGE-END>  # IPv6: symmetrisch zur IPv4-Range
+    - <METALLB-IPV4-START>-<METALLB-IPV4-END>   # IPv4: outside DHCP range
+    - <ULA-PREFIX>::<RANGE-START>-<ULA-PREFIX>::<RANGE-END>  # IPv6: symmetric to IPv4 range
 ---
-# L2Advertisement — aktiviert Layer-2-Modus (ARP für IPv4, NDP für IPv6)
+# L2Advertisement — enables Layer-2 mode (ARP for IPv4, NDP for IPv6)
 #
-# MetalLB läuft als DaemonSet auf jedem Node und antwortet auf ARP/NDP-Anfragen
-# für die zugewiesenen VIPs. Für das lokale Netz sieht die VIP aus als würde
-# sie direkt auf dem Node liegen.
+# MetalLB runs as a DaemonSet on every node and responds to ARP/NDP requests
+# for the assigned VIPs. From the local network's perspective, the VIP appears
+# to be directly on the node.
 #
-# Beim Failover (Node-Ausfall oder Neustart) übernimmt der andere Node die
-# ARP/NDP-Ankündigung — die VIP wandert automatisch mit.
+# On failover (node failure or restart), the other node takes over the
+# ARP/NDP announcement — the VIP migrates automatically.
 #
-# Bekannte Einschränkung: funktioniert nicht über WLAN (Fritz!Box blockiert
-# Gratuitous ARP für IPs außerhalb DHCP). Ethernet erforderlich.
+# Known limitation: does not work over Wi-Fi (Fritz!Box blocks
+# Gratuitous ARP for IPs outside DHCP). Ethernet required.
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
 metadata:
@@ -44,4 +44,4 @@ metadata:
     app: metallb
 spec:
   ipAddressPools:
-    - homelab-pool    # Referenz auf den Pool oben
+    - homelab-pool    # reference to the pool above

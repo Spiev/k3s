@@ -1,17 +1,17 @@
-# Helm Values für kube-prometheus-stack
+# Helm values for kube-prometheus-stack
 #
-# Anwenden mit:
+# Install:
 #   helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
 #     --namespace monitoring --create-namespace \
 #     --values infrastructure/monitoring/values.yaml
 #
-# Update:
+# Upgrade:
 #   helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack \
 #     --namespace monitoring \
 #     --values infrastructure/monitoring/values.yaml
 
 grafana:
-  adminPassword: ""    # <-- beim ersten Install via --set grafana.adminPassword=<passwort> setzen
+  adminPassword: ""    # <-- set on first install via --set grafana.adminPassword=<password>
 
   persistence:
     enabled: true
@@ -20,7 +20,7 @@ grafana:
 
 prometheus:
   prometheusSpec:
-    # Metriken 30 Tage aufbewahren (Standard: 10d)
+    # Retain metrics for 30 days (default: 10d)
     retention: 30d
 
     storageSpec:
