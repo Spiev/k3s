@@ -2,5 +2,7 @@
 apps/*/overlays/*/ingress-patch.yaml
 apps/*/**-ingress.yaml
 
-# Secrets und Credentials — nie ins Repo
+# Secrets and credentials — never commit
 scripts/.credentials
+scripts/.restic.env
+scripts/.mqtt.env
