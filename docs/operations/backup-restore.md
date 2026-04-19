@@ -42,22 +42,10 @@ Each service gets its own HA sensor (`backup_paperless`, `backup_teslamate`, `ba
 
 **Prerequisite:** Hetzner S3 bucket exists (create manually in the Hetzner Cloud Console).
 
-**Install Restic on the Pi node:**
+**Install dependencies on the Pi node:**
 
 ```bash
-# Check current version: https://github.com/restic/restic/releases
-RESTIC_VERSION="0.17.3"
-wget "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_arm64.bz2"
-bunzip2 "restic_${RESTIC_VERSION}_linux_arm64.bz2"
-sudo mv "restic_${RESTIC_VERSION}_linux_arm64" /usr/local/bin/restic
-sudo chmod +x /usr/local/bin/restic
-restic version
-```
-
-**Install mosquitto-clients** (for MQTT notifications):
-
-```bash
-sudo apt install mosquitto-clients
+sudo apt install restic bc mosquitto-clients
 ```
 
 **Set up the script:**
