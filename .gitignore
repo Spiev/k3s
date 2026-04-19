@@ -6,3 +6,4 @@ apps/*/**-ingress.yaml
 scripts/.credentials
 **/.env
 **/*.env
+!infrastructure/k3s-version.env
