@@ -27,6 +27,7 @@ Kubernetes infrastructure on a Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration
 | [FreshRSS](docs/services/freshrss.md) | Deploy & migrate FreshRSS |
 | [Pi-hole](docs/services/pihole.md) | Pi-hole: DNS via LoadBalancer + Ingress |
 | [Seafile](docs/services/seafile.md) | Migration: Seafile, multi-container, Secrets |
+| [Teslamate](docs/services/teslamate.md) | Migration: Teslamate + PostgreSQL + Grafana |
 | [Immich](docs/services/immich.md) | Migration: Immich, Restic restore strategy (1.5 TB library) |
 | [Vaultwarden](docs/services/vaultwarden.md) | Password manager: concept, SSO, YubiKey, backup, Tier-0 emergency plan |
 | **Operations** | |
@@ -66,6 +67,6 @@ clusters/       Flux CD configuration
 | Seafile | ✅ Migrated | Set up directly in k3s |
 | Immich | Open | Restic restore strategy (no space to copy) — after Agent-Node join |
 | Paperless | Open | |
-| Teslamate | Open | |
+| Teslamate | Open | Manifeste fertig — Migration ausstehend |
 | Home Assistant | Planned (Agent-Node) | `hostNetwork` + `nodeAffinity` for Zigbee dongle |
 | Vaultwarden | Concept | Google SSO (OIDC fork), YubiKey 2FA — Kubernetes deployment pending |
