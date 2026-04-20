@@ -32,10 +32,9 @@ KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
 KUBECTL="kubectl --request-timeout=10s"
 
 # Cache files for Flux sensors — preserves last known values when kubectl fails
-FLUX_REVISION_CACHE="$SCRIPT_DIR/.flux_revision_cache"
-FLUX_LAST_SYNC_CACHE="$SCRIPT_DIR/.flux_last_sync_cache"
-# Tracks which revision was current when flux_last_sync was last updated
-FLUX_LAST_SYNC_REVISION_CACHE="$SCRIPT_DIR/.flux_last_sync_revision_cache"
+FLUX_APPLIED_REVISION_CACHE="$SCRIPT_DIR/.flux_applied_revision_cache"
+FLUX_GIT_REVISION_CACHE="$SCRIPT_DIR/.flux_git_revision_cache"
+FLUX_GIT_FETCHED_AT_CACHE="$SCRIPT_DIR/.flux_git_fetched_at_cache"
 
 # Cache for apt update results — refreshed at most once per hour
 APT_CACHE="$SCRIPT_DIR/.apt_updates_cache"
@@ -174,8 +173,9 @@ send_discovery() {
     send_sensor_discovery "k3s_unbound_pvcs"     "Unbound PVCs"        ""     "mdi:database-alert"
 
     # Flux CD metrics
-    send_sensor_discovery "k3s_flux_revision"    "Flux Revision"       ""     "mdi:source-branch"
-    send_sensor_discovery "k3s_flux_last_sync"   "Flux Last Sync"      ""     "mdi:sync"          "timestamp"
+    send_sensor_discovery "k3s_flux_git_revision"      "Flux Git Revision"      ""  "mdi:source-branch"
+    send_sensor_discovery "k3s_flux_applied_revision"  "Flux Applied Revision"  ""  "mdi:check-circle"
+    send_sensor_discovery "k3s_flux_git_fetched_at"    "Flux Git Fetched At"    ""  "mdi:sync"  "timestamp"
 
     # OS update sensors
     send_sensor_discovery "k3s_system_updates"   "System Updates"      "updates" "mdi:package-up"
@@ -321,51 +321,50 @@ get_flux_ready() {
     [[ "${not_ready:-1}" == "0" ]] && echo "OFF" || echo "ON"
 }
 
-# Flux: short SHA of last applied revision for apps kustomization
-get_flux_revision() {
+# Flux: short SHA that Flux has fetched from GitHub (GitRepository artifact revision)
+get_flux_git_revision() {
     local rev
-    rev=$(KUBECONFIG="$KUBECONFIG" $KUBECTL get kustomization apps -n flux-system \
-        -o jsonpath='{.status.lastAppliedRevision}' 2>/dev/null)
+    rev=$(KUBECONFIG="$KUBECONFIG" $KUBECTL get gitrepository flux-system -n flux-system \
+        -o jsonpath='{.status.artifact.revision}' 2>/dev/null)
     if [[ -z "$rev" ]]; then
-        # kubectl failed — return last known value from cache, or "-" if no cache
-        [[ -f "$FLUX_REVISION_CACHE" ]] && cat "$FLUX_REVISION_CACHE" || echo "-"
+        [[ -f "$FLUX_GIT_REVISION_CACHE" ]] && cat "$FLUX_GIT_REVISION_CACHE" || echo "-"
         return
     fi
-    # Extract short SHA: "main@sha256:ee7755bb..." or "main@sha1:ee7755bb..." → "ee7755bb"
+    # "main@sha1:ee7755bb..." → "ee7755bb"
     local short
     short=$(echo "$rev" | sed 's/.*sha[0-9]*://' | cut -c1-8)
-    echo "$short" > "$FLUX_REVISION_CACHE"
+    echo "$short" > "$FLUX_GIT_REVISION_CACHE"
     echo "$short"
 }
 
-# Flux: timestamp when the apps kustomization last applied a new revision to the cluster.
-# Detects changes in lastAppliedRevision and records the current time when it changes.
-# This gives "when did a change actually arrive in the cluster" rather than just "when was git fetched".
-get_flux_last_sync() {
+# Flux: short SHA of last applied revision for apps kustomization
+# When this matches get_flux_git_revision, the cluster is fully up to date.
+get_flux_applied_revision() {
     local rev
     rev=$(KUBECONFIG="$KUBECONFIG" $KUBECTL get kustomization apps -n flux-system \
         -o jsonpath='{.status.lastAppliedRevision}' 2>/dev/null)
-
     if [[ -z "$rev" ]]; then
-        # kubectl failed — return last known timestamp to avoid HA showing Unknown
-        [[ -f "$FLUX_LAST_SYNC_CACHE" ]] && cat "$FLUX_LAST_SYNC_CACHE"
+        [[ -f "$FLUX_APPLIED_REVISION_CACHE" ]] && cat "$FLUX_APPLIED_REVISION_CACHE" || echo "-"
         return
     fi
+    local short
+    short=$(echo "$rev" | sed 's/.*sha[0-9]*://' | cut -c1-8)
+    echo "$short" > "$FLUX_APPLIED_REVISION_CACHE"
+    echo "$short"
+}
 
-    local cached_rev=""
-    [[ -f "$FLUX_LAST_SYNC_REVISION_CACHE" ]] && cached_rev=$(cat "$FLUX_LAST_SYNC_REVISION_CACHE")
-
-    if [[ "$rev" != "$cached_rev" ]]; then
-        # Revision changed — record when we first noticed this new revision
-        local now
-        now=$(date --iso-8601=seconds)
-        echo "$rev" > "$FLUX_LAST_SYNC_REVISION_CACHE"
-        echo "$now" > "$FLUX_LAST_SYNC_CACHE"
-        echo "$now"
-    else
-        # Same revision as before — return the timestamp from when it was applied
-        [[ -f "$FLUX_LAST_SYNC_CACHE" ]] && cat "$FLUX_LAST_SYNC_CACHE"
+# Flux: timestamp when Flux last successfully fetched from GitHub.
+# Comes directly from Flux's own status — no script-derived cache needed.
+get_flux_git_fetched_at() {
+    local ts
+    ts=$(KUBECONFIG="$KUBECONFIG" $KUBECTL get gitrepository flux-system -n flux-system \
+        -o jsonpath='{.status.artifact.lastUpdateTime}' 2>/dev/null)
+    if [[ -z "$ts" ]]; then
+        [[ -f "$FLUX_GIT_FETCHED_AT_CACHE" ]] && cat "$FLUX_GIT_FETCHED_AT_CACHE"
+        return
     fi
+    echo "$ts" > "$FLUX_GIT_FETCHED_AT_CACHE"
+    echo "$ts"
 }
 
 # Available system updates — cached for APT_CACHE_MAX_AGE seconds to avoid running apt every 5 min
@@ -428,8 +427,9 @@ NODE_READY=$(get_node_ready)
 UNHEALTHY_PODS=$(get_unhealthy_pods)
 UNBOUND_PVCS=$(get_unbound_pvcs)
 FLUX_READY=$(get_flux_ready)
-FLUX_REVISION=$(get_flux_revision)
-FLUX_LAST_SYNC=$(get_flux_last_sync)
+FLUX_GIT_REVISION=$(get_flux_git_revision)
+FLUX_APPLIED_REVISION=$(get_flux_applied_revision)
+FLUX_GIT_FETCHED_AT=$(get_flux_git_fetched_at)
 SYSTEM_UPDATES=$(get_system_updates)
 EEPROM_STATUS=$(get_eeprom_status)
 
@@ -438,7 +438,7 @@ echo "CPU temp: ${CPU_TEMP}°C, NVMe temp: ${NVME_TEMP}°C"
 echo "Fan: ${FAN_RPM} RPM (${FAN_PWM}%)"
 echo "Node ready: ${NODE_READY}, Unhealthy pods: ${UNHEALTHY_PODS}, Unbound PVCs: ${UNBOUND_PVCS}"
 echo "Undervoltage: ${UNDERVOLTAGE}"
-echo "Flux ready: ${FLUX_READY}, revision: ${FLUX_REVISION}, last sync: ${FLUX_LAST_SYNC}"
+echo "Flux ready: ${FLUX_READY}, git: ${FLUX_GIT_REVISION}, applied: ${FLUX_APPLIED_REVISION}, fetched at: ${FLUX_GIT_FETCHED_AT}"
 echo "System updates: ${SYSTEM_UPDATES}, EEPROM: ${EEPROM_STATUS}"
 
 PAYLOAD=$(cat <<EOF
@@ -457,8 +457,9 @@ PAYLOAD=$(cat <<EOF
   "k3s_unhealthy_pods": $UNHEALTHY_PODS,
   "k3s_unbound_pvcs": $UNBOUND_PVCS,
   "k3s_flux_ready": "$FLUX_READY",
-  "k3s_flux_revision": "$FLUX_REVISION",
-  "k3s_flux_last_sync": "$FLUX_LAST_SYNC",
+  "k3s_flux_git_revision": "$FLUX_GIT_REVISION",
+  "k3s_flux_applied_revision": "$FLUX_APPLIED_REVISION",
+  "k3s_flux_git_fetched_at": "$FLUX_GIT_FETCHED_AT",
   "k3s_system_updates": $SYSTEM_UPDATES,
   "k3s_eeprom_status": "$EEPROM_STATUS",
   "last_updated": "$(date --iso-8601=seconds)"
