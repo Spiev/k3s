@@ -44,8 +44,11 @@ The script `scripts/k3s-monitor.sh` runs on the k3s server node, collects metric
 | Sensor | Source |
 |---|---|
 | Flux Ready | all kustomizations Ready? (problem class: ON = Problem) |
-| Flux Revision | `lastAppliedRevision` of apps kustomization |
-| Flux Last Sync | `lastTransitionTime` of Ready condition |
+| Flux Git Revision | SHA Flux fetched from GitHub (`GitRepository status.artifact.revision`) |
+| Flux Applied Revision | SHA last applied to the cluster (`Kustomization apps status.lastAppliedRevision`) |
+| Flux Git Fetched At | When Flux last fetched from GitHub (`GitRepository status.artifact.lastUpdateTime`) |
+
+> When `Flux Git Revision == Flux Applied Revision`, the cluster is fully up to date with the latest commit.
 
 > All sensors are grouped under the **k3s Server Node** device in HA (Settings → Devices & Services → MQTT → k3s Server Node). Entity IDs are not predictable — look them up there.
 
