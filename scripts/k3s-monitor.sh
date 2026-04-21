@@ -29,7 +29,7 @@ DEVICE_ID="k3s_server_node"
 DEVICE_NAME="k3s Server Node"
 
 KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
-KUBECTL="kubectl --request-timeout=10s"
+KUBECTL="/usr/local/bin/kubectl --request-timeout=10s"
 
 # Cache files for Flux sensors — preserves last known values when kubectl fails
 FLUX_APPLIED_REVISION_CACHE="$SCRIPT_DIR/.flux_applied_revision_cache"
