@@ -1,8 +1,29 @@
-# Paperless-ngx Migration Plan: Docker → k3s
+# Paperless-ngx Migration: Docker → k3s
 
-> **Temporary document** — remove after migration is complete, then create a clean `paperless.md` operational doc.
+> **Status:** Manifests ready — data migration pending.
+>
+> Source: `raspberrypi` → `~/docker/paperless/`
 
-Source: `raspberrypi` → `~/docker/paperless/`
+---
+
+## Production safety
+
+The Docker container on `raspberrypi` is **not touched** during this migration. All operations there are strictly read-only (pg_dump, rsync). The only change on the old Raspi is the nginx `proxy_pass` address in the final switch-over.
+
+Full rollback at any time: revert the nginx config → Docker Paperless is immediately active again.
+
+---
+
+## Phase overview
+
+| Phase | What | Where | Impact on production |
+|---|---|---|---|
+| 1 | Secrets erstellen + verschlüsseln | Laptop | None |
+| 2 | Daten extrahieren: pg_dump + rsync | raspberrypi (read-only) | None |
+| 3 | k3s deployment + Daten-Import | k3s node | None |
+| 4 | Test via port-forward | Laptop | None |
+| 5 | nginx switch + Ingress | raspberrypi (nginx only) | Low — sofortiger Rollback möglich |
+| 6 | Cleanup | Überall | After validation |
 
 ---
 
@@ -10,131 +31,107 @@ Source: `raspberrypi` → `~/docker/paperless/`
 
 | Container | Image | Stateful? |
 |---|---|---|
-| `db` | `postgres:18` | yes — pg_dump required |
-| `broker` | `redis:8` | no — task queue, start fresh |
-| `webserver` | `paperless-ngx:2.20.14` | yes — data + media volumes |
-| `gotenberg` | `gotenberg:8.31` | no — stateless |
-| `tika` | `apache/tika:3.2.3.0` | no — stateless |
+| `paperless-db` | `postgres:18-alpine` | yes — pg_dump required |
+| `paperless-redis` | `redis:8.6` | no — task queue, starts fresh |
+| `paperless-webserver` | `ghcr.io/paperless-ngx/paperless-ngx:2.20.14` | yes — data + media volumes |
+| `paperless-gotenberg` | `gotenberg/gotenberg:8.31` | no — stateless |
+| `paperless-tika` | `apache/tika:3.2.3.0` | no — stateless |
 
 ---
 
-## Target manifest structure
+## Manifest structure
 
 ```
 apps/paperless/
 ├── paperless.yaml                 ← Namespace, PVCs, all Deployments + Services
-├── paperless-secrets.sops.yaml    ← SOPS-encrypted secrets
+├── paperless-secrets.sops.yaml    ← SOPS-encrypted secrets (create from .example)
+├── paperless-secrets.sops.yaml.example ← template
 ├── paperless-ingress.yaml         ← .gitignore (domain)
 └── paperless-ingress.yaml.example ← template
 ```
 
 ---
 
-## PVCs needed
+## Phase 1 — Secrets erstellen
 
-| Name | Mount path | Size |
-|---|---|---|
-| `paperless-data` | `/usr/src/paperless/data` | 5Gi |
-| `paperless-media` | `/usr/src/paperless/media` | 50Gi |
-| `paperless-postgres` | `/var/lib/postgresql` | 10Gi |
-
-Redis data is ephemeral — no PVC, `emptyDir` is sufficient.
-
----
-
-## Secrets (SOPS)
-
-The following keys go into `paperless-secrets.sops.yaml` (always `stringData`):
-
-| Key | Source |
-|---|---|
-| `PAPERLESS_SECRET_KEY` | **Copy from existing `.env`** — must be identical to keep sessions valid |
-| `PAPERLESS_DBPASS` | Copy from existing `.env` |
-| `POSTGRES_PASSWORD` | Copy from existing `.env` |
-| `PAPERLESS_SOCIALACCOUNT_PROVIDERS` | Copy OIDC JSON from existing `.env` |
-
-Non-sensitive config (OCR language, timezone, URL, flags) goes directly into the Deployment env vars — not in the secret.
-
----
-
-## Step 1 — Create the manifest
-
-Create `apps/paperless/paperless.yaml` with:
-
-- **Namespace** `paperless` (label `type: service`)
-- **PVCs**: `paperless-data`, `paperless-media`, `paperless-postgres` (all `local-path`)
-- **Deployment: postgres** — mounts `paperless-postgres` at `/var/lib/postgresql`
-- **Deployment: redis** — `emptyDir` volume, no PVC
-- **Deployment: gotenberg** — stateless, no volume, include `--chromium-disable-javascript=true --chromium-allow-list=file:///tmp/.*`
-- **Deployment: tika** — stateless, no volume
-- **Deployment: webserver** — mounts all four volumes, all env vars, `depends` via init containers (wait for postgres + redis)
-- **Services**: ClusterIP for each (postgres:5432, redis:6379, gotenberg:3000, tika:9998, webserver:8000)
-
----
-
-## Step 2 — Create and encrypt the secret
+Get the values from `~/docker/paperless/.env` on `raspberrypi`:
 
 ```bash
-cat > apps/paperless/paperless-secrets.sops.yaml <<EOF
-apiVersion: v1
-kind: Secret
-metadata:
-  name: paperless-secrets
-  namespace: paperless
-  labels:
-    app: paperless
-    managed-by: flux
-stringData:
-  PAPERLESS_SECRET_KEY: "<copy from raspberrypi:~/docker/paperless/.env>"
-  PAPERLESS_DBPASS: "<copy from raspberrypi:~/docker/paperless/.env>"
-  POSTGRES_PASSWORD: "<copy from raspberrypi:~/docker/paperless/.env>"
-  PAPERLESS_SOCIALACCOUNT_PROVIDERS: '<copy OIDC JSON from .env>'
-EOF
+ssh raspberrypi "grep -E 'PAPERLESS_SECRET_KEY|PAPERLESS_DBPASS|POSTGRES_PASSWORD|PAPERLESS_SOCIALACCOUNT_PROVIDERS|PAPERLESS_URL' ~/docker/paperless/.env"
+```
 
+Create and encrypt:
+
+```bash
+cp apps/paperless/paperless-secrets.sops.yaml.example apps/paperless/paperless-secrets.sops.yaml
+# Fill in all values, then:
 sops --encrypt --in-place apps/paperless/paperless-secrets.sops.yaml
+git add apps/paperless/paperless-secrets.sops.yaml
+git commit -m "feat(paperless): add encrypted secrets"
+git push
 ```
+
+> **`PAPERLESS_SECRET_KEY` must be identical** to the existing value — changing it invalidates all active sessions.
+>
+> **`PAPERLESS_URL`** stays the same as in the existing `.env` — nginx keeps the same hostname.
 
 ---
 
-## Step 3 — Deploy (empty, data migration follows)
+## Phase 2 — Daten extrahieren (read-only auf raspberrypi)
+
+Find the exact container name:
 
 ```bash
+ssh raspberrypi "docker ps --format '{{.Names}}' | grep paperless"
+```
+
+Create DB dump:
+
+```bash
+ssh raspberrypi "docker exec <db-container> pg_dump -U paperless paperless \
+  | gzip > /tmp/paperless_$(date +%Y-%m-%d_%H_%M_%S).sql.gz"
+```
+
+Rsync volumes to laptop (read-only, no `--delete`):
+
+```bash
+rsync -av raspberrypi:~/docker/paperless/library/data/  /tmp/paperless-data/
+rsync -av raspberrypi:~/docker/paperless/library/media/ /tmp/paperless-media/
+```
+
+> If the Docker volume paths differ from `library/data` and `library/media`, check with:
+> `ssh raspberrypi "docker inspect <webserver-container> | grep -A5 Mounts"`
+
+---
+
+## Phase 3 — k3s deployment + Daten-Import
+
+### Deploy (Flux reconciles after push)
+
+```bash
+# Secrets are already pushed via Flux — apply remaining manifests manually:
 kubectl apply -f apps/paperless/paperless.yaml
-kubectl apply -f apps/paperless/paperless-secrets.sops.yaml
-
-# Wait until postgres is ready
-kubectl wait --for=condition=Ready pod -n paperless -l app=paperless-postgres --timeout=60s
 ```
 
-> The webserver pod will crash-loop until data is migrated — that is expected at this stage.
-
----
-
-## Step 4 — Migrate PostgreSQL
-
-On `raspberrypi` — create a fresh dump:
+Wait for postgres to be ready before importing:
 
 ```bash
-ssh raspberrypi
-docker exec paperless-db-1 pg_dump -U paperless paperless \
-  | gzip > /tmp/paperless_$(date +%Y-%m-%d_%H_%M_%S).sql.gz
+kubectl wait --for=condition=Ready pod -n paperless -l app=paperless-db --timeout=60s
 ```
 
-Import into the k3s pod:
+> The webserver pod crash-loops until data is imported — that is expected.
+
+### Import PostgreSQL
 
 ```bash
-scp raspberrypi:/tmp/paperless_<TIMESTAMP>.sql.gz /tmp/
-
-DB_POD=$(kubectl get pod -n paperless -l app=paperless-postgres -o jsonpath='{.items[0].metadata.name}')
+DB_POD=$(kubectl get pod -n paperless -l app=paperless-db -o jsonpath='{.items[0].metadata.name}')
 zcat /tmp/paperless_<TIMESTAMP>.sql.gz \
   | kubectl exec -i -n paperless "$DB_POD" -- psql -U paperless paperless
 ```
 
----
+### Copy data and media volumes
 
-## Step 5 — Migrate media and data directories
-
-Scale down webserver to avoid writes during transfer:
+Scale down webserver to prevent writes during copy:
 
 ```bash
 kubectl scale deployment paperless-webserver -n paperless --replicas=0
@@ -147,7 +144,7 @@ kubectl run paperless-restore --image=alpine:3.23 --restart=Never -n paperless \
   --overrides='{
     "spec": {
       "volumes": [
-        {"name": "data", "persistentVolumeClaim": {"claimName": "paperless-data"}},
+        {"name": "data",  "persistentVolumeClaim": {"claimName": "paperless-data"}},
         {"name": "media", "persistentVolumeClaim": {"claimName": "paperless-media"}}
       ],
       "containers": [{
@@ -155,7 +152,7 @@ kubectl run paperless-restore --image=alpine:3.23 --restart=Never -n paperless \
         "image": "alpine:3.23",
         "command": ["sleep", "3600"],
         "volumeMounts": [
-          {"name": "data", "mountPath": "/data"},
+          {"name": "data",  "mountPath": "/data"},
           {"name": "media", "mountPath": "/media"}
         ]
       }]
@@ -165,16 +162,11 @@ kubectl run paperless-restore --image=alpine:3.23 --restart=Never -n paperless \
 kubectl wait --for=condition=Ready pod -n paperless paperless-restore --timeout=30s
 ```
 
-Copy from `raspberrypi`:
+Copy files into PVCs:
 
 ```bash
-# Fetch from raspberrypi, push into cluster
-rsync -av raspberrypi:~/docker/paperless/library/data/ /tmp/paperless-data/
-rsync -av raspberrypi:~/docker/paperless/library/media/ /tmp/paperless-media/
-
 kubectl cp /tmp/paperless-data/. paperless/paperless-restore:/data/
 kubectl cp /tmp/paperless-media/. paperless/paperless-restore:/media/
-
 kubectl delete pod -n paperless paperless-restore
 ```
 
@@ -182,55 +174,100 @@ Scale webserver back up:
 
 ```bash
 kubectl scale deployment paperless-webserver -n paperless --replicas=1
+kubectl get pods -n paperless -w
 ```
 
 ---
 
-## Step 6 — Test (port-forward, before switching)
+## Phase 4 — Test via port-forward
 
 ```bash
 kubectl port-forward -n paperless svc/paperless-webserver 8080:8000
 ```
 
-Browser: `http://localhost:8080` → Google OIDC login should work, all documents visible.
+Browser: `http://localhost:8080`
+
+Checklist:
+- [ ] Google OIDC login works
+- [ ] All documents visible, count matches Docker
+- [ ] Document download works
+- [ ] Search works
+- [ ] Tags and correspondents intact
 
 ---
 
-## Step 7 — Set up ingress
+## Phase 5 — nginx switch + Ingress
+
+This is the **only change on `raspberrypi`**.
+
+### Ingress anlegen
 
 ```bash
 cp apps/paperless/paperless-ingress.yaml.example apps/paperless/paperless-ingress.yaml
-# Fill in domain, then:
+# Fill in hostname, then:
 kubectl apply -f apps/paperless/paperless-ingress.yaml
 ```
 
-Update `PAPERLESS_URL` in the secret to match the new domain, re-encrypt and push.
+### nginx config auf raspberrypi ändern
 
----
-
-## Step 8 — Stop Docker containers
-
-Only once everything is verified:
+Find the existing Paperless nginx config on `raspberrypi`:
 
 ```bash
-ssh raspberrypi "cd ~/docker/paperless && docker compose stop"
-# After a few days without issues:
-ssh raspberrypi "cd ~/docker/paperless && docker compose down"
+ssh raspberrypi "grep -rl 'paperless' /etc/nginx/sites-enabled/"
+```
+
+Change the `proxy_pass` from the local Docker port to Traefik on the k3s node:
+
+```nginx
+# Before:
+proxy_pass http://localhost:<docker-port>;
+
+# After:
+proxy_pass http://<k3s-node-ip>:80;
+```
+
+Test and reload (no downtime, no container restart):
+
+```bash
+ssh raspberrypi "sudo nginx -t && sudo nginx -s reload"
+```
+
+### Verify
+
+```bash
+# DNS still resolves to raspberrypi nginx IP — no DNS change needed
+curl -I https://<paperless-hostname>
+# Should reach the k3s paperless via: nginx → Traefik → paperless-webserver
+```
+
+### Rollback (if anything is wrong)
+
+```bash
+# Revert proxy_pass to localhost:<docker-port> and reload:
+ssh raspberrypi "sudo nginx -s reload"
+# Docker Paperless is immediately active again
 ```
 
 ---
 
-## Step 9 — Backup integration
+## Phase 6 — Cleanup
 
-Add Paperless to `scripts/backup.sh` on the k3s node:
+After a few days of stable operation:
 
-- pg_dump for PostgreSQL
-- Restic backup of the `media` and `data` PVC paths
+```bash
+# Stop Docker containers (not down — keeps volumes as fallback)
+ssh raspberrypi "cd ~/docker/paperless && docker compose stop"
+# After confirmed working (weeks):
+ssh raspberrypi "cd ~/docker/paperless && docker compose down"
+```
 
----
+Backup integration — add to `scripts/backup.sh` on the k3s node:
+- `pg_dump` for PostgreSQL (`paperless-db` pod)
+- Restic backup of the `paperless-data` and `paperless-media` PVC paths
 
-## Step 10 — Cleanup
+See [Adding a new service](../operations/backup-restore.md#adding-a-new-service) in the backup docs.
 
-- Remove this planning document
+Then:
+- Remove this migration document
 - Create clean `docs/services/paperless.md` (operational reference, no migration steps)
 - Commit
