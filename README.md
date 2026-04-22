@@ -67,7 +67,7 @@ clusters/       Flux CD configuration
 | Pi-hole | ✅ Migrated | DNS via LoadBalancer + Ingress |
 | Seafile | ✅ Migrated | Set up directly in k3s |
 | Immich | Open | Restic restore strategy (no space to copy) — after Agent-Node join |
-| Paperless | Open | |
+| Paperless | ✅ Migrated | DB + media volumes migrated from Docker, Google OIDC |
 | Teslamate | ✅ Migrated | Running on k3s, DB restore from pg_dump |
 | Home Assistant | Planned (Agent-Node) | `hostNetwork` + `nodeAffinity` for Zigbee dongle |
 | Vaultwarden | Concept | Google SSO (OIDC fork), YubiKey 2FA — Kubernetes deployment pending |
