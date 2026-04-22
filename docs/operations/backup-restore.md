@@ -6,9 +6,9 @@ Unified backup strategy via Restic for all services:
 
 | Strategy | Tool | Services | Restore granularity |
 |---|---|---|---|
-| DB dump + Restic → Hetzner S3 | Restic | Teslamate, Paperless | individual files, entire service |
+| DB dump + Restic → Hetzner S3 | Restic | Teslamate, Seafile, Paperless | individual files, entire service |
 
-The backup script runs as a cron job on the k3s node. It creates DB dumps via `kubectl exec` and uploads them to Hetzner S3 via Restic. Each service gets its own MQTT sensor in Home Assistant.
+The backup script runs as a cron job on the k3s node. It auto-detects running services, creates DB dumps and file snapshots via `kubectl exec`, uploads them to Hetzner S3 via Restic, and reports status per service via MQTT to Home Assistant.
 
 **Hetzner project:** `k3s-homelab` — S3 bucket: `<your-bucket-name>`
 
@@ -34,12 +34,12 @@ These values **cannot** be recovered from the cluster if etcd is gone. Store the
 
 The backup script (`scripts/backup.sh`) runs as a cron job on the k3s node and:
 1. Auto-detects which known services have running pods
-2. Creates a `pg_dump` dump via `kubectl exec` into a staging directory
+2. Creates DB dumps and file snapshots via `kubectl exec` into a staging directory
 3. Uploads the staging directory to Hetzner S3 via Restic
 4. Reports status per service via MQTT to Home Assistant
 5. Cleans up the staging directory
 
-Each service gets its own HA sensor (`backup_teslamate`, `backup_paperless`, `backup_overall`).
+Each service gets its own HA sensor (`backup_teslamate`, `backup_seafile`, `backup_paperless`, `backup_overall`).
 
 ### Setup
 
@@ -84,7 +84,7 @@ crontab -e
 ```
 
 ```
-30 2 * * * /home/stefan/k3s/scripts/backup.sh >> /var/log/k3s-backup.log 2>&1
+30 2 * * * /home/stefan/k3s/scripts/backup.sh >> /home/stefan/logs/k3s-backup.log 2>&1
 ```
 
 **Test:**
@@ -120,6 +120,7 @@ title: Restic Backup
 entities:
   - entity: sensor.backup_overall
   - entity: sensor.backup_teslamate
+  - entity: sensor.backup_seafile
   - entity: sensor.backup_paperless
 ```
 
@@ -130,11 +131,11 @@ entities:
 ```bash
 cd ~/k3s/scripts && source .restic.env
 
-# 1. Restore staging directory
+# 1. Restore staging directory from Restic
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
   restore latest --tag teslamate --target /tmp/restore
 
-# 2. Scale down, drop and recreate DB
+# 2. Scale down Teslamate, drop and recreate DB
 kubectl scale deployment teslamate teslamate-grafana -n teslamate --replicas=0
 kubectl wait --for=delete pod -n teslamate -l app=teslamate --timeout=60s
 DB_POD=$(kubectl get pod -n teslamate -l app=teslamate-db -o jsonpath='{.items[0].metadata.name}')
@@ -154,16 +155,54 @@ rm -rf /tmp/restore
 
 ---
 
+## Restore — Seafile
+
+The backup contains three MariaDB databases and the full `/shared/seafile` data directory (library blocks, commits, fs objects). Restore databases first, then file data — this is the order required by the [official Seafile backup guide](https://manual.seafile.com/latest/administration/backup_recovery/).
+
+```bash
+cd ~/k3s/scripts && source .restic.env
+
+# 1. Restore staging directory from Restic
+RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
+  restore latest --tag seafile --target /tmp/restore
+
+# 2. Scale down Seafile app (keep MariaDB running for import)
+kubectl scale deployment seafile -n seafile --replicas=0
+kubectl wait --for=delete pod -n seafile -l app=seafile --timeout=60s
+
+# 3. Import databases (dump includes CREATE DATABASE — drop first to start clean)
+DB_POD=$(kubectl get pod -n seafile -l app=mariadb -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n seafile "$DB_POD" -- \
+  bash -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" -e "DROP DATABASE IF EXISTS ccnet_db; DROP DATABASE IF EXISTS seafile_db; DROP DATABASE IF EXISTS seahub_db;"'
+zcat /tmp/restore/tmp/k3s-backup/seafile/seafile_db_*.sql.gz \
+  | kubectl exec -i -n seafile "$DB_POD" -- bash -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD"'
+
+# 4. Restore file data into the Seafile pod's /shared volume
+kubectl scale deployment seafile -n seafile --replicas=1
+kubectl wait --for=condition=Ready pod -n seafile -l app=seafile --timeout=90s
+APP_POD=$(kubectl get pod -n seafile -l app=seafile -o jsonpath='{.items[0].metadata.name}')
+tar -C /tmp/restore/tmp/k3s-backup/seafile/seafile-data -cf - seafile \
+  | kubectl exec -i -n seafile "$APP_POD" -- tar -C /shared -xf -
+
+# 5. Optional: repair any DB/file inconsistencies (safe to always run after restore)
+kubectl exec -n seafile "$APP_POD" -- \
+  bash -c "/opt/seafile/seafile-server-latest/seaf-fsck.sh --repair"
+
+rm -rf /tmp/restore
+```
+
+---
+
 ## Restore — Paperless
 
 ```bash
 cd ~/k3s/scripts && source .restic.env
 
-# 1. Restore staging directory
+# 1. Restore staging directory from Restic
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
   restore latest --tag paperless --target /tmp/restore
 
-# 2. Scale down
+# 2. Scale down Paperless app and DB
 kubectl scale deployment paperless paperless-db -n paperless --replicas=0
 kubectl wait --for=delete pod -n paperless -l app=paperless --timeout=60s
 
@@ -215,8 +254,11 @@ RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" check
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" unlock
 
 # View backup log
-tail -100 /var/log/k3s-backup.log
+tail -100 ~/logs/k3s-backup.log
 
-# KUBECONFIG not set? (symptom: "no running pods" despite services being up)
+# Symptom: "no active services" despite pods running
+# Cause: kubectl not found — cron PATH only contains /usr/bin:/bin
+# Fix: backup.sh must use KUBECTL="/usr/local/bin/kubectl" (already the case)
 export KUBECONFIG=~/.kube/config
+/usr/local/bin/kubectl get pods -A
 ```

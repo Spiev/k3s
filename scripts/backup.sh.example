@@ -33,11 +33,12 @@ echo "Backup script started at $(date --iso-8601=ns)"
 # All services this script knows how to back up.
 # Running state is detected automatically via kubectl — no manual switch needed.
 
-KNOWN_SERVICES="paperless teslamate"
+KNOWN_SERVICES="paperless seafile teslamate"
 
 service_display_name() {
     case "$1" in
         paperless) echo "Paperless-ngx" ;;
+        seafile)   echo "Seafile" ;;
         teslamate) echo "Teslamate" ;;
         *)         echo "$1" ;;
     esac
@@ -46,9 +47,9 @@ service_display_name() {
 # Returns 0 (true) if the service has at least one running pod in its namespace.
 service_is_running() {
     local svc="$1"
-    kubectl get namespace "$svc" &>/dev/null || return 1
+    $KUBECTL get namespace "$svc" &>/dev/null || return 1
     local count
-    count=$(kubectl get pods -n "$svc" \
+    count=$($KUBECTL get pods -n "$svc" \
         --field-selector=status.phase=Running \
         --no-headers 2>/dev/null | wc -l)
     [[ $count -gt 0 ]]
@@ -61,6 +62,7 @@ service_is_running() {
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
+KUBECTL="/usr/local/bin/kubectl"
 
 mqtt_state_topic()      { echo "homeassistant/sensor/backup_${1}/state"; }
 mqtt_attributes_topic() { echo "homeassistant/sensor/backup_${1}/attributes"; }
@@ -191,7 +193,7 @@ run_restic_backup() {
 
 get_pod() {
     local namespace="$1" selector="$2"
-    kubectl get pod -n "$namespace" -l "$selector" \
+    $KUBECTL get pod -n "$namespace" -l "$selector" \
         --field-selector=status.phase=Running \
         -o jsonpath='{.items[0].metadata.name}' 2>/dev/null
 }
@@ -217,7 +219,7 @@ backup_paperless() {
         return 1
     fi
     echo "Dumping database..."
-    kubectl exec -n paperless "$db_pod" -- pg_dumpall -U paperless \
+    $KUBECTL exec -n paperless "$db_pod" -- pg_dumpall -U paperless \
         | gzip > "$staging/paperless_db_$(date +%Y-%m-%d_%H%M%S).sql.gz"
 
     local app_pod
@@ -227,7 +229,59 @@ backup_paperless() {
         return 1
     fi
     echo "Copying media files..."
-    kubectl cp "paperless/$app_pod:/usr/src/paperless/media" "$staging/media"
+    $KUBECTL cp "paperless/$app_pod:/usr/src/paperless/media" "$staging/media"
+
+    run_restic_backup "$svc"
+
+    send_state "$svc" "success"
+    send_attributes "$svc" "$(cat <<EOF
+{
+  "last_run": "$(date --iso-8601=seconds)",
+  "status": "success",
+  "files_new": ${LAST_FILES_NEW:-0},
+  "files_changed": ${LAST_FILES_CHANGED:-0},
+  "dirs_new": ${LAST_DIRS_NEW:-0}
+}
+EOF
+)"
+}
+
+backup_seafile() {
+    local svc="seafile"
+    local staging="$BACKUP_TEMP_DIR/$svc"
+    mkdir -p "$staging/seafile-data"
+
+    echo ""
+    echo "=========================================="
+    echo "Backing up: Seafile"
+    echo "=========================================="
+
+    # --- Databases (official Seafile guide: dump DBs before file data) ---
+    # MYSQL_ROOT_PASSWORD is already set as an env var in the mariadb pod.
+    local db_pod
+    db_pod=$(get_pod "seafile" "app=mariadb")
+    if [[ -z "$db_pod" ]]; then
+        echo "ERROR: No running seafile mariadb pod found" >&2
+        return 1
+    fi
+    echo "Dumping databases (ccnet_db, seafile_db, seahub_db)..."
+    $KUBECTL exec -n seafile "$db_pod" -- \
+        bash -c 'mariadb-dump -u root -p"$MYSQL_ROOT_PASSWORD" --databases ccnet_db seafile_db seahub_db' \
+        | gzip > "$staging/seafile_db_$(date +%Y-%m-%d_%H%M%S).sql.gz"
+
+    # --- File data (library blocks, commits, fs objects under /shared/seafile) ---
+    # Seafile stores data as many small block files — tar piping via kubectl exec
+    # is significantly faster than kubectl cp for this access pattern.
+    local app_pod
+    app_pod=$(get_pod "seafile" "app=seafile")
+    if [[ -z "$app_pod" ]]; then
+        echo "ERROR: No running seafile app pod found" >&2
+        return 1
+    fi
+    echo "Copying seafile data directory..."
+    $KUBECTL exec -n seafile "$app_pod" -- \
+        tar -C /shared -cf - seafile \
+        | tar -C "$staging/seafile-data" -xf -
 
     run_restic_backup "$svc"
 
@@ -261,7 +315,7 @@ backup_teslamate() {
         return 1
     fi
     echo "Dumping database..."
-    kubectl exec -n teslamate "$db_pod" -- pg_dumpall -U teslamate \
+    $KUBECTL exec -n teslamate "$db_pod" -- pg_dumpall -U teslamate \
         | gzip > "$staging/teslamate_db_$(date +%Y-%m-%d_%H%M%S).sql.gz"
 
     run_restic_backup "$svc"
@@ -364,6 +418,7 @@ for svc in $ACTIVE_SERVICES; do
     FAILED_SERVICE="$svc"
     case "$svc" in
         paperless) backup_paperless ;;
+        seafile)   backup_seafile ;;
         teslamate) backup_teslamate ;;
         *) echo "WARNING: No backup function for '$svc' — skipping" ;;
     esac
