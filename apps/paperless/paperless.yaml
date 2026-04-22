@@ -336,6 +336,8 @@ spec:
               value: "{{ created_year }}/{{ correspondent }}/{{ title }}"
             - name: PAPERLESS_DISABLE_REGULAR_LOGIN
               value: "true"
+            - name: PAPERLESS_SOCIALACCOUNT_ALLOW_SIGNUPS
+              value: "false"
             - name: PAPERLESS_APPS
               value: allauth.socialaccount.providers.google
           ports:
