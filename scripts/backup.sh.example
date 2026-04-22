@@ -229,7 +229,10 @@ backup_paperless() {
         return 1
     fi
     echo "Copying media files..."
-    $KUBECTL cp "paperless/$app_pod:/usr/src/paperless/media" "$staging/media"
+    mkdir -p "$staging/media"
+    $KUBECTL exec -n paperless "$app_pod" -- \
+        tar -C /usr/src/paperless -cf - media \
+        | tar -C "$staging" -xf -
 
     run_restic_backup "$svc"
 
