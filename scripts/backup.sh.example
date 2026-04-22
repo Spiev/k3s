@@ -171,13 +171,17 @@ parse_restic_stats() {
 
 run_restic_backup() {
     local service="$1"
+    shift
     local source_dir="$BACKUP_TEMP_DIR/$service"
+    local extra_paths=("$@")
 
     echo ""
     echo "--- Restic backup: $service ---"
     local output
-    output=$(RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" \
-        restic -r "$RESTIC_REPO_S3" backup "$source_dir" \
+    output=$(sudo RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" \
+        AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+        AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+        restic -r "$RESTIC_REPO_S3" backup "$source_dir" "${extra_paths[@]}" \
         --tag "$service" \
         --verbose 2>&1)
     echo "$output"
@@ -222,8 +226,8 @@ backup_paperless() {
     $KUBECTL exec -n paperless "$db_pod" -- pg_dumpall -U paperless \
         | gzip > "$staging/paperless_db_$(date +%Y-%m-%d_%H%M%S).sql.gz"
 
-    # Read media and data directly from local-path-provisioner filesystem
-    # (avoids kubectl exec API server timeouts for large volumes)
+    # Locate PVCs directly on the local-path-provisioner filesystem.
+    # restic reads them in-place — no local copy needed for large volumes.
     local storage_base="/var/lib/rancher/k3s/storage"
     local media_pvc data_pvc
     media_pvc=$(sudo find "$storage_base" -maxdepth 1 -name "*_paperless_paperless-media" -type d)
@@ -238,13 +242,10 @@ backup_paperless() {
         return 1
     fi
 
-    echo "Copying media files (from $media_pvc)..."
-    sudo rsync -a "$media_pvc/" "$staging/media/"
+    echo "Media PVC: $media_pvc"
+    echo "Data PVC:  $data_pvc"
 
-    echo "Copying data files (from $data_pvc)..."
-    sudo rsync -a "$data_pvc/" "$staging/data/"
-
-    run_restic_backup "$svc"
+    run_restic_backup "$svc" "$media_pvc" "$data_pvc"
 
     send_state "$svc" "success"
     send_attributes "$svc" "$(cat <<EOF
