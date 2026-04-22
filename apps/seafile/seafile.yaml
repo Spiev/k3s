@@ -186,6 +186,9 @@ spec:
               grep -q 'CSRF_TRUSTED_ORIGINS' /shared/seafile/conf/seahub_settings.py 2>/dev/null || \
               echo "CSRF_TRUSTED_ORIGINS = ['https://${SEAFILE_HOSTNAME}']" \
               >> /shared/seafile/conf/seahub_settings.py
+              grep -q 'ENABLE_TWO_FACTOR_AUTH' /shared/seafile/conf/seahub_settings.py 2>/dev/null || \
+              echo "ENABLE_TWO_FACTOR_AUTH = True" \
+              >> /shared/seafile/conf/seahub_settings.py
           env:
             - name: SEAFILE_HOSTNAME
               valueFrom:
