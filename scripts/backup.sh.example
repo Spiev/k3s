@@ -223,7 +223,7 @@ backup_paperless() {
         | gzip > "$staging/paperless_db_$(date +%Y-%m-%d_%H%M%S).sql.gz"
 
     local app_pod
-    app_pod=$(get_pod "paperless" "app=paperless")
+    app_pod=$(get_pod "paperless" "app=paperless-webserver")
     if [[ -z "$app_pod" ]]; then
         echo "ERROR: No running paperless app pod found" >&2
         return 1
