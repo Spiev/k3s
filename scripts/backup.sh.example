@@ -222,17 +222,27 @@ backup_paperless() {
     $KUBECTL exec -n paperless "$db_pod" -- pg_dumpall -U paperless \
         | gzip > "$staging/paperless_db_$(date +%Y-%m-%d_%H%M%S).sql.gz"
 
-    local app_pod
-    app_pod=$(get_pod "paperless" "app=paperless-webserver")
-    if [[ -z "$app_pod" ]]; then
-        echo "ERROR: No running paperless app pod found" >&2
+    # Read media and data directly from local-path-provisioner filesystem
+    # (avoids kubectl exec API server timeouts for large volumes)
+    local storage_base="/var/lib/rancher/k3s/storage"
+    local media_pvc data_pvc
+    media_pvc=$(sudo find "$storage_base" -maxdepth 1 -name "*_paperless_paperless-media" -type d)
+    data_pvc=$(sudo find "$storage_base" -maxdepth 1 -name "*_paperless_paperless-data" -type d)
+
+    if [[ -z "$media_pvc" ]]; then
+        echo "ERROR: paperless-media PVC not found in $storage_base" >&2
         return 1
     fi
-    echo "Copying media files..."
-    mkdir -p "$staging/media"
-    $KUBECTL exec -n paperless "$app_pod" -- \
-        tar -C /usr/src/paperless -cf - media \
-        | tar -C "$staging" -xf -
+    if [[ -z "$data_pvc" ]]; then
+        echo "ERROR: paperless-data PVC not found in $storage_base" >&2
+        return 1
+    fi
+
+    echo "Copying media files (from $media_pvc)..."
+    sudo rsync -a "$media_pvc/" "$staging/media/"
+
+    echo "Copying data files (from $data_pvc)..."
+    sudo rsync -a "$data_pvc/" "$staging/data/"
 
     run_restic_backup "$svc"
 
