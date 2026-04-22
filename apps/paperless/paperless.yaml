@@ -1,0 +1,373 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: paperless
+  labels:
+    app: paperless
+    type: service
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: paperless-postgres
+  namespace: paperless
+  labels:
+    app: paperless-db
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: paperless-data
+  namespace: paperless
+  labels:
+    app: paperless
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: paperless-media
+  namespace: paperless
+  labels:
+    app: paperless
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paperless-db
+  namespace: paperless
+  labels:
+    app: paperless-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paperless-db
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: paperless-db
+    spec:
+      containers:
+        - name: postgres
+          image: docker.io/library/postgres:18@sha256:52e6ffd11fddd081ae63880b635b2a61c14008c17fc98cdc7ce5472265516dd0
+          env:
+            - name: POSTGRES_DB
+              value: paperless
+            - name: POSTGRES_USER
+              value: paperless
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: paperless-secrets
+                  key: POSTGRES_PASSWORD
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, paperless]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: paperless-postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: paperless-db
+  namespace: paperless
+  labels:
+    app: paperless-db
+spec:
+  selector:
+    app: paperless-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paperless-redis
+  namespace: paperless
+  labels:
+    app: paperless-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paperless-redis
+  template:
+    metadata:
+      labels:
+        app: paperless-redis
+    spec:
+      containers:
+        - name: redis
+          image: docker.io/library/redis:8@sha256:1f073813b641755b70b0200da64131bbeeb4ec5b633ca67772229b49820caafa
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: paperless-redis
+  namespace: paperless
+  labels:
+    app: paperless-redis
+spec:
+  selector:
+    app: paperless-redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paperless-gotenberg
+  namespace: paperless
+  labels:
+    app: paperless-gotenberg
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paperless-gotenberg
+  template:
+    metadata:
+      labels:
+        app: paperless-gotenberg
+    spec:
+      containers:
+        - name: gotenberg
+          image: docker.io/gotenberg/gotenberg:8.31@sha256:f0d86e8a1dbc7b33a5a65cb251d02bb271a48ffa989da3feb5ed7d954fe4d4b3
+          args:
+            - gotenberg
+            - --chromium-disable-javascript=true
+            - --chromium-allow-list=file:///tmp/.*
+          ports:
+            - containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: paperless-gotenberg
+  namespace: paperless
+  labels:
+    app: paperless-gotenberg
+spec:
+  selector:
+    app: paperless-gotenberg
+  ports:
+    - port: 3000
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paperless-tika
+  namespace: paperless
+  labels:
+    app: paperless-tika
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paperless-tika
+  template:
+    metadata:
+      labels:
+        app: paperless-tika
+    spec:
+      containers:
+        - name: tika
+          image: docker.io/apache/tika:3.2.3.0@sha256:c0154cb95587cde64be74f35ada1a2bd7892219f3f0ac3c9dc6cab34046b3573
+          ports:
+            - containerPort: 9998
+          readinessProbe:
+            httpGet:
+              path: /tika
+              port: 9998
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: paperless-tika
+  namespace: paperless
+  labels:
+    app: paperless-tika
+spec:
+  selector:
+    app: paperless-tika
+  ports:
+    - port: 9998
+      targetPort: 9998
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paperless-webserver
+  namespace: paperless
+  labels:
+    app: paperless-webserver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paperless-webserver
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: paperless-webserver
+    spec:
+      initContainers:
+        - name: wait-for-db
+          image: alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
+          command: ['sh', '-c', 'until nc -z paperless-db 5432; do echo "waiting for postgres..."; sleep 2; done']
+        - name: wait-for-redis
+          image: alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
+          command: ['sh', '-c', 'until nc -z paperless-redis 6379; do echo "waiting for redis..."; sleep 2; done']
+      containers:
+        - name: paperless
+          image: ghcr.io/paperless-ngx/paperless-ngx:2.20.14@sha256:b89f83345532cfba72690185257eb6c4f92fc2a782332a42abe19c07b7a6595f
+          env:
+            - name: PAPERLESS_DBHOST
+              value: paperless-db
+            - name: PAPERLESS_DBUSER
+              value: paperless
+            - name: PAPERLESS_DBNAME
+              value: paperless
+            - name: PAPERLESS_DBPASS
+              valueFrom:
+                secretKeyRef:
+                  name: paperless-secrets
+                  key: PAPERLESS_DBPASS
+            - name: PAPERLESS_REDIS
+              value: redis://paperless-redis:6379
+            - name: PAPERLESS_TIKA_ENABLED
+              value: "1"
+            - name: PAPERLESS_TIKA_ENDPOINT
+              value: http://paperless-tika:9998
+            - name: PAPERLESS_TIKA_GOTENBERG_ENDPOINT
+              value: http://paperless-gotenberg:3000
+            - name: PAPERLESS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: paperless-secrets
+                  key: PAPERLESS_URL
+            - name: PAPERLESS_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: paperless-secrets
+                  key: PAPERLESS_SECRET_KEY
+            - name: PAPERLESS_SOCIALACCOUNT_PROVIDERS
+              valueFrom:
+                secretKeyRef:
+                  name: paperless-secrets
+                  key: PAPERLESS_SOCIALACCOUNT_PROVIDERS
+            - name: PAPERLESS_TIME_ZONE
+              value: Europe/Berlin
+            - name: PAPERLESS_OCR_LANGUAGE
+              value: deu
+            - name: PAPERLESS_OCR_LANGUAGES
+              value: eng
+            - name: PAPERLESS_CONSUMER_RECURSIVE
+              value: "true"
+            - name: PAPERLESS_CONSUMER_SUBDIRS_AS_TAGS
+              value: "true"
+            - name: PAPERLESS_USE_X_FORWARD_HOST
+              value: "true"
+            - name: PAPERLESS_USE_X_FORWARD_PORT
+              value: "true"
+            - name: PAPERLESS_PROXY_SSL_HEADER
+              value: '["HTTP_X_FORWARDED_PROTO", "https"]'
+            - name: PAPERLESS_FILENAME_FORMAT
+              value: "{{ created_year }}/{{ correspondent }}/{{ title }}"
+            - name: PAPERLESS_DISABLE_REGULAR_LOGIN
+              value: "true"
+            - name: PAPERLESS_APPS
+              value: allauth.socialaccount.providers.google
+          ports:
+            - containerPort: 8000
+          volumeMounts:
+            - name: data
+              mountPath: /usr/src/paperless/data
+            - name: media
+              mountPath: /usr/src/paperless/media
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: paperless-data
+        - name: media
+          persistentVolumeClaim:
+            claimName: paperless-media
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: paperless-webserver
+  namespace: paperless
+  labels:
+    app: paperless-webserver
+spec:
+  selector:
+    app: paperless-webserver
+  ports:
+    - port: 8000
+      targetPort: 8000
