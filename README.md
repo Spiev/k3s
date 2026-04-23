@@ -36,6 +36,7 @@ Kubernetes infrastructure on a Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration
 | [Renovate](docs/operations/renovate.md) | Automated dependency updates via GitHub Action |
 | [Backup & Restore](docs/operations/backup-restore.md) | Restic → Hetzner S3, DB dumps, restore procedures |
 | [Image Updates](docs/operations/update-images.md) | Manual image update, crictl pre-pull for RWO PVCs |
+| [Proxy Migration](docs/proxy-migration.md) | nginx/fail2ban → Traefik/CrowdSec: cert-manager, temp routes, switchover |
 
 ---
 
