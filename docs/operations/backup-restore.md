@@ -34,10 +34,11 @@ These values **cannot** be recovered from the cluster if etcd is gone. Store the
 
 The backup script (`scripts/backup.sh`) runs as a cron job on the k3s node and:
 1. Auto-detects which known services have running pods
-2. Creates DB dumps and file snapshots via `kubectl exec` into a staging directory
-3. Uploads the staging directory to Hetzner S3 via Restic
-4. Reports status per service via MQTT to Home Assistant
-5. Cleans up the staging directory
+2. Creates DB dumps via `kubectl exec` into a staging directory (`BACKUP_TEMP_DIR`)
+3. Reads PVC data in-place from the local-path-provisioner filesystem — no local copy needed for large volumes (e.g. Paperless media)
+4. Uploads everything to Hetzner S3 via Restic (one snapshot per service, tagged)
+5. Reports status per service via MQTT to Home Assistant
+6. Cleans up the staging directory
 
 Each service gets its own HA sensor (`backup_teslamate`, `backup_seafile`, `backup_paperless`, `backup_overall`).
 
@@ -104,9 +105,9 @@ RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" snapshots
 When another service is migrated to k3s:
 1. Add the service name to `KNOWN_SERVICES` in `scripts/backup.sh.example`
 2. Add a `service_display_name()` case for it
-3. Add a `backup_<service>()` function (analogous to `backup_teslamate`)
+3. Add a `backup_<service>()` function (analogous to `backup_teslamate` or `backup_paperless`)
 4. Add a case to the dispatch block in Main
-5. Copy the changes to `~/k3s/scripts/backup.sh` on the k3s node
+5. Copy the updated file to `~/k3s/scripts/backup.sh` on the k3s node
 
 The script auto-detects running services — no manual enable/disable needed after onboarding.
 
@@ -195,30 +196,40 @@ rm -rf /tmp/restore
 
 ## Restore — Paperless
 
+The backup contains: a PostgreSQL dump (in `BACKUP_TEMP_DIR/paperless/`) plus the
+`paperless-media` and `paperless-data` PVCs read directly from the local-path filesystem.
+Restic stores all three paths in a single snapshot tagged `paperless`.
+
 ```bash
 cd ~/k3s/scripts && source .restic.env
 
-# 1. Restore staging directory from Restic
+# 1. Restore snapshot (DB dump + PVC paths) to temp location
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
   restore latest --tag paperless --target /tmp/restore
 
-# 2. Scale down Paperless app and DB
-kubectl scale deployment paperless paperless-db -n paperless --replicas=0
-kubectl wait --for=delete pod -n paperless -l app=paperless --timeout=60s
+# 2. Scale down Paperless webserver (keep DB down too)
+kubectl scale deployment paperless-webserver -n paperless --replicas=0
+kubectl scale deployment paperless-db -n paperless --replicas=0
+kubectl wait --for=delete pod -n paperless -l app=paperless-webserver --timeout=60s
 
 # 3. Start DB, import dump
+# Adjust the path below if BACKUP_TEMP_DIR differs from /tmp/k3s-backup
 kubectl scale deployment paperless-db -n paperless --replicas=1
 kubectl wait --for=condition=Ready pod -n paperless -l app=paperless-db --timeout=60s
 DB_POD=$(kubectl get pod -n paperless -l app=paperless-db -o jsonpath='{.items[0].metadata.name}')
 zcat /tmp/restore/tmp/k3s-backup/paperless/paperless_db_*.sql.gz \
   | kubectl exec -i -n paperless "$DB_POD" -- psql -U paperless
 
-# 4. Start app, copy media back
-kubectl scale deployment paperless -n paperless --replicas=1
-kubectl wait --for=condition=Ready pod -n paperless -l app=paperless --timeout=90s
-APP_POD=$(kubectl get pod -n paperless -l app=paperless -o jsonpath='{.items[0].metadata.name}')
-kubectl cp /tmp/restore/tmp/k3s-backup/paperless/media \
-  "paperless/$APP_POD:/usr/src/paperless/media"
+# 4. Restore media and data PVCs directly to the local-path storage
+STORAGE="/var/lib/rancher/k3s/storage"
+MEDIA_PVC=$(sudo find "$STORAGE" -maxdepth 1 -name "*_paperless_paperless-media" -type d)
+DATA_PVC=$(sudo find  "$STORAGE" -maxdepth 1 -name "*_paperless_paperless-data"  -type d)
+sudo rsync -a --delete "/tmp/restore${MEDIA_PVC}/" "$MEDIA_PVC/"
+sudo rsync -a --delete "/tmp/restore${DATA_PVC}/"  "$DATA_PVC/"
+
+# 5. Scale back up and verify
+kubectl scale deployment paperless-webserver -n paperless --replicas=1
+kubectl logs -n paperless -l app=paperless-webserver -f
 
 rm -rf /tmp/restore
 ```

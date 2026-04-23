@@ -53,8 +53,9 @@ Managed via SOPS in `paperless-secrets.sops.yaml`:
 ## Backup
 
 Handled by `scripts/backup.sh` (`backup_paperless` function):
-- `pg_dumpall` from `paperless-db` pod → gzip
-- `kubectl cp` of `/usr/src/paperless/media` → restic → Hetzner S3
+- `pg_dumpall` from `paperless-db` pod → gzip → staging dir
+- `paperless-media` and `paperless-data` PVCs read directly from the local-path filesystem (`/var/lib/rancher/k3s/storage/`) — no local copy needed
+- All three paths uploaded in one Restic snapshot tagged `paperless` → Hetzner S3
 
 ## Common operations
 

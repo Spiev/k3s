@@ -188,9 +188,9 @@ Pi1 (backup script)
 - Encrypted JSON: readable without a running Vaultwarden server (only the export password is needed)
 - Seamless integration into existing Restic setup (SSD + S3)
 
-### Addition to backup.sh
+### Addition to backup.sh (docker-runtime / Pi1)
 
-New block in the existing `scripts/backup.sh`:
+New block in `scripts/backup.sh` in the **docker-runtime repo** (Pi1) — not in the k3s backup script, since the `bw` CLI runs as a normal client without needing cluster access:
 
 ```bash
 # ============================================================================
@@ -223,7 +223,7 @@ VAULTWARDEN_OUTPUT=$(restic -r "$RESTIC_REPO" backup "$VW_EXPORT_DIR" \
 echo "$VAULTWARDEN_OUTPUT"
 ```
 
-New variables in `.restic.env`:
+New variables in `scripts/.restic.env` (docker-runtime repo):
 ```bash
 VW_URL="https://vault.example.com"
 VW_CLIENT_ID="..."        # Bitwarden API key client ID
