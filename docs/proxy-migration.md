@@ -451,11 +451,231 @@ spec:
 
 Add this middleware to the Paperless IngressRoute.
 
+### 2.4 Connection limiting
+
+nginx uses `limit_conn conn_limit 10/15/20` per service to cap concurrent connections per IP. Traefik's equivalent is `inFlightReq` — it limits concurrent *requests* (not TCP connections, but the effect is the same for HTTP/1.1):
+
+Create `infrastructure/traefik/middleware-conn-limits.yaml`:
+
+```yaml
+# Standard: 10 concurrent requests per IP (Paperless, FreshRSS, Seafile)
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: conn-limit-standard
+  namespace: kube-system
+  labels:
+    app: traefik
+spec:
+  inFlightReq:
+    amount: 10
+    sourceCriterion:
+      ipStrategy:
+        depth: 1
+---
+# Medium: 15 concurrent requests per IP (Home Assistant — multiple dashboards/automations)
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: conn-limit-medium
+  namespace: kube-system
+  labels:
+    app: traefik
+spec:
+  inFlightReq:
+    amount: 15
+    sourceCriterion:
+      ipStrategy:
+        depth: 1
+---
+# High: 20 concurrent requests per IP (Immich — parallel thumbnail loading)
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: conn-limit-high
+  namespace: kube-system
+  labels:
+    app: traefik
+spec:
+  inFlightReq:
+    amount: 20
+    sourceCriterion:
+      ipStrategy:
+        depth: 1
+```
+
+Middleware → service mapping (mirrors nginx `limit_conn` config):
+
+| Service | Middleware | nginx equivalent |
+|---|---|---|
+| Immich | `conn-limit-high` | `limit_conn conn_limit 20` |
+| Home Assistant | `conn-limit-medium` | `limit_conn conn_limit 15` |
+| Paperless, FreshRSS, Seafile | `conn-limit-standard` | `limit_conn conn_limit 10` |
+
+### 2.5 Per-service body size limits
+
+nginx enforces `client_max_body_size` per service. In Traefik this is the `buffering` middleware with `maxRequestBodyBytes`:
+
+Create `infrastructure/traefik/middleware-body-limits.yaml`:
+
+```yaml
+# 10 MB — FreshRSS (feed imports), Home Assistant (config/snapshots)
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: body-limit-10m
+  namespace: kube-system
+  labels:
+    app: traefik
+spec:
+  buffering:
+    maxRequestBodyBytes: 10485760   # 10 * 1024 * 1024
+---
+# 100 MB — Paperless (large scanned PDFs)
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: body-limit-100m
+  namespace: kube-system
+  labels:
+    app: traefik
+spec:
+  buffering:
+    maxRequestBodyBytes: 104857600  # 100 * 1024 * 1024
+```
+
+Immich and Seafile have `client_max_body_size 0` in nginx (unlimited). Traefik has no default body size limit — no middleware needed for those two.
+
+Middleware → service mapping:
+
+| Service | Middleware | nginx equivalent |
+|---|---|---|
+| Immich | none | `client_max_body_size 0` |
+| Paperless | `body-limit-100m` | `client_max_body_size 100M` |
+| FreshRSS | `body-limit-10m` | `client_max_body_size 10M` |
+| Home Assistant | `body-limit-10m` | `client_max_body_size 10M` |
+| Seafile | none | `client_max_body_size 0` |
+
+### 2.6 Per-service timeouts for existing k3s services
+
+nginx has per-service `proxy_read_timeout` and `proxy_send_timeout`. For the already-migrated k3s services (Paperless, FreshRSS, Seafile), these need `ServersTransport` resources. The Immich and HA transports are covered in Phase 4.
+
+Create `infrastructure/traefik/servers-transports.yaml`:
+
+```yaml
+# Paperless: 2-minute timeout for OCR processing
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: paperless-transport
+  namespace: paperless
+spec:
+  forwardingTimeouts:
+    dialTimeout: 30s
+    responseHeaderTimeout: 120s
+    idleConnTimeout: 120s
+---
+# FreshRSS: 1-minute timeout (RSS feeds are fast)
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: freshrss-transport
+  namespace: freshrss
+spec:
+  forwardingTimeouts:
+    dialTimeout: 30s
+    responseHeaderTimeout: 60s
+    idleConnTimeout: 60s
+---
+# Seafile: 5-minute timeout for large file transfers
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: seafile-transport
+  namespace: seafile
+spec:
+  forwardingTimeouts:
+    dialTimeout: 30s
+    responseHeaderTimeout: 300s
+    idleConnTimeout: 300s
+```
+
+Reference the transport in the service definition inside each IngressRoute:
+
+```yaml
+services:
+  - name: paperless-webserver
+    port: 8000
+    serversTransport: paperless-transport
+```
+
+### 2.7 TLS configuration
+
+nginx explicitly enforces `ssl_protocols TLSv1.2 TLSv1.3` and disables session tickets. Traefik's default already matches — but it must be pinned explicitly to prevent a future k3s upgrade from silently enabling TLS 1.0/1.1.
+
+Add to `infrastructure/traefik/traefik-config.yaml` under `valuesContent`:
+
+```yaml
+    # TLS options: enforce TLS 1.2+ only, disable session tickets (forward secrecy)
+    tlsOptions:
+      default:
+        minVersion: VersionTLS12
+        sniStrict: true
+        preferServerCipherSuites: true
+        cipherSuites:
+          - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+          - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+          - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+          - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+          - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+          - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+```
+
+> Session tickets are disabled by default in Traefik when using cert-manager — no explicit `ssl_session_tickets off` equivalent needed.
+
 ---
 
 ## Phase 3 — CrowdSec
 
 CrowdSec replaces fail2ban. The architecture: CrowdSec Security Engine (agent + LAPI) runs as a Deployment in k3s. It reads Traefik's access log from the hostPath volume configured in Phase 1. The Traefik Bouncer runs as a plugin inside Traefik and queries CrowdSec's LAPI — banned IPs are rejected at the ingress layer before the request reaches any service.
+
+### fail2ban → CrowdSec scenario mapping
+
+| fail2ban jail | Trigger | CrowdSec equivalent | Gap? |
+|---|---|---|---|
+| `nginx-4xx` | 3× 401/403/404 in 10 min → 24h ban | `crowdsecurity/http-bf-wordpress_bf_xmlrpc` + `crowdsecurity/traefik` collection | ✅ covered |
+| `nginx-malicious-uri` | 3× malicious path in 10 min → 24h ban | `crowdsecurity/base-http-scenarios` (includes path-based scanner detection) | ✅ covered |
+| `seafile-auth` | 10× Seafile auth fail in 10 min → 24h ban | `crowdsecurity/http-bf` (generic HTTP brute-force) | ✅ covered, tuning possible |
+| `homeassistant-auth` | 3× HA login fail in 10 min → 1h ban | **see note below** | 🔴 gap during transition |
+| `recidive` | 3× bans in 24h → 7-day ban | CrowdSec escalation (see below) | ✅ covered differently |
+
+#### Home Assistant auth — critical gap during transition
+
+fail2ban detected HA login failures by reading HA's internal log (`home-assistant.log`), because HA returns **HTTP 200 even for failed logins** — the failure is only visible in the application log, not in the nginx access log.
+
+CrowdSec reads from the Traefik access log and cannot distinguish a successful from a failed HA login at the HTTP layer.
+
+**During the transition (HA still on pi1-Docker):** CrowdSec on pi2 has no access to pi1's HA log. There is no equivalent protection for HA brute-force at the proxy layer.
+
+**Mitigations in place:**
+1. HA's built-in brute-force protection: after 5 failed login attempts, HA locks out the user for an increasing duration (built into HA core, independent of the proxy).
+2. The `rate-limit-login` Traefik middleware (5 req/min) still throttles the auth endpoint.
+
+**After HA moves to k3s:** CrowdSec can read the HA container log directly via an additional `acquis.yaml` entry pointing to the HA log file. A custom CrowdSec parser for HA's log format exists in the CrowdSec Hub (`crowdsecurity/home-assistant`). Document this in the HA migration guide.
+
+#### Recidive equivalent in CrowdSec
+
+CrowdSec does not have a direct "recidive" jail. Instead, escalation works through:
+
+1. **Decision duration**: CrowdSec scenarios can emit decisions with increasing duration on repeated offenses via the `leakybucket` mechanism.
+2. **Blocklist sync**: The CrowdSec community hub shares known-bad IPs across all CrowdSec instances globally — persistent attackers are often already on the community blocklist before a single local alert fires.
+3. **Manual escalation**: For persistent offenders, decisions can be added manually with a long duration:
+   ```bash
+   kubectl exec -n crowdsec deploy/crowdsec -- \
+     cscli decisions add --ip 1.2.3.4 --duration 168h --reason recidive
+   ```
+
+For a homelab this is acceptable. The community blocklist provides coverage that fail2ban's recidive jail could not.
 
 ### 3.1 Create namespace and LAPI secret
 
@@ -538,7 +758,12 @@ spec:
           image: docker.io/crowdsecurity/crowdsec:latest
           env:
             - name: COLLECTIONS
-              value: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/base-http-scenarios"
+              # traefik:              Traefik-specific parsers + 4xx/brute-force scenarios
+              # base-http-scenarios:  Path-based scanner detection (replaces nginx-malicious-uri)
+              # http-cve:             Known CVE exploit patterns
+              # http-bf:              Generic HTTP brute-force (replaces seafile-auth, nginx-4xx)
+              # home-assistant:       HA-specific parser (active after HA moves to k3s)
+              value: "crowdsecurity/traefik crowdsecurity/base-http-scenarios crowdsecurity/http-cve crowdsecurity/http-bf crowdsecurity/home-assistant"
             - name: BOUNCER_KEY_traefik
               valueFrom:
                 secretKeyRef:
@@ -988,10 +1213,25 @@ Phase 5 rollback takes seconds. The old nginx config on pi1 is preserved until I
 
 ---
 
+## Middleware stack per service — reference table
+
+Apply these middlewares on each IngressRoute. All middleware names reference `namespace: kube-system` unless noted.
+
+| Service | security-headers | crowdsec-bouncer | rate-limit | conn-limit | body-limit | serversTransport |
+|---|---|---|---|---|---|---|
+| Immich | ✅ | ✅ | `rate-limit-immich` (general) + `rate-limit-login` (auth) | `conn-limit-high` | none | `immich-transport` |
+| Paperless | ✅ | ✅ | `rate-limit-general` + `rate-limit-login` (auth) | `conn-limit-standard` | `body-limit-100m` | `paperless-transport` |
+| FreshRSS | ✅ | ✅ | `rate-limit-general` + `rate-limit-login` (greader/login) | `conn-limit-standard` | `body-limit-10m` | `freshrss-transport` |
+| Home Assistant | ✅ | ✅ | `rate-limit-general` + `rate-limit-login` (auth) | `conn-limit-medium` | `body-limit-10m` | `ha-transport` |
+| Seafile | ✅ | ✅ | `rate-limit-general` | `conn-limit-standard` | none | `seafile-transport` |
+
+---
+
 ## Open items / follow-up
 
 - [ ] Traefik Bouncer plugin version: pin to a specific release, add to Renovate tracking
 - [ ] CrowdSec community hub enrollment (optional: share threat intelligence)
 - [ ] Remove `PROXY_IP` from `cluster-vars.sops.yaml` after switchover (no longer needed)
-- [ ] Update existing IngressRoutes (Paperless, FreshRSS, Seafile) to include `crowdsec-bouncer` and `security-headers` middlewares
+- [ ] Update existing IngressRoutes (Paperless, FreshRSS, Seafile) to use `IngressRoute` (Traefik CRD) instead of `Ingress` — required to reference `serversTransport` and stack middlewares properly
+- [ ] HA migration guide: add CrowdSec `acquis.yaml` entry for HA log + `crowdsecurity/home-assistant` parser (closes the auth-detection gap)
 - [ ] Immich and HA migration guides reference this doc's temp routes as the starting state
