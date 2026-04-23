@@ -189,6 +189,12 @@ run_restic_backup() {
     IFS='|' read -r \
         "LAST_FILES_NEW" "LAST_FILES_CHANGED" "LAST_DIRS_NEW" \
         <<< "$(parse_restic_stats "$output")"
+
+    LAST_SNAPSHOT_COUNT=$(RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" \
+        AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+        AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+        restic -r "$RESTIC_REPO_S3" snapshots --tag "$service" --json 2>/dev/null \
+        | jq '. | length' || echo "0")
 }
 
 # ============================================================================
@@ -254,7 +260,7 @@ backup_paperless() {
   "status": "success",
   "files_new": ${LAST_FILES_NEW:-0},
   "files_changed": ${LAST_FILES_CHANGED:-0},
-  "dirs_new": ${LAST_DIRS_NEW:-0}
+  "snapshot_count": ${LAST_SNAPSHOT_COUNT:-0}
 }
 EOF
 )"
@@ -306,7 +312,7 @@ backup_seafile() {
   "status": "success",
   "files_new": ${LAST_FILES_NEW:-0},
   "files_changed": ${LAST_FILES_CHANGED:-0},
-  "dirs_new": ${LAST_DIRS_NEW:-0}
+  "snapshot_count": ${LAST_SNAPSHOT_COUNT:-0}
 }
 EOF
 )"
@@ -341,7 +347,7 @@ backup_teslamate() {
   "status": "success",
   "files_new": ${LAST_FILES_NEW:-0},
   "files_changed": ${LAST_FILES_CHANGED:-0},
-  "dirs_new": ${LAST_DIRS_NEW:-0}
+  "snapshot_count": ${LAST_SNAPSHOT_COUNT:-0}
 }
 EOF
 )"
