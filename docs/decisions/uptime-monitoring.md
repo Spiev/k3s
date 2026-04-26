@@ -99,7 +99,7 @@ Home Assistant is intentionally *not* used as a notification channel for UptimeR
 ## Consequences
 
 - UptimeRobot account required (free tier sufficient)
-- Telegram bot token required — created once via @BotFather, stored in Vaultwarden
-- Monitors are configured manually in the UptimeRobot UI — no IaC
-- When new public services are added, a monitor must be added manually in UptimeRobot
+- Push notifications via UptimeRobot mobile app (iOS/Android) — no Telegram integration needed (paid feature)
+- Monitors are managed as code in [`../uptimerobot-as-code`](../../uptimerobot-as-code) via OpenTofu
+- When new public services are added, a monitor must be added in `uptimerobot-as-code/monitors.tf`
 - The two monitoring layers remain independent by design: UptimeRobot detects external reachability failures; Home Assistant/MQTT detects internal cluster failures
