@@ -1,7 +1,7 @@
 # Architecture Decision: UptimeRobot for External Uptime Monitoring
 
 **Date:** 2026-04-24
-**Status:** Decided — implementation pending
+**Status:** Implemented
 
 ---
 
