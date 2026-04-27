@@ -114,6 +114,25 @@ spec:
     - port: 5432
       targetPort: 5432
 ---
+# NodePort für Home Assistant SQL-Integration (sensor.tesla_charging_cost_monthly/total).
+# HA läuft auf dem Pi (Docker, nicht k3s) und kann ClusterIP-Services nicht erreichen —
+# daher wird Port 5432 als NodePort 30432 im lokalen Netz exponiert.
+apiVersion: v1
+kind: Service
+metadata:
+  name: teslamate-db-nodeport
+  namespace: teslamate
+  labels:
+    app: teslamate-db
+spec:
+  type: NodePort
+  selector:
+    app: teslamate-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+      nodePort: 30432
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
