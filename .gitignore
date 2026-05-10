@@ -4,8 +4,6 @@ apps/*/**-ingress.yaml
 
 # Sensitive architecture docs — local only, not for public repo
 docs/proxy-migration.md
-docs/decisions/ingress-security.md
-docs/decisions/uptime-monitoring.md
 
 # Secrets and credentials — never commit
 scripts/.credentials
