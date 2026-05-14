@@ -1,0 +1,79 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: security-headers
+  namespace: kube-system
+  labels:
+    app: traefik-middlewares
+spec:
+  headers:
+    stsSeconds: 31536000
+    stsIncludeSubdomains: true
+    stsPreload: false
+    forceSTSHeader: true
+    frameDeny: true
+    contentTypeNosniff: true
+    browserXssFilter: true
+    referrerPolicy: "strict-origin-when-cross-origin"
+    permissionsPolicy: "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+    customResponseHeaders:
+      X-Robots-Tag: "noindex, nofollow, nosnippet, noarchive"
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: rate-limit-general
+  namespace: kube-system
+  labels:
+    app: traefik-middlewares
+spec:
+  rateLimit:
+    average: 20
+    burst: 50
+    period: 1s
+    sourceCriterion:
+      ipStrategy:
+        depth: 1
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: rate-limit-login
+  namespace: kube-system
+  labels:
+    app: traefik-middlewares
+spec:
+  rateLimit:
+    average: 5
+    burst: 10
+    period: 1m
+    sourceCriterion:
+      ipStrategy:
+        depth: 1
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: body-limit-default
+  namespace: kube-system
+  labels:
+    app: traefik-middlewares
+spec:
+  buffering:
+    maxRequestBodyBytes: 10485760
+    memRequestBodyBytes: 2097152
+    retryExpression: "IsNetworkError() && Attempts() < 3"
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: body-limit-upload
+  namespace: kube-system
+  labels:
+    app: traefik-middlewares
+spec:
+  buffering:
+    maxRequestBodyBytes: 104857600
+    memRequestBodyBytes: 10485760
+    retryExpression: "IsNetworkError() && Attempts() < 3"
