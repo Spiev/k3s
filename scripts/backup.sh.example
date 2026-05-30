@@ -334,9 +334,32 @@ backup_teslamate() {
         echo "ERROR: No running teslamate-db pod found" >&2
         return 1
     fi
-    echo "Dumping database..."
-    $KUBECTL exec -n teslamate "$db_pod" -- pg_dumpall -U teslamate \
-        | gzip > "$staging/teslamate_db_$(date +%Y-%m-%d_%H%M%S).sql.gz"
+
+    # Locate the PVC on the host filesystem before touching the pod.
+    local storage_base="/var/lib/rancher/k3s/storage"
+    local db_pvc
+    db_pvc=$(sudo find "$storage_base" -maxdepth 1 -name "*_teslamate_teslamate-db" -type d)
+    if [[ -z "$db_pvc" ]]; then
+        echo "ERROR: teslamate-db PVC not found in $storage_base" >&2
+        return 1
+    fi
+    echo "DB PVC: $db_pvc"
+
+    # Write the dump directly into the PVC instead of streaming stdout through
+    # kubectl exec — the k3s API-server WebSocket proxy can reset the connection
+    # when proxying ~100+ MB of pg_dumpall output in a single exec session.
+    local dump_in_pod="/var/lib/postgresql/data/k3s_backup.sql"
+    echo "Dumping database into PVC..."
+    $KUBECTL exec -n teslamate "$db_pod" -- \
+        pg_dumpall -U teslamate -f "$dump_in_pod"
+
+    # Read the dump directly from the host filesystem — no kubectl involved.
+    echo "Compressing dump..."
+    sudo gzip -c "$db_pvc/k3s_backup.sql" \
+        > "$staging/teslamate_db_$(date +%Y-%m-%d_%H%M%S).sql.gz"
+
+    # Remove the temporary dump file from the PVC.
+    $KUBECTL exec -n teslamate "$db_pod" -- rm -f "$dump_in_pod"
 
     run_restic_backup "$svc"
 
