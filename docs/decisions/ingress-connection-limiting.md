@@ -63,6 +63,17 @@ The correct control is **entry-point timeouts**. Two factors:
 
    `readTimeout` covers the **entire** request (including body), so it is sized to the largest legitimate slow upload (Seafile/Immich had no size limit and `client_body_timeout 300s` in nginx) rather than tighter — a lower value would break legitimate large/slow uploads. This bounds a Slowloris connection to 5 minutes instead of forever, with Go's connection model and CrowdSec (banning IPs that open many connections) as the real backstop.
 
+### Migration note: total vs. inactivity timeout (check at the edge-flip)
+
+⚠️ **Flip-check for when Traefik becomes the edge (replacing nginx).**
+
+Traefik's `readTimeout`/`writeTimeout` are **total** durations for the whole request/response. nginx's equivalents (`client_body_timeout`, `proxy_read_timeout`) were **inactivity** timeouts — the clock reset on every chunk of data transferred.
+
+- **While Traefik sits behind nginx (current state):** irrelevant. The slow client leg terminates at nginx; the nginx↔Traefik hop is fast LAN, so the 300s total is never approached.
+- **Once Traefik is the edge:** a very large Seafile transfer over a slow line could exceed the 300s **total** limit even though it streamed fine under nginx's inactivity model. At the flip, **re-check the Seafile route timeouts** — raise the entry-point value, or set a per-route timeout via a dedicated `Middleware`/`ServersTransport` rather than loosening the global entry point.
+
+Tracked alongside the other open edge-flip items: CrowdSec + Traefik bouncer, cert-manager ClusterIssuer, and the `trustedIPs`/`ipStrategy.depth` fix.
+
 ## Consequences
 
 - No `inFlightReq` middlewares are created or referenced
