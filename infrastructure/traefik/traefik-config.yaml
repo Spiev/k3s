@@ -13,7 +13,23 @@ spec:
         forwardedHeaders:
           trustedIPs:
             - "${PROXY_IP}/32"
+        # Bound how long a client may take to send a request / receive a response.
+        # Without this, readTimeout defaults to 0 (unlimited) — a Slowloris client
+        # could hold a connection open indefinitely. readTimeout covers the full
+        # request incl. body, so it is sized to the largest legitimate slow upload
+        # (Seafile/Immich; nginx used 300s) rather than tighter.
+        # See docs/decisions/ingress-connection-limiting.md.
+        transport:
+          respondingTimeouts:
+            readTimeout: 300s
+            writeTimeout: 300s
+            idleTimeout: 180s
       websecure:
         forwardedHeaders:
           trustedIPs:
             - "${PROXY_IP}/32"
+        transport:
+          respondingTimeouts:
+            readTimeout: 300s
+            writeTimeout: 300s
+            idleTimeout: 180s
