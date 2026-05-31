@@ -46,8 +46,26 @@ nginx enforced `limit_conn` per service (10–20 concurrent connections per IP) 
 
 ---
 
+## Slowloris: covered by entry-point timeouts, not `inFlightReq`
+
+The one legitimate scenario `limit_conn`/`inFlightReq` is sometimes used for is **Slowloris** — a client opening many connections and sending the request very slowly to exhaust the connection pool. `inFlightReq` is the wrong tool here (it caps concurrency, not slow connections) and would still hit the Immich false-positive above.
+
+The correct control is **entry-point timeouts**. Two factors:
+
+1. **Traefik (Go `net/http`) is inherently more Slowloris-resistant** than thread-pool servers (Apache): each connection is a cheap goroutine, so idle/slow connections do not exhaust a worker pool.
+2. **`respondingTimeouts` bound the worst case.** Traefik's default `readTimeout` is `0` (unlimited) — a slow client could hold a connection open indefinitely. Both entry points (`web`, `websecure`) therefore set explicit timeouts in `infrastructure/traefik/traefik-config.yaml`:
+
+   | Timeout | Value | Purpose |
+   |---|---|---|
+   | `readTimeout` | 300s | Max time to read the full request incl. body |
+   | `writeTimeout` | 300s | Max time to write the response |
+   | `idleTimeout` | 180s | Close idle keep-alive connections |
+
+   `readTimeout` covers the **entire** request (including body), so it is sized to the largest legitimate slow upload (Seafile/Immich had no size limit and `client_body_timeout 300s` in nginx) rather than tighter — a lower value would break legitimate large/slow uploads. This bounds a Slowloris connection to 5 minutes instead of forever, with Go's connection model and CrowdSec (banning IPs that open many connections) as the real backstop.
+
 ## Consequences
 
 - No `inFlightReq` middlewares are created or referenced
 - Abuse/DoS protection relies on CrowdSec (IP banning) and rate limiting (request throttling)
+- Slowloris is bounded by entry-point `respondingTimeouts`, not connection limiting
 - Pod resource limits in each service manifest remain the backstop against resource exhaustion
