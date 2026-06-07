@@ -158,12 +158,16 @@ rm -rf /tmp/restore
 
 ## Restore — Seafile
 
-The backup contains three MariaDB databases and the full `/shared/seafile` data directory (library blocks, commits, fs objects). Restore databases first, then file data — this is the order required by the [official Seafile backup guide](https://manual.seafile.com/latest/administration/backup_recovery/).
+The backup contains: three MariaDB database dumps (in `BACKUP_TEMP_DIR/seafile/`)
+plus the `seafile-data` PVC read directly from the local-path filesystem (library
+blocks, commits, fs objects under `/shared/seafile`). Restic stores all paths in a
+single snapshot tagged `seafile`. Restore databases first, then file data — this is
+the order required by the [official Seafile backup guide](https://manual.seafile.com/latest/administration/backup_recovery/).
 
 ```bash
 cd ~/k3s/scripts && source .restic.env
 
-# 1. Restore staging directory from Restic
+# 1. Restore snapshot (DB dumps + seafile-data PVC) to temp location
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
   restore latest --tag seafile --target /tmp/restore
 
@@ -178,14 +182,18 @@ kubectl exec -n seafile "$DB_POD" -- \
 zcat /tmp/restore/tmp/k3s-backup/seafile/seafile_db_*.sql.gz \
   | kubectl exec -i -n seafile "$DB_POD" -- bash -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD"'
 
-# 4. Restore file data into the Seafile pod's /shared volume
+# 4. Restore file data directly into the seafile-data PVC on the host
+#    (app stays scaled down so nothing writes while we sync)
+STORAGE="/var/lib/rancher/k3s/storage"
+DATA_PVC=$(sudo find "$STORAGE" -maxdepth 1 -name "*_seafile_seafile-data" -type d)
+sudo rsync -a --delete "/tmp/restore${DATA_PVC}/seafile/" "$DATA_PVC/seafile/"
+
+# 5. Scale Seafile back up
 kubectl scale deployment seafile -n seafile --replicas=1
 kubectl wait --for=condition=Ready pod -n seafile -l app=seafile --timeout=90s
 APP_POD=$(kubectl get pod -n seafile -l app=seafile -o jsonpath='{.items[0].metadata.name}')
-tar -C /tmp/restore/tmp/k3s-backup/seafile/seafile-data -cf - seafile \
-  | kubectl exec -i -n seafile "$APP_POD" -- tar -C /shared -xf -
 
-# 5. Optional: repair any DB/file inconsistencies (safe to always run after restore)
+# 6. Optional: repair any DB/file inconsistencies (safe to always run after restore)
 kubectl exec -n seafile "$APP_POD" -- \
   bash -c "/opt/seafile/seafile-server-latest/seaf-fsck.sh --repair"
 
