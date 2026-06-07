@@ -269,7 +269,7 @@ EOF
 backup_seafile() {
     local svc="seafile"
     local staging="$BACKUP_TEMP_DIR/$svc"
-    mkdir -p "$staging/seafile-data"
+    mkdir -p "$staging"
 
     echo ""
     echo "=========================================="
@@ -290,20 +290,20 @@ backup_seafile() {
         | gzip > "$staging/seafile_db_$(date +%Y-%m-%d_%H%M%S).sql.gz"
 
     # --- File data (library blocks, commits, fs objects under /shared/seafile) ---
-    # Seafile stores data as many small block files — tar piping via kubectl exec
-    # is significantly faster than kubectl cp for this access pattern.
-    local app_pod
-    app_pod=$(get_pod "seafile" "app=seafile")
-    if [[ -z "$app_pod" ]]; then
-        echo "ERROR: No running seafile app pod found" >&2
+    # Seafile stores data as many small block files. Read the PVC in-place from
+    # the local-path-provisioner filesystem instead of streaming tar through
+    # kubectl exec — the k3s API-server WebSocket proxy resets the connection
+    # mid-stream on large transfers ("tar: Unexpected EOF in archive").
+    local storage_base="/var/lib/rancher/k3s/storage"
+    local data_pvc
+    data_pvc=$(sudo find "$storage_base" -maxdepth 1 -name "*_seafile_seafile-data" -type d)
+    if [[ -z "$data_pvc" ]]; then
+        echo "ERROR: seafile-data PVC not found in $storage_base" >&2
         return 1
     fi
-    echo "Copying seafile data directory..."
-    $KUBECTL exec -n seafile "$app_pod" -- \
-        tar -C /shared -cf - seafile \
-        | tar -C "$staging/seafile-data" -xf -
+    echo "Data PVC: $data_pvc/seafile"
 
-    run_restic_backup "$svc"
+    run_restic_backup "$svc" "$data_pvc/seafile"
 
     send_state "$svc" "success"
     send_attributes "$svc" "$(cat <<EOF
