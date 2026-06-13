@@ -56,9 +56,20 @@ spec:
       labels:
         app: moto-tracker-db
     spec:
+      securityContext:
+        fsGroup: 999
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
       containers:
         - name: postgres
           image: postgres:16-alpine
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: false
           env:
             - name: POSTGRES_USER
               value: moto
@@ -73,6 +84,13 @@ spec:
               value: /var/lib/postgresql/data
           ports:
             - containerPort: 5432
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
@@ -126,6 +144,37 @@ spec:
         - name: wait-for-db
           image: alpine:3.21
           command: ['sh', '-c', 'until nc -z moto-tracker-db 5432; do echo "waiting for postgres..."; sleep 2; done']
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+        - name: run-migrations
+          image: ghcr.io/spiev/moto-tracker:0.1.0
+          command: ['alembic', 'upgrade', 'head']
+          env:
+            - name: MT_DB_HOST
+              value: moto-tracker-db
+            - name: MT_DB_PORT
+              value: "5432"
+            - name: MT_DB_NAME
+              value: moto
+            - name: MT_DB_USER
+              value: moto
+            - name: MT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: moto-tracker-secrets
+                  key: DATABASE_PASS
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
       containers:
         - name: tracker
           image: ghcr.io/spiev/moto-tracker:0.1.0
@@ -165,6 +214,13 @@ spec:
               value: Europe/Berlin
           ports:
             - containerPort: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
           readinessProbe:
             httpGet:
               path: /readyz
@@ -353,6 +409,13 @@ spec:
         - name: wait-for-db
           image: alpine:3.21
           command: ['sh', '-c', 'until nc -z moto-tracker-db 5432; do echo "waiting for postgres..."; sleep 2; done']
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
       containers:
         - name: grafana
           image: grafana/grafana:11.1.0
@@ -375,6 +438,13 @@ spec:
               value: Viewer
           ports:
             - containerPort: 3000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
           volumeMounts:
             - name: grafana-data
               mountPath: /var/lib/grafana
