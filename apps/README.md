@@ -22,3 +22,4 @@ Secrets follow the SOPS pattern: `*-secrets.sops.yaml` — encrypted at rest, de
 | `pihole/` | Pi-hole, LoadBalancer Service |
 | `seafile/` | Seafile, MariaDB, Redis |
 | `teslamate/` | Teslamate, PostgreSQL, Grafana |
+| `moto-tracker/` | moto-tracker, PostgreSQL, Grafana |
