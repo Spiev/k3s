@@ -163,6 +163,19 @@ spec:
                   key: MQTT_PASSWORD
             - name: TZ
               value: Europe/Berlin
+            # Tesla Fleet API (direct, no proxy) — replaces the discontinued Owner API.
+            # Refresh uses client_id only; client_secret is NOT needed by TeslaMate.
+            - name: TESLA_API_HOST
+              value: https://fleet-api.prd.eu.vn.cloud.tesla.com
+            - name: TESLA_AUTH_HOST
+              value: https://auth.tesla.com
+            - name: TESLA_AUTH_PATH
+              value: /oauth2/v3
+            - name: TESLA_AUTH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: teslamate-secrets
+                  key: TESLA_AUTH_CLIENT_ID
           ports:
             - containerPort: 4000
           readinessProbe:
