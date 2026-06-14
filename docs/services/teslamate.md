@@ -8,9 +8,9 @@ Stack: **Teslamate** (Elixir app) + **PostgreSQL 18** + **Grafana** (Teslamate-c
 
 | Container | Image | Port |
 |---|---|---|
-| teslamate | `teslamate/teslamate:3.0.0` | 4000 |
+| teslamate | `teslamate/teslamate:4.0.0` | 4000 |
 | teslamate-db | `postgres:18-alpine` | 5432 (internal) |
-| teslamate-grafana | `teslamate/grafana:3.0.0` | 3000 |
+| teslamate-grafana | `teslamate/grafana:4.0.0` | 3000 |
 
 ---
 
