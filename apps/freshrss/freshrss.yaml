@@ -42,7 +42,7 @@ spec:
     spec:
       containers:
         - name: freshrss
-          image: lscr.io/linuxserver/freshrss:1.29.1-ls309@sha256:b24ddde7d465f004847305b70d2479eb31c218e777bf2ab97d42dc75b54ed914
+          image: lscr.io/linuxserver/freshrss:1.29.1-ls310@sha256:699594b0bccd029e655052e18d69abd235dd5ddc071f44f3af3b407f01138954
           env:
             - name: PUID
               value: "1000"
