@@ -114,6 +114,10 @@ The `kubernetes` manager has `fileMatch: []` by default — without explicit con
 
 LinuxServer.io images (`lscr.io/linuxserver/*`) use the format `1.28.1-ls299`. With `loose` versioning, Renovate treats the `-ls299` suffix as a semver pre-release and suggests switching to the "stable" bare tag `1.28.1` — which is wrong. The `regex` pattern extracts `major`, `minor`, `patch`, and `build` (the `ls` number) separately, so `ls299 > ls298` is compared correctly.
 
+**No PR rate limiting (`prHourlyLimit: 0`, `prConcurrentLimit: 0`)**
+
+Renovate defaults to `prHourlyLimit: 2` and `prConcurrentLimit: 10`. With several services released at once, this silently *throttles* updates: in one run Renovate may open only the first two PRs and defer the rest to a later run. This happened when `teslamate/teslamate` and `teslamate/grafana` both moved to `4.0.1` — Renovate spent the two hourly slots on `grafana` and `freshrss`, so the `teslamate` PR was held back and looked like it had been skipped. Setting both limits to `0` (unlimited) avoids the backlog; since minor/patch/digest updates auto-merge anyway, no PR pile-up results.
+
 ---
 
 ## Digest Pinning
