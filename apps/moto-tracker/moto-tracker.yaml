@@ -1,0 +1,489 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: moto-tracker
+  labels:
+    app: moto-tracker
+    type: service
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: moto-tracker-db
+  namespace: moto-tracker
+  labels:
+    app: moto-tracker-db
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: moto-tracker-grafana
+  namespace: moto-tracker
+  labels:
+    app: moto-tracker-grafana
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+# PostgreSQL — plain Deployment (backed up via the repo's restic/local-path flow).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: moto-tracker-db
+  namespace: moto-tracker
+  labels:
+    app: moto-tracker-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: moto-tracker-db
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: moto-tracker-db
+    spec:
+      securityContext:
+        fsGroup: 999
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: false
+          env:
+            - name: POSTGRES_USER
+              value: moto
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: moto-tracker-secrets
+                  key: DATABASE_PASS
+            - name: POSTGRES_DB
+              value: moto
+            - name: PGDATA
+              value: /var/lib/postgresql/data
+          ports:
+            - containerPort: 5432
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, moto]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: moto-tracker-db
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: moto-tracker-db
+  namespace: moto-tracker
+  labels:
+    app: moto-tracker-db
+spec:
+  selector:
+    app: moto-tracker-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+# Tracker — HA ingest, tour detection, web UI + GPX. Runs Alembic on startup.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: moto-tracker
+  namespace: moto-tracker
+  labels:
+    app: moto-tracker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: moto-tracker
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: moto-tracker
+    spec:
+      # imagePullSecrets:           # only if the GHCR package stays private
+      #   - name: ghcr-pull
+      initContainers:
+        - name: wait-for-db
+          image: alpine:3.21
+          command: ['sh', '-c', 'until nc -z moto-tracker-db 5432; do echo "waiting for postgres..."; sleep 2; done']
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+        - name: run-migrations
+          image: ghcr.io/spiev/moto-tracker:0.1.0
+          command: ['alembic', 'upgrade', 'head']
+          env:
+            - name: MT_DB_HOST
+              value: moto-tracker-db
+            - name: MT_DB_PORT
+              value: "5432"
+            - name: MT_DB_NAME
+              value: moto
+            - name: MT_DB_USER
+              value: moto
+            - name: MT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: moto-tracker-secrets
+                  key: DATABASE_PASS
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+      containers:
+        - name: tracker
+          image: ghcr.io/spiev/moto-tracker:0.1.0
+          env:
+            - name: MT_DB_HOST
+              value: moto-tracker-db
+            - name: MT_DB_PORT
+              value: "5432"
+            - name: MT_DB_NAME
+              value: moto
+            - name: MT_DB_USER
+              value: moto
+            - name: MT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: moto-tracker-secrets
+                  key: DATABASE_PASS
+            # HA runs in Docker on the node, not in k3s — URL points at the node.
+            - name: MT_HA_URL
+              valueFrom:
+                secretKeyRef:
+                  name: moto-tracker-secrets
+                  key: HA_URL
+            - name: MT_HA_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: moto-tracker-secrets
+                  key: HA_TOKEN
+            - name: MT_HA_ENTITY
+              value: device_tracker.phone
+            - name: MT_PUBLIC_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: moto-tracker-secrets
+                  key: PUBLIC_BASE_URL
+            - name: TZ
+              value: Europe/Berlin
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: moto-tracker
+  namespace: moto-tracker
+  labels:
+    app: moto-tracker
+spec:
+  selector:
+    app: moto-tracker
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+# Grafana datasource — points at the in-namespace Postgres. The password is
+# interpolated from the PG_PASSWORD env var (set on the Grafana container).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: moto-tracker-grafana-datasource
+  namespace: moto-tracker
+  labels:
+    app: moto-tracker-grafana
+data:
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: moto
+        uid: moto
+        type: postgres
+        access: proxy
+        url: moto-tracker-db:5432
+        user: moto
+        isDefault: true
+        editable: false
+        jsonData:
+          database: moto
+          sslmode: disable
+          postgresVersion: 1600
+        secureJsonData:
+          password: $PG_PASSWORD
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: moto-tracker-grafana-dashboards-provider
+  namespace: moto-tracker
+  labels:
+    app: moto-tracker-grafana
+data:
+  provider.yaml: |
+    apiVersion: 1
+    providers:
+      - name: moto-tracker
+        orgId: 1
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        allowUiUpdates: true
+        options:
+          path: /etc/grafana/dashboards
+          foldersFromFilesStructure: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: moto-tracker-grafana-dashboard-tours
+  namespace: moto-tracker
+  labels:
+    app: moto-tracker-grafana
+data:
+  tours.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "graphTooltip": 0,
+      "schemaVersion": 39,
+      "tags": ["moto-tracker"],
+      "templating": {
+        "list": [
+          {
+            "name": "tour_id",
+            "label": "Tour",
+            "type": "query",
+            "datasource": { "type": "postgres", "uid": "moto" },
+            "refresh": 1,
+            "sort": 0,
+            "query": "SELECT id::text AS __value, to_char(started_at, 'YYYY-MM-DD HH24:MI') AS __text FROM tours ORDER BY started_at DESC",
+            "current": {},
+            "options": []
+          }
+        ]
+      },
+      "time": { "from": "now-1y", "to": "now" },
+      "timepicker": {},
+      "title": "Motorcycle Tours",
+      "uid": "moto-tours",
+      "version": 1,
+      "panels": [
+        {
+          "id": 1,
+          "title": "Tours",
+          "type": "table",
+          "datasource": { "type": "postgres", "uid": "moto" },
+          "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+          "options": { "showHeader": true },
+          "fieldConfig": { "defaults": {}, "overrides": [] },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "postgres", "uid": "moto" },
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT started_at AS \"Start\", round((distance_m/1000.0)::numeric, 1) AS \"km\", round((duration_s/60.0)::numeric, 0) AS \"min\", point_count AS \"Points\", id FROM tours WHERE ended_at IS NOT NULL ORDER BY started_at DESC"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "title": "Route",
+          "type": "geomap",
+          "datasource": { "type": "postgres", "uid": "moto" },
+          "gridPos": { "h": 16, "w": 24, "x": 0, "y": 9 },
+          "fieldConfig": { "defaults": {}, "overrides": [] },
+          "options": {
+            "basemap": { "type": "default", "name": "Basemap" },
+            "controls": { "showZoom": true, "mouseWheelZoom": true, "showAttribution": true },
+            "tooltip": { "mode": "details" },
+            "view": { "id": "fit" },
+            "layers": [
+              {
+                "type": "route",
+                "name": "Route",
+                "location": { "mode": "auto" },
+                "config": { "style": { "color": { "fixed": "red" }, "lineWidth": 3, "opacity": 0.8 } },
+                "tooltip": true
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "postgres", "uid": "moto" },
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT time, latitude, longitude FROM positions WHERE tour_id = $tour_id ORDER BY time"
+            }
+          ]
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: moto-tracker-grafana
+  namespace: moto-tracker
+  labels:
+    app: moto-tracker-grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: moto-tracker-grafana
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: moto-tracker-grafana
+    spec:
+      initContainers:
+        - name: wait-for-db
+          image: alpine:3.21
+          command: ['sh', '-c', 'until nc -z moto-tracker-db 5432; do echo "waiting for postgres..."; sleep 2; done']
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.1.0
+          env:
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: moto-tracker-secrets
+                  key: DATABASE_PASS
+            - name: GF_SECURITY_ADMIN_USER
+              value: admin
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: moto-tracker-secrets
+                  key: GRAFANA_ADMIN_PASSWORD
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "true"
+            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+              value: Viewer
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          volumeMounts:
+            - name: grafana-data
+              mountPath: /var/lib/grafana
+            - name: datasource
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboards-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards
+              mountPath: /etc/grafana/dashboards
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:
+        - name: grafana-data
+          persistentVolumeClaim:
+            claimName: moto-tracker-grafana
+        - name: datasource
+          configMap:
+            name: moto-tracker-grafana-datasource
+        - name: dashboards-provider
+          configMap:
+            name: moto-tracker-grafana-dashboards-provider
+        - name: dashboards
+          configMap:
+            name: moto-tracker-grafana-dashboard-tours
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: moto-tracker-grafana
+  namespace: moto-tracker
+  labels:
+    app: moto-tracker-grafana
+spec:
+  selector:
+    app: moto-tracker-grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
