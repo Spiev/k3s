@@ -28,10 +28,33 @@ apps/teslamate/
 
 ---
 
-## Tesla Fleet API authentication
+## Tesla API authentication
 
-Since TeslaMate v4 the discontinued Tesla **Owner API** no longer works. This setup uses
-the **direct Fleet API** — deliberately **without** any external proxy (MyTeslaMate /
+> **Current state (since 2026-06-23): back on the legacy Owner API.**
+> The Fleet API is pay-per-use (~$10/month free credit) and we kept hitting its hard
+> rate/cost limit, which the Owner API never had. The Owner API was in fact **never
+> removed** from TeslaMate — the 2026-06-12 outage ([#5384]) was Tesla rejecting Owner-API
+> calls whenever the token had been minted over old TLS/HTTP1.1. The TLS-1.3 fix ([#5406],
+> baked into v4.0.1) forces HTTP/2 + TLS 1.3 for `auth.tesla.com`, so the built-in
+> `ownerapi` token is valid again.
+>
+> **Owner API needs no Developer App, no `client_id`/`client_secret`, no public key.**
+> The manifest simply leaves `TESLA_API_HOST` and `TESLA_AUTH_CLIENT_ID` **unset**, so
+> TeslaMate falls back to `https://owner-api.teslamotors.com` + the `ownerapi` client.
+> Auth is just the account access/refresh tokens entered in the UI (generated with
+> [`tesla_auth`](https://github.com/adriankumpf/tesla_auth)).
+>
+> The `TESLA_AUTH_CLIENT_ID` key is still present (unused) in `teslamate-secrets`, and the
+> Fleet API setup below is kept as the documented fallback should Tesla ever truly close
+> the Owner API. To switch back: re-add `TESLA_API_HOST=https://fleet-api.prd.eu.vn.cloud.tesla.com`
+> and `TESLA_AUTH_CLIENT_ID` to the manifest, then re-auth via the token-login flow below.
+
+[#5384]: https://github.com/teslamate-org/teslamate/issues/5384
+[#5406]: https://github.com/teslamate-org/teslamate/pull/5406
+
+### Fleet API (fallback — was active 2026-06-14 … 2026-06-23)
+
+The **direct Fleet API** — deliberately **without** any external proxy (MyTeslaMate /
 Teslemetry) and **without** a local vehicle-command proxy (read-only data collection only).
 
 ### One-time setup (already done, for reference)
