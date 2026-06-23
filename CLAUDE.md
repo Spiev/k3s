@@ -6,7 +6,7 @@ Private k3s (lightweight Kubernetes) infrastructure repository. Target hardware:
 
 ## Architecture
 
-- **OS**: Raspberry Pi OS Lite (64-bit, Bookworm) — keeps native hardware tools (`raspi-config`, `vcgencmd`, `rpi-eeprom-update`)
+- **OS**: Raspberry Pi OS Lite (64-bit, Trixie) — keeps native hardware tools (`raspi-config`, `vcgencmd`, `rpi-eeprom-update`)
 - **Hardware**: 2× Raspberry Pi 5 (8 GB RAM) — Server-Node 256 GB NVMe, Agent-Node 2 TB NVMe (currently Docker, joins k3s after full migration)
 - **k3s** single-node to start; Agent-Node joins when all Docker services are migrated
 - **local-path-provisioner** (k3s built-in) for persistent storage — files stored directly on node filesystem
