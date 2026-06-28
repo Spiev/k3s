@@ -274,11 +274,20 @@ k3s is updated by running the install script again — it detects the existing i
 curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=stable sh -
 ```
 
-Or pin to a specific version:
+Or pin to a specific version. The pinned version lives in
+`infrastructure/k3s-version.env` and is tracked by Renovate (→ [Renovate](../operations/renovate.md)).
+Since that file is a shell-sourceable `KEY=VALUE` file, source it and let the
+installer pick up the version — no need to copy the number by hand:
 
 ```bash
-curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.32.2+k3s1 sh -
+# run from the repo root on the server node
+source infrastructure/k3s-version.env
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" sh -
 ```
+
+> The installer reads `INSTALL_K3S_VERSION`; the env file uses the descriptive
+> name `K3S_VERSION`, hence the mapping in the command. Renovate opens a PR
+> bumping `K3S_VERSION` whenever a new k3s release appears.
 
 Check current version:
 

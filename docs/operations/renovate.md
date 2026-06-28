@@ -78,11 +78,25 @@ jobs:
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
-  "enabledManagers": ["github-actions", "kubernetes"],
+  "enabledManagers": ["github-actions", "kubernetes", "custom.regex"],
+  "prHourlyLimit": 0,
+  "prConcurrentLimit": 0,
+  "customManagers": [
+    {
+      "description": "Track k3s releases",
+      "customType": "regex",
+      "fileMatch": ["^infrastructure/k3s-version\\.env$"],
+      "matchStrings": ["K3S_VERSION=(?<currentValue>[^\\n]+)"],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "k3s-io/k3s",
+      "versioningTemplate": "loose"
+    }
+  ],
   "kubernetes": {
     "fileMatch": ["apps/.+\\.yaml$", "infrastructure/.+\\.yaml$"]
   },
   "dependencyDashboard": false,
+  "pinDigests": true,
   "packageRules": [
     {
       "description": "LinuxServer.io images use 1.x.y-lsNNN versioning — regex extracts build number for correct comparison",
@@ -90,8 +104,8 @@ jobs:
       "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-ls(?<build>\\d+)$"
     },
     {
-      "description": "Auto-merge minor and patch updates",
-      "matchUpdateTypes": ["minor", "patch"],
+      "description": "Auto-merge minor, patch and digest updates",
+      "matchUpdateTypes": ["minor", "patch", "digest"],
       "automerge": true,
       "automergeType": "pr"
     },
@@ -146,6 +160,42 @@ Renovate tracks two update types:
 ```json
 "matchUpdateTypes": ["minor", "patch", "digest"]
 ```
+
+---
+
+## Tracking the k3s version
+
+k3s is installed via the `get.k3s.io` script, not as a container image — so the
+Kubernetes manager cannot see it. A `custom.regex` manager tracks the pinned
+version in `infrastructure/k3s-version.env` instead:
+
+```json
+{
+  "customType": "regex",
+  "fileMatch": ["^infrastructure/k3s-version\\.env$"],
+  "matchStrings": ["K3S_VERSION=(?<currentValue>[^\\n]+)"],
+  "datasourceTemplate": "github-releases",
+  "depNameTemplate": "k3s-io/k3s",
+  "versioningTemplate": "loose"
+}
+```
+
+Renovate compares `K3S_VERSION` against GitHub releases of `k3s-io/k3s` and
+opens a PR when a newer release appears (major updates stay manual, see above).
+
+The file is a plain shell `KEY=VALUE` file, so the upgrade does **not** require
+copying the version number by hand — source it and let the installer pick it up:
+
+```bash
+# run from the repo root on the server node
+source infrastructure/k3s-version.env
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" sh -
+```
+
+> The installer reads `INSTALL_K3S_VERSION`; the env file uses the descriptive
+> name `K3S_VERSION`, hence the mapping in the command.
+
+→ Full upgrade procedure: [Install k3s — Updating k3s](../platform/k3s-install.md#9-updating-k3s)
 
 ---
 
