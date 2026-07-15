@@ -18,6 +18,7 @@ Kubernetes infrastructure on a Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration
 | [Decision: Storage](docs/decisions/storage.md) | local-path instead of Longhorn — rationale and trade-offs |
 | [Decision: Ingress Security](docs/decisions/ingress-security.md) | CrowdSec instead of fail2ban — Traefik-native security layer |
 | [Decision: Uptime Monitoring](docs/decisions/uptime-monitoring.md) | UptimeRobot instead of self-hosted Uptime Kuma — external reachability checks |
+| [Decision: Online Office](docs/decisions/online-office.md) | Collabora Online instead of OnlyOffice — RAM footprint & LibreOffice engine consistency |
 | **Platform Setup** | |
 | [OS Setup](docs/platform/os-setup.md) | Raspberry Pi OS on NVMe, EEPROM, cgroups |
 | [Install k3s](docs/platform/k3s-install.md) | k3s with Dual-Stack (IPv4+IPv6), kubectl, first steps |
