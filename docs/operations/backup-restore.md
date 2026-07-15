@@ -8,7 +8,7 @@ Unified backup strategy via Restic for all services:
 |---|---|---|---|
 | DB dump + Restic → Hetzner S3 | Restic | Teslamate, Seafile, Paperless | individual files, entire service |
 
-The backup script runs as a cron job on the k3s node. It auto-detects running services, creates DB dumps and file snapshots via `kubectl exec`, uploads them to Hetzner S3 via Restic, and reports status per service via MQTT to Home Assistant.
+The backup script runs as a cron job on the k3s node. It auto-detects running services, creates DB dumps, snapshots PVC data from the local-path filesystem, uploads everything to Hetzner S3 via Restic, and reports status per service via MQTT to Home Assistant.
 
 **Hetzner project:** `k3s-homelab` — S3 bucket: `<your-bucket-name>`
 
@@ -34,13 +34,27 @@ These values **cannot** be recovered from the cluster if etcd is gone. Store the
 
 The backup script (`scripts/backup.sh`) runs as a cron job on the k3s node and:
 1. Auto-detects which known services have running pods
-2. Creates DB dumps via `kubectl exec` into a staging directory (`BACKUP_TEMP_DIR`)
+2. Dumps each service database:
+   - **PostgreSQL** (Paperless, Teslamate): `pg_dumpall -f` writes the dump **into the database PVC**; the script then gzips it by reading the file from the local-path host filesystem and removes the temporary dump inside the pod. The large dump never streams through the k3s API-server exec proxy.
+   - **MariaDB** (Seafile): the smaller dump is streamed directly via `kubectl exec ... | gzip` into the staging directory (`BACKUP_TEMP_DIR`).
 3. Reads PVC data in-place from the local-path-provisioner filesystem — no local copy needed for large volumes (e.g. Paperless media)
 4. Uploads everything to Hetzner S3 via Restic (one snapshot per service, tagged)
 5. Reports status per service via MQTT to Home Assistant
 6. Cleans up the staging directory
 
 Each service gets its own HA sensor (`backup_teslamate`, `backup_seafile`, `backup_paperless`, `backup_overall`).
+
+> **Why Postgres dumps are written to the PVC.** Streaming a large `pg_dumpall`
+> straight through `kubectl exec ... | gzip` fails once the dump grows past
+> ~100 MB: the k3s API-server WebSocket exec proxy resets the connection
+> mid-stream (`error: ... read: connection reset by peer` on `:6443`). Writing
+> the dump to the PVC with `pg_dumpall -f` and reading it back from the host's
+> local-path filesystem keeps the large transfer off the exec proxy entirely.
+> Seafile's MariaDB dump is small enough to stream safely.
+>
+> Each PostgreSQL service runs in its own `set -e` subshell in the backup loop,
+> so one service's failure is reported individually and no longer aborts the
+> backups of the remaining services.
 
 ### Setup
 
@@ -208,6 +222,12 @@ The backup contains: a PostgreSQL dump (in `BACKUP_TEMP_DIR/paperless/`) plus th
 `paperless-media` and `paperless-data` PVCs read directly from the local-path filesystem.
 Restic stores all three paths in a single snapshot tagged `paperless`.
 
+> **Note:** the import below streams the dump *into* the pod via `kubectl exec -i`.
+> The same k3s exec-proxy limit that affects backups applies here — if a large
+> import resets with `connection reset by peer`, copy the `.sql.gz` into the DB
+> PVC on the host first (`sudo cp` into the `*_paperless_paperless-postgres` dir)
+> and run `zcat … | psql` from inside the pod instead.
+
 ```bash
 cd ~/k3s/scripts && source .restic.env
 
@@ -274,6 +294,14 @@ RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" unlock
 
 # View backup log
 tail -100 ~/logs/k3s-backup.log
+
+# Symptom: a Postgres service backup fails at "Dumping database" with
+#   error: ... read tcp 127.0.0.1:...->127.0.0.1:6443: read: connection reset by peer
+# Cause: the DB dump was streamed through the k3s API-server exec proxy and grew
+#        past ~100 MB, which the proxy resets mid-stream.
+# Fix:   already handled — backup_paperless / backup_teslamate write the dump into
+#        the PVC via `pg_dumpall -f` and read the file from the host filesystem.
+#        Only reintroduced if a new service streams a large dump via kubectl exec.
 
 # Symptom: "no active services" despite pods running
 # Cause: kubectl not found — cron PATH only contains /usr/bin:/bin
