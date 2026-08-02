@@ -1,0 +1,34 @@
+---
+# Generic, public-safe defaults. Real per-host values (IPs, LAN CIDRs) belong in
+# gitignored inventory/host_vars — never here.
+
+# Ports reachable from anywhere (the node's own services).
+# NOTE: 80/443 are intentionally NOT here. Internet traffic enters via the k3s
+# ServiceLB hostPort (svclb-traefik) and rides the FORWARD + KUBE-* / CNI-HOSTPORT-*
+# chains, which UFW does not filter. See docs/platform/firewall.md.
+k3s_firewall_allowed_ports:
+  - { port: "22",    proto: tcp, comment: "SSH" }
+  - { port: "6443",  proto: tcp, comment: "k3s API server" }
+  - { port: "8472",  proto: udp, comment: "flannel VXLAN" }
+  - { port: "10250", proto: tcp, comment: "kubelet metrics" }
+
+# Ports reachable only from k3s_firewall_lan_cidrs. Skipped entirely if that
+# list is empty (the public-safe default).
+k3s_firewall_lan_ports:
+  - { port: "53",   proto: any, comment: "Pi-hole DNS (LoadBalancer)" }
+  - { port: "8080", proto: any, comment: "LAN-only app" }
+
+# LAN source ranges for the rules above. Empty by default; set the real values
+# in gitignored inventory/hosts.yml (see hosts.yml.example).
+k3s_firewall_lan_cidrs: []
+
+# k3s pod-network bridge (flannel). Intra-bridge pod traffic (incl. IPv6 NDP,
+# ICMPv6 type 135) must be trusted or UFW logs [UFW BLOCK] ... cni0 ... nonstop.
+k3s_firewall_cni_interface: cni0
+
+# Multicast / IGMP — required for mDNS + Google Cast device discovery.
+k3s_firewall_allow_multicast: true
+k3s_firewall_multicast_cidr: "224.0.0.0/4"
+k3s_firewall_allow_igmp: true
+
+k3s_firewall_logging: "on"
