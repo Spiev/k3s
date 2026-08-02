@@ -1,0 +1,18 @@
+---
+# Copy to hosts.yml (gitignored) and fill in the real values.
+# hosts.yml is the ONLY place real IPs / LAN ranges live — never commit it.
+all:
+  children:
+    k3s:
+      hosts:
+        k3s-server:
+          ansible_host: 192.0.2.10      # <-- Server-Node real IP
+        # k3s-agent:                     # uncomment when Agent-Node joins the cluster
+        #   ansible_host: 192.0.2.11     # <-- Agent-Node real IP
+      vars:
+        ansible_user: stefan
+        # Source ranges allowed to reach LAN-only ports (DNS :53, app :8080).
+        # This is the only mildly-identifying value — it stays here (gitignored).
+        k3s_firewall_lan_cidrs:
+          - 192.0.2.0/24                 # <-- your LAN CIDR (e.g. 192.168.x.0/24)
+          # - fdxx:xxxx:xxxx::/64        # <-- your IPv6 ULA prefix, if used

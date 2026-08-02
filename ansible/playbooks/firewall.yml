@@ -1,0 +1,9 @@
+---
+# Configure the host firewall (UFW) on all k3s nodes.
+#   cd ansible && ansible-playbook playbooks/firewall.yml
+# Add --check --diff for a dry run first.
+- name: Configure node firewall (UFW) for k3s
+  hosts: k3s
+  become: true
+  roles:
+    - k3s_firewall

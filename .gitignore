@@ -10,3 +10,7 @@ scripts/.credentials
 **/.env
 **/*.env
 !infrastructure/k3s-version.env
+
+# Ansible — real inventory & host vars (real IPs/hostnames); template is committed
+ansible/inventory/hosts.yml
+ansible/host_vars/

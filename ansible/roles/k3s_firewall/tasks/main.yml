@@ -1,0 +1,76 @@
+---
+- name: Ensure ufw is installed
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+    update_cache: true
+  when: ansible_os_family == "Debian"
+
+- name: Set default policies
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: incoming, policy: deny }
+    - { direction: outgoing, policy: allow }
+    - { direction: routed, policy: deny }
+
+# SSH (22) is in this list, so it is allowed before `state: enabled` runs last —
+# no lock-out, even on a fresh node.
+- name: Allow node service ports (from anywhere)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+    comment: "{{ item.comment }}"
+  loop: "{{ k3s_firewall_allowed_ports }}"
+  loop_control:
+    label: "{{ item.port }}/{{ item.proto }} ({{ item.comment }})"
+
+- name: Allow LAN-only service ports
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.1.port }}"
+    proto: "{{ item.1.proto | default('any') }}"
+    from_ip: "{{ item.0 }}"
+    comment: "{{ item.1.comment }}"
+  loop: "{{ k3s_firewall_lan_cidrs | product(k3s_firewall_lan_ports) | list }}"
+  loop_control:
+    label: "{{ item.1.port }} from {{ item.0 }}"
+
+# --- k3s-specific: keep UFW out of cluster + discovery traffic ---
+
+- name: Trust the k3s CNI bridge (input)
+  community.general.ufw:
+    rule: allow
+    direction: in
+    interface: "{{ k3s_firewall_cni_interface }}"
+    comment: "k3s CNI pod bridge (input)"
+
+- name: Trust the k3s CNI bridge (routed / intra-bridge pod NDP)
+  community.general.ufw:
+    rule: allow
+    route: true
+    interface_in: "{{ k3s_firewall_cni_interface }}"
+    interface_out: "{{ k3s_firewall_cni_interface }}"
+    comment: "k3s CNI pod bridge (routed)"
+
+- name: Allow IGMP (multicast group membership)
+  community.general.ufw:
+    rule: allow
+    proto: igmp
+    comment: "IGMP for mDNS/Cast"
+  when: k3s_firewall_allow_igmp
+
+- name: Allow multicast range (mDNS / SSDP / Cast discovery)
+  community.general.ufw:
+    rule: allow
+    to_ip: "{{ k3s_firewall_multicast_cidr }}"
+    comment: "Multicast discovery"
+  when: k3s_firewall_allow_multicast
+
+# Enabling is the LAST step, after SSH is already allowed above.
+- name: Enable ufw and set logging
+  community.general.ufw:
+    state: enabled
+    logging: "{{ k3s_firewall_logging }}"
