@@ -130,6 +130,12 @@ kubectl logs -n seafile deploy/collabora        # watch for "Unauthorized WOPI h
 kubectl exec -n seafile deploy/seafile -- curl -s -o /dev/null -w '%{http_code}\n' https://<hostname>/hosting/discovery
 ```
 
+**Redis caches the resolved editor URL per file extension** (`wopi_edit_<ext>`, `wopi_view_<ext>`, TTL ~7 days) — Seahub doesn't refetch Collabora's discovery XML on every file open. If `OFFICE_WEB_APP_BASE_URL` (or the hostname) ever changes, a plain pod restart is **not enough**: the stale URL survives in Redis independently of the Seafile pod's lifecycle. Clear it explicitly:
+
+```bash
+kubectl exec -n seafile deploy/redis -- sh -c "redis-cli --scan --pattern ':1:wopi_*' | xargs redis-cli DEL"
+```
+
 ---
 
 ## Notes

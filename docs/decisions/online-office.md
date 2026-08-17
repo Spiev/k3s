@@ -1,7 +1,7 @@
 # Architecture Decision: Collabora Online instead of OnlyOffice for Online Office Editing
 
 **Date:** 2026-07-11
-**Status:** Decided — manifests written, deployment/testing pending. See [Seafile: Collabora / Online-Office-Editing](../services/seafile.md#collabora--online-office-editing)
+**Status:** Implemented (2026-08-17) — see [Seafile: Collabora / Online-Office-Editing](../services/seafile.md#collabora--online-office-editing)
 
 ---
 
