@@ -70,9 +70,9 @@ Browser                     Seafile (seafile-mc)             Collabora (code)
    │  5. save                     │◄── PutFile (writes back) ───────┤
 ```
 
-- Steps 3 and 5 are **server-to-server inside the cluster** (`collabora.seafile.svc` ↔ `seafile.seafile.svc`). The file goes from the Seafile pod straight into the Collabora pod and back to its local-path volume — never to a third party.
+- Steps 3 and 5 stay within our own infrastructure, but not purely via ClusterIP as originally assumed: Collabora calls back on the `WOPISrc` URL it was given when the iframe loaded, which is the **public hostname** (`https://<hostname>/api2/wopi/files/...`), not `seafile.seafile.svc` directly. That request round-trips out through the nginx/Traefik layer and back in — still entirely inside our own infra (never a third party), just not the internal-only hop the diagram implies. (`OFFICE_WEB_APP_BASE_URL` — the URL Seahub uses to reach *Collabora* — has the same public-hostname requirement; see [Seafile docs](../services/seafile.md#collabora--online-office-editing) for why the internal `collabora.seafile.svc` name doesn't work there either.)
 - The browser only ever receives rendered tiles, never the raw file transfer.
-- Requests are authenticated with a shared **JWT secret** signed by Seahub; Collabora rejects anything unsigned.
+- Requests are authenticated with a short-lived **WOPI access token** that Seahub issues per edit session (not a static shared secret — see Consequences below).
 - The only external dependency is pulling the `collabora/code` image; after that it runs fully offline in the cluster.
 
 ---

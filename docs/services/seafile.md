@@ -17,7 +17,8 @@ Seafile is a self-hosted file sync and share platform. The stack consists of fou
 [Service: seafile]  →  [Pod: seafile-mc]     [Service: collabora] → [Pod: collabora]
                               │  mariadb.seafile.svc.cluster.local:3306
                               │  redis.seafile.svc.cluster.local:6379
-                              │  collabora.seafile.svc.cluster.local:9980 (WOPI discovery)
+                              │  WOPI discovery: https://<public-hostname>/hosting/discovery
+                              │  (via Ingress, not the internal collabora Service — see below)
                               ▼
                     [Service: mariadb]  →  [Pod: mariadb]
                     [Service: redis]    →  [Pod: redis]
@@ -117,7 +118,8 @@ Architecture decision: [Collabora Online instead of OnlyOffice](../decisions/onl
 
 **No new hostname, no new certificate.** Collabora is reachable under the *same* domain as Seafile — Collabora natively serves its own routes under the top-level paths `/browser`, `/cool`, `/hosting`, so Traefik just needs three extra path rules pointing at the `collabora` Service (see `seafile-ingress.yaml.example`). The existing nginx reverse-proxy layer (in the companion `docker-runtime` repo) already forwards the whole domain to Traefik regardless of path and already sets the WebSocket upgrade headers Collabora needs — no change required there.
 
-- Seahub fetches the WOPI discovery document **cluster-internally**: `http://collabora:9980/hosting/discovery` — never over the public internet.
+- **`OFFICE_WEB_APP_BASE_URL` must be the public URL** (`https://<SEAFILE_SERVER_HOSTNAME>/hosting/discovery`), *not* the internal `collabora.seafile.svc` service name — despite the official Seafile manual's same-host example using the internal name. Seahub does not use the host embedded in Collabora's own discovery-XML response (`urlsrc`) to build the editor iframe URL; it reuses the host from `OFFICE_WEB_APP_BASE_URL` directly. Pointing it internally makes the *browser* try to resolve `collabora:9980` itself, which fails outside the cluster. This is reachable from the Seafile pod too in this setup because local DNS (Pi-hole) resolves the public hostname to a LAN IP — no hairpin-NAT issue — but confirm that holds for your own DNS setup before relying on it.
+- Collabora's own `--o:net.server_hostname` (`extra_params`) still needs to be the same public hostname, so the discovery XML itself is internally consistent — some other WOPI-host implementations (unlike Seahub, per the above) do read the host from there.
 - No shared JWT secret is needed between Seafile and Collabora. Seahub issues a short-lived WOPI access token per edit session (`WOPI_ACCESS_TOKEN_EXPIRATION`, 30 min); Collabora's own auth is the WOPI host allowlist (`storage.wopi.host`, set via `extra_params` to `SEAFILE_SERVER_HOSTNAME`). The existing `JWT_PRIVATE_KEY` secret is Seafile's *internal* Seahub↔fileserver auth and is unrelated to Collabora.
 - Collabora is **stateless** — no PVC, no database. `resources.limits` are set (2 GiB / 2 CPU) so a runaway rendering session can't starve the node; see the [ADR](../decisions/online-office.md) for the RAM budget this was sized against.
 - Placement stays flexible — no `nodeAffinity`. If a third node joins later, it's a one-line `nodeSelector` change.
@@ -125,7 +127,7 @@ Architecture decision: [Collabora Online instead of OnlyOffice](../decisions/onl
 
 ```bash
 kubectl logs -n seafile deploy/collabora        # watch for "Unauthorized WOPI host" during setup
-kubectl exec -n seafile deploy/seafile -- curl -s http://collabora:9980/hosting/discovery
+kubectl exec -n seafile deploy/seafile -- curl -s -o /dev/null -w '%{http_code}\n' https://<hostname>/hosting/discovery
 ```
 
 ---
@@ -135,5 +137,5 @@ kubectl exec -n seafile deploy/seafile -- curl -s http://collabora:9980/hosting/
 - **`SEAFILE_SERVER_PROTOCOL`** must be set in the Deployment (`http` or `https`) — without it the image generates incorrect `SERVICE_URL` and `FILE_SERVER_ROOT` values, causing upload errors in the browser.
 - **`seafile-secrets.sops.yaml`** must not contain k8s runtime metadata (`uid`, `resourceVersion`, `creationTimestamp`) — these cause conflicts during Flux apply.
 - **Readiness Probe**: The pod stays at `0/1` for up to ~2 minutes while Seahub starts. This is normal.
-- **Collabora `net.server_hostname`**: the discovery XML Seahub fetches internally must still contain externally-reachable URLs (the browser loads the iframe directly) — `net.server_hostname` in `extra_params` is what makes that work. If the editor iframe fails to load, this is the first thing to check.
+- **Collabora `OFFICE_WEB_APP_BASE_URL`**: must be the public hostname, not the internal service name — see above. Symptom if wrong: browser error "server not found" / "kann sich nicht mit `collabora:9980` verbinden" when opening a document.
 - **nginx idle timeout**: the `docker-runtime` reverse proxy sets `proxy_read_timeout 300s` on the Seafile vhost. A long-idle Collabora editing session could hit this — if WebSocket drops are observed, add a dedicated `location /cool` block with a longer timeout there (separate repo).
