@@ -2,19 +2,22 @@
 
 Prerequisite: [SOPS + age](../platform/sops.md) must be set up.
 
-Seafile is a self-hosted file sync and share platform. The stack consists of three pods: Seafile (`seafile-mc`), MariaDB, and Redis.
+Seafile is a self-hosted file sync and share platform. The stack consists of four pods: Seafile (`seafile-mc`), MariaDB, Redis, and Collabora Online (browser-based office document editing).
 
 ---
 
 ## Architecture
 
 ```
-[Ingress/Traefik]
-      │  Host: seafile.example.com
-      ▼
-[Service: seafile]  →  [Pod: seafile-mc]
+                       [Ingress/Traefik] — Host: seafile.example.com
+                              │
+              ┌───────────────┴────────────────────┐
+              │ / (default)                         │ /browser, /cool, /hosting
+              ▼                                      ▼
+[Service: seafile]  →  [Pod: seafile-mc]     [Service: collabora] → [Pod: collabora]
                               │  mariadb.seafile.svc.cluster.local:3306
                               │  redis.seafile.svc.cluster.local:6379
+                              │  collabora.seafile.svc.cluster.local:9980 (WOPI discovery)
                               ▼
                     [Service: mariadb]  →  [Pod: mariadb]
                     [Service: redis]    →  [Pod: redis]
@@ -25,7 +28,7 @@ Seafile is a self-hosted file sync and share platform. The stack consists of thr
                     (local-path)          (local-path)
 ```
 
-`seafile-mc` contains both Seafile and Seahub. **Redis** is required as cache provider since Seafile 13.
+`seafile-mc` contains both Seafile and Seahub. **Redis** is required as cache provider since Seafile 13. **Collabora** is stateless (no PVC) and shares the Seafile hostname via path-based Ingress routing — see [Collabora / Online-Office-Editing](#collabora--online-office-editing) below.
 
 ---
 
@@ -33,10 +36,10 @@ Seafile is a self-hosted file sync and share platform. The stack consists of thr
 
 ```
 apps/seafile/
-├── seafile.yaml                  ← Namespace, PVCs, StatefulSet (MariaDB), Deployments (Seafile, Redis), Services
+├── seafile.yaml                  ← Namespace, PVCs, StatefulSet (MariaDB), Deployments (Seafile, Redis, Collabora), Services
 ├── seafile-secrets.sops.yaml     ← all Secrets SOPS-encrypted
 ├── seafile-ingress.yaml          ← .gitignore (hostname stays local)
-└── seafile-ingress.yaml.example  ← Ingress template
+└── seafile-ingress.yaml.example  ← Ingress template (Seafile + Collabora paths)
 ```
 
 **MariaDB runs as a StatefulSet** to get a stable, predictable pod name (`mariadb-0`) — standard practice for databases in Kubernetes.
@@ -53,7 +56,7 @@ apps/seafile/
 | `MYSQL_PASSWORD` | Seafile DB user password |
 | `SEAFILE_ADMIN_EMAIL` | Seafile admin email |
 | `SEAFILE_ADMIN_PASSWORD` | Seafile admin password |
-| `SEAFILE_SERVER_HOSTNAME` | Public hostname (e.g. `seafile.fritz.box`) |
+| `SEAFILE_SERVER_HOSTNAME` | Public hostname (e.g. `seafile.fritz.box`) — also used by Collabora (`net.server_hostname`, WOPI host allowlist), see below |
 | `JWT_PRIVATE_KEY` | JWT signing key — `openssl rand -base64 40` |
 
 Always use `stringData` — values are readable after decryption, no base64 step needed (see [SOPS — base64 trap](../platform/sops.md#️-base64-trap--never-use-kubectl-create---dry-run-for-sops-secrets)).
@@ -108,8 +111,29 @@ First startup takes ~1–2 minutes while Seahub initialises. The admin account i
 
 ---
 
+## Collabora / Online-Office-Editing
+
+Architecture decision: [Collabora Online instead of OnlyOffice](../decisions/online-office.md). Documents (`.odt`, `.docx`, `.xlsx`, `.pptx`, …) open and save directly in the browser via the WOPI protocol — no download/upload round-trip.
+
+**No new hostname, no new certificate.** Collabora is reachable under the *same* domain as Seafile — Collabora natively serves its own routes under the top-level paths `/browser`, `/cool`, `/hosting`, so Traefik just needs three extra path rules pointing at the `collabora` Service (see `seafile-ingress.yaml.example`). The existing nginx reverse-proxy layer (in the companion `docker-runtime` repo) already forwards the whole domain to Traefik regardless of path and already sets the WebSocket upgrade headers Collabora needs — no change required there.
+
+- Seahub fetches the WOPI discovery document **cluster-internally**: `http://collabora:9980/hosting/discovery` — never over the public internet.
+- No shared JWT secret is needed between Seafile and Collabora. Seahub issues a short-lived WOPI access token per edit session (`WOPI_ACCESS_TOKEN_EXPIRATION`, 30 min); Collabora's own auth is the WOPI host allowlist (`storage.wopi.host`, set via `extra_params` to `SEAFILE_SERVER_HOSTNAME`). The existing `JWT_PRIVATE_KEY` secret is Seafile's *internal* Seahub↔fileserver auth and is unrelated to Collabora.
+- Collabora is **stateless** — no PVC, no database. `resources.limits` are set (2 GiB / 2 CPU) so a runaway rendering session can't starve the node; see the [ADR](../decisions/online-office.md) for the RAM budget this was sized against.
+- Placement stays flexible — no `nodeAffinity`. If a third node joins later, it's a one-line `nodeSelector` change.
+- Admin console is disabled (`--o:admin_console.enable=false`) — not needed for 1–3 home users, avoids an extra login surface.
+
+```bash
+kubectl logs -n seafile deploy/collabora        # watch for "Unauthorized WOPI host" during setup
+kubectl exec -n seafile deploy/seafile -- curl -s http://collabora:9980/hosting/discovery
+```
+
+---
+
 ## Notes
 
 - **`SEAFILE_SERVER_PROTOCOL`** must be set in the Deployment (`http` or `https`) — without it the image generates incorrect `SERVICE_URL` and `FILE_SERVER_ROOT` values, causing upload errors in the browser.
 - **`seafile-secrets.sops.yaml`** must not contain k8s runtime metadata (`uid`, `resourceVersion`, `creationTimestamp`) — these cause conflicts during Flux apply.
 - **Readiness Probe**: The pod stays at `0/1` for up to ~2 minutes while Seahub starts. This is normal.
+- **Collabora `net.server_hostname`**: the discovery XML Seahub fetches internally must still contain externally-reachable URLs (the browser loads the iframe directly) — `net.server_hostname` in `extra_params` is what makes that work. If the editor iframe fails to load, this is the first thing to check.
+- **nginx idle timeout**: the `docker-runtime` reverse proxy sets `proxy_read_timeout 300s` on the Seafile vhost. A long-idle Collabora editing session could hit this — if WebSocket drops are observed, add a dedicated `location /cool` block with a longer timeout there (separate repo).

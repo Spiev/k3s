@@ -1,7 +1,7 @@
 # Architecture Decision: Collabora Online instead of OnlyOffice for Online Office Editing
 
 **Date:** 2026-07-11
-**Status:** Decided — implementation pending
+**Status:** Decided — manifests written, deployment/testing pending. See [Seafile: Collabora / Online-Office-Editing](../services/seafile.md#collabora--online-office-editing)
 
 ---
 
@@ -81,8 +81,8 @@ Browser                     Seafile (seafile-mc)             Collabora (code)
 
 - Collabora runs as a **new Deployment + Service** in the `seafile` namespace.
 - **Stateless** — no PVC, no database, no local volume. It fetches files on demand and forgets them.
-- A **shared JWT secret** (SOPS-encrypted) is added to the Seafile secrets and referenced by both Collabora and the Seahub config.
-- Collabora needs its **own Ingress** — it must be reachable from the browser over HTTPS (the editor iframe loads from it directly).
+- **No shared JWT secret is needed** (revised after implementation research — the original assumption below was wrong). Seahub issues a short-lived WOPI access token per edit session automatically; Collabora authenticates the request source via a WOPI host allowlist (`storage.wopi.host`, set via `extra_params`) instead of a static secret. The existing `JWT_PRIVATE_KEY` in the Seafile secrets is Seafile's internal Seahub↔fileserver auth and is unrelated to Collabora.
+- **No separate Ingress or hostname.** Collabora natively serves its own routes under the top-level paths `/browser`, `/cool`, `/hosting` — these are added as extra path rules to the *existing* Seafile Ingress (same host), avoiding a second DNS name and TLS certificate entirely. Traefik path-routes to the `seafile` vs. `collabora` Service under one hostname; nothing changes on the external nginx reverse-proxy layer (`docker-runtime` repo), which already forwards the whole domain (any path) plus WebSocket upgrade headers.
 - `seahub_settings.py` is patched to enable the Collabora/WOPI integration (via the existing `patch-seahub-settings` init container pattern).
 - **Resource `limits` should be set** so a runaway rendering session cannot starve the node.
 - **Placement stays flexible.** Because Collabora is stateless, it can be scheduled on any node and freely rescheduled — no `nodeAffinity` pinning like local-path services. If a third Pi joins later, offloading is a one-line change: label the node (`kubectl label node <pi> role=office`) and add a `nodeSelector` to the Deployment; Flux reschedules it with zero data migration. Cross-node traffic (Seafile ↔ Collabora) is transparent via the ClusterIP service, and browser reachability is independent of the node — placement is purely a resource decision.

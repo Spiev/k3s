@@ -189,6 +189,19 @@ spec:
               grep -q 'ENABLE_TWO_FACTOR_AUTH' /shared/seafile/conf/seahub_settings.py 2>/dev/null || \
               echo "ENABLE_TWO_FACTOR_AUTH = True" \
               >> /shared/seafile/conf/seahub_settings.py
+              # Collabora Online / WOPI integration — see docs/decisions/online-office.md
+              # Discovery is fetched cluster-internally (Seahub -> collabora Service),
+              # never over the public internet.
+              grep -q 'OFFICE_SERVER_TYPE' /shared/seafile/conf/seahub_settings.py 2>/dev/null || cat >> /shared/seafile/conf/seahub_settings.py <<'PYEOF'
+              OFFICE_SERVER_TYPE = 'CollaboraOffice'
+              ENABLE_OFFICE_WEB_APP = True
+              OFFICE_WEB_APP_BASE_URL = 'http://collabora:9980/hosting/discovery'
+              WOPI_ACCESS_TOKEN_EXPIRATION = 30 * 60
+              OFFICE_WEB_APP_FILE_EXTENSION = ('odp', 'ods', 'odt', 'xls', 'xlsb', 'xlsm', 'xlsx', 'ppsx', 'ppt', 'pptm', 'pptx', 'doc', 'docm', 'docx')
+              OFFICE_PREVIEW_MAX_SIZE = 30 * 1024 * 1024
+              ENABLE_OFFICE_WEB_APP_EDIT = True
+              OFFICE_WEB_APP_EDIT_FILE_EXTENSION = ('odp', 'ods', 'odt', 'xls', 'xlsb', 'xlsm', 'xlsx', 'ppsx', 'ppt', 'pptm', 'pptx', 'doc', 'docm', 'docx')
+              PYEOF
           env:
             - name: SEAFILE_HOSTNAME
               valueFrom:
@@ -284,3 +297,76 @@ spec:
   ports:
     - port: 80
       targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: collabora
+  namespace: seafile
+  labels:
+    app: collabora
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: collabora
+  template:
+    metadata:
+      labels:
+        app: collabora
+    spec:
+      containers:
+        - name: collabora
+          image: collabora/code:26.04.3.1.1@sha256:6b70f91f0b6e9c76f75f162f58ef0a12cf9415d78e14713d33c0318ddc4a2cc0
+          env:
+            - name: SEAFILE_HOSTNAME
+              valueFrom:
+                secretKeyRef:
+                  name: seafile-secrets
+                  key: SEAFILE_SERVER_HOSTNAME
+            # WOPI host allowlist + external hostname share the same value:
+            # Collabora is reachable under the Seafile domain via path-based
+            # ingress routing (/browser, /cool, /hosting), see seafile-ingress.yaml.example.
+            # Note: storage.wopi.host is a regex; the dot is left unescaped here
+            # (matches slightly broader than strictly necessary) to avoid templating
+            # the secret value — acceptable for a home deployment behind a private domain.
+            - name: extra_params
+              value: >-
+                --o:ssl.enable=false
+                --o:ssl.termination=true
+                --o:storage.wopi.host[0]=$(SEAFILE_HOSTNAME)
+                --o:net.server_hostname=$(SEAFILE_HOSTNAME)
+                --o:welcome.enable=false
+                --o:admin_console.enable=false
+          ports:
+            - containerPort: 9980
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "2"
+          readinessProbe:
+            httpGet:
+              path: /hosting/discovery
+              port: 9980
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: collabora
+  namespace: seafile
+  labels:
+    app: collabora
+spec:
+  selector:
+    app: collabora
+  ports:
+    - port: 9980
+      targetPort: 9980
+  # ClusterIP (default): internal only
+  # Seahub reaches Collabora via: collabora.seafile.svc.cluster.local
+  # The browser reaches Collabora via the Seafile Ingress (/browser, /cool, /hosting paths)

@@ -11,6 +11,30 @@ spec:
     - host: seafile.example.com    # <-- deine Domain eintragen
       http:
         paths:
+          # Collabora Online (WOPI editor) — native top-level paths, no rewrite needed.
+          # Serving these under the Seafile domain avoids a second hostname/certificate;
+          # see docs/decisions/online-office.md.
+          - path: /browser
+            pathType: Prefix
+            backend:
+              service:
+                name: collabora
+                port:
+                  number: 9980
+          - path: /cool
+            pathType: Prefix
+            backend:
+              service:
+                name: collabora
+                port:
+                  number: 9980
+          - path: /hosting
+            pathType: Prefix
+            backend:
+              service:
+                name: collabora
+                port:
+                  number: 9980
           - path: /
             pathType: Prefix
             backend:
