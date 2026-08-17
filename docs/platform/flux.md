@@ -445,6 +445,8 @@ Flux substitutes the value before applying. The placeholder is never sent to the
 
 > **Pitfall:** If `postBuild.substituteFrom` is missing from `apps.yaml`, Flux applies the literal string `${MQTT_HOST}` to the cluster — the substitution silently does nothing. Always verify with `kubectl get deployment <name> -o jsonpath='{...}'` that the value was resolved.
 
+> **Pitfall (the opposite problem):** substitution is active for *every* manifest under `apps/`, and it matches `${VAR}` anywhere in the text — including inside embedded shell scripts (init container `command:` blocks) that were never meant for Flux at all, e.g. a container's own env var expanded at *runtime* like `${SEAFILE_HOSTNAME}`. If that name isn't a key in `cluster-vars`, Flux doesn't leave it alone — it silently substitutes an **empty string**, and the broken manifest still applies cleanly (no error, no warning). This bit the Collabora integration: `${SEAFILE_HOSTNAME}` in a `patch-seahub-settings` init container script got emptied out before the shell ever ran, producing a malformed URL. Fix: escape it as `$${SEAFILE_HOSTNAME}` — Flux renders that as the literal `${SEAFILE_HOSTNAME}`, which the *shell* then expands correctly at container runtime. Rule of thumb: any `${VAR}` written for shell/runtime expansion (not Flux) needs the `$$` escape, every time, in any manifest under `apps/`.
+
 ---
 
 ## Traefik: move from k3s built-in to Flux HelmRelease (optional)

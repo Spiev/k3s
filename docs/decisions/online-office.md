@@ -9,7 +9,7 @@
 
 Seafile is migrated and running on k3s. To edit office documents (`.odt`, `.docx`, `.xlsx`, `.pptx`) directly in the browser — without downloading, editing locally, and re-uploading — Seafile needs an integrated online office server. Seafile documents three integration paths: Collabora Online, OnlyOffice, and Office Online Server (Microsoft, Pro only).
 
-Both Collabora and OnlyOffice are **self-hosted** — the file never leaves the cluster. "Online" refers to browser-based editing, not a cloud service. Files are exchanged server-to-server between the Seafile pod and the office pod; the browser only receives rendered output.
+Both Collabora and OnlyOffice are **self-hosted** — the file never leaves our own infrastructure. "Online" refers to browser-based editing, not a cloud service. Files are exchanged between the Seafile pod and the office pod (see "How the integration works" below for the actual path); the browser only receives rendered output.
 
 **Constraints:**
 
@@ -61,7 +61,7 @@ Seafile is the **WOPI host** (holds the file), Collabora is the **WOPI client** 
 ```
 Browser                     Seafile (seafile-mc)             Collabora (code)
    │  1. click doc.odt            │                                 │
-   ├─────────────────────────────►│  generates WOPI URL + JWT       │
+   ├─────────────────────────────►│  generates WOPI URL + token     │
    │  2. iframe loads editor ◄────┤                                 │
    ├──────────────────────────────┼────────────────────────────────►│
    │                              │◄── 3. CheckFileInfo / GetFile ──┤
@@ -85,7 +85,7 @@ Browser                     Seafile (seafile-mc)             Collabora (code)
 - **No separate Ingress or hostname.** Collabora natively serves its own routes under the top-level paths `/browser`, `/cool`, `/hosting` — these are added as extra path rules to the *existing* Seafile Ingress (same host), avoiding a second DNS name and TLS certificate entirely. Traefik path-routes to the `seafile` vs. `collabora` Service under one hostname; nothing changes on the external nginx reverse-proxy layer (`docker-runtime` repo), which already forwards the whole domain (any path) plus WebSocket upgrade headers.
 - `seahub_settings.py` is patched to enable the Collabora/WOPI integration (via the existing `patch-seahub-settings` init container pattern).
 - **Resource `limits` should be set** so a runaway rendering session cannot starve the node.
-- **Placement stays flexible.** Because Collabora is stateless, it can be scheduled on any node and freely rescheduled — no `nodeAffinity` pinning like local-path services. If a third Pi joins later, offloading is a one-line change: label the node (`kubectl label node <pi> role=office`) and add a `nodeSelector` to the Deployment; Flux reschedules it with zero data migration. Cross-node traffic (Seafile ↔ Collabora) is transparent via the ClusterIP service, and browser reachability is independent of the node — placement is purely a resource decision.
+- **Placement stays flexible.** Because Collabora is stateless, it can be scheduled on any node and freely rescheduled — no `nodeAffinity` pinning like local-path services. If a third Pi joins later, offloading is a one-line change: label the node (`kubectl label node <pi> role=office`) and add a `nodeSelector` to the Deployment; Flux reschedules it with zero data migration. This works regardless of which node Collabora lands on: both Seahub→Collabora (discovery) and Collabora→Seahub (WOPI callbacks) go via the public hostname/Ingress rather than a direct pod-to-pod hop (see "How the integration works" above), so Traefik — not node placement — decides where the traffic ends up. Placement is purely a resource decision.
 
 ---
 
