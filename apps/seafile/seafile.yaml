@@ -195,6 +195,10 @@ spec:
               # loads. Reachable from the pod too — local DNS resolves this hostname to a
               # LAN IP, no hairpin-NAT issue. Using the internal collabora:9980 service
               # name here breaks the editor (browser tries to resolve "collabora" itself).
+              # Self-heal: an earlier version of this patch wrote the internal service
+              # name — fix it in place on pods that already have it, idempotently.
+              sed -i "s|OFFICE_WEB_APP_BASE_URL = 'http://collabora:9980/hosting/discovery'|OFFICE_WEB_APP_BASE_URL = 'https://${SEAFILE_HOSTNAME}/hosting/discovery'|" \
+              /shared/seafile/conf/seahub_settings.py 2>/dev/null || true
               grep -q 'OFFICE_SERVER_TYPE' /shared/seafile/conf/seahub_settings.py 2>/dev/null || cat >> /shared/seafile/conf/seahub_settings.py <<PYEOF
               OFFICE_SERVER_TYPE = 'CollaboraOffice'
               ENABLE_OFFICE_WEB_APP = True
