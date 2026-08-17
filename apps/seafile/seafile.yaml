@@ -184,7 +184,7 @@ spec:
             - -c
             - |
               grep -q 'CSRF_TRUSTED_ORIGINS' /shared/seafile/conf/seahub_settings.py 2>/dev/null || \
-              echo "CSRF_TRUSTED_ORIGINS = ['https://${SEAFILE_HOSTNAME}']" \
+              echo "CSRF_TRUSTED_ORIGINS = ['https://$${SEAFILE_HOSTNAME}']" \
               >> /shared/seafile/conf/seahub_settings.py
               grep -q 'ENABLE_TWO_FACTOR_AUTH' /shared/seafile/conf/seahub_settings.py 2>/dev/null || \
               echo "ENABLE_TWO_FACTOR_AUTH = True" \
@@ -195,14 +195,24 @@ spec:
               # loads. Reachable from the pod too — local DNS resolves this hostname to a
               # LAN IP, no hairpin-NAT issue. Using the internal collabora:9980 service
               # name here breaks the editor (browser tries to resolve "collabora" itself).
-              # Self-heal: an earlier version of this patch wrote the internal service
-              # name — fix it in place on pods that already have it, idempotently.
-              sed -i "s|OFFICE_WEB_APP_BASE_URL = 'http://collabora:9980/hosting/discovery'|OFFICE_WEB_APP_BASE_URL = 'https://${SEAFILE_HOSTNAME}/hosting/discovery'|" \
+              #
+              # NOTE ON $$: the Flux `apps` Kustomization has postBuild.substituteFrom
+              # (cluster-vars secret), which rewrites ANY ${VAR} in this manifest's text
+              # at render time — including inside this shell script. SEAFILE_HOSTNAME
+              # isn't one of its vars, so an unescaped ${SEAFILE_HOSTNAME} gets silently
+              # replaced with an empty string before this script ever runs. $${VAR} is
+              # Flux's escape for "pass this through literally" so the *shell* expands it
+              # at container runtime instead. This bit the pre-existing CSRF_TRUSTED_ORIGINS
+              # line above too (only masked because its grep-guard already matched).
+              #
+              # Self-heal: replace any existing OFFICE_WEB_APP_BASE_URL line regardless of
+              # its current (possibly broken, from earlier versions of this patch) value.
+              sed -i "s|^OFFICE_WEB_APP_BASE_URL = .*|OFFICE_WEB_APP_BASE_URL = 'https://$${SEAFILE_HOSTNAME}/hosting/discovery'|" \
               /shared/seafile/conf/seahub_settings.py 2>/dev/null || true
               grep -q 'OFFICE_SERVER_TYPE' /shared/seafile/conf/seahub_settings.py 2>/dev/null || cat >> /shared/seafile/conf/seahub_settings.py <<PYEOF
               OFFICE_SERVER_TYPE = 'CollaboraOffice'
               ENABLE_OFFICE_WEB_APP = True
-              OFFICE_WEB_APP_BASE_URL = 'https://${SEAFILE_HOSTNAME}/hosting/discovery'
+              OFFICE_WEB_APP_BASE_URL = 'https://$${SEAFILE_HOSTNAME}/hosting/discovery'
               WOPI_ACCESS_TOKEN_EXPIRATION = 30 * 60
               OFFICE_WEB_APP_FILE_EXTENSION = ('odp', 'ods', 'odt', 'xls', 'xlsb', 'xlsm', 'xlsx', 'ppsx', 'ppt', 'pptm', 'pptx', 'doc', 'docm', 'docx')
               OFFICE_PREVIEW_MAX_SIZE = 30 * 1024 * 1024
