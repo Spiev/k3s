@@ -27,6 +27,7 @@ tls-san:
   - <node-hostname>
 cluster-cidr: "10.42.0.0/16,fd42::/56"
 service-cidr: "10.43.0.0/16,fd43::/112"
+flannel-ipv6-masq: true
 EOF
 ```
 
@@ -35,8 +36,15 @@ EOF
 | `tls-san` | `<node-hostname>` | Hostname in the TLS certificate — enables remote kubectl |
 | `cluster-cidr` | `10.42.0.0/16,fd42::/56` | Pod network (IPv4 + IPv6) |
 | `service-cidr` | `10.43.0.0/16,fd43::/112` | Service ClusterIPs (IPv4 + IPv6) |
+| `flannel-ipv6-masq` | `true` | Masquerade (NAT) pod-initiated IPv6 traffic leaving the cluster — see below |
 
 The IPv6 ranges are ULA (Unique Local Addresses, `fd00::/8`) — private, not routed to the internet.
+
+**`flannel-ipv6-masq` is required, not optional, despite not being in k3s's own quick-start examples.** Flannel applies masquerading to pod-egress traffic by default for IPv4 only (`FLANNEL-POSTRTG` chain in `iptables`) — the IPv6 equivalent is opt-in. Without this flag, pods keep their pod-network IPv6 source address (`fd42::/56`) on outbound connections. Since that range isn't routed anywhere outside the cluster, any pod-initiated connection that happens to resolve a dual-stack hostname to its AAAA record hangs until TCP connect times out (~30s) instead of failing fast or falling back to IPv4 — this is what caused the intermittent Seafile/Collabora WOPI open/save errors (`docs/services/seafile.md`). Verify after install:
+```bash
+sudo ip6tables -t nat -S | grep FLANNEL-POSTRTG   # should list a MASQUERADE rule, not be empty
+```
+Upstream references: [k3s-io/k3s#4683](https://github.com/k3s-io/k3s/issues/4683), [k3s-io/k3s#5766](https://github.com/k3s-io/k3s/issues/5766).
 
 ---
 
