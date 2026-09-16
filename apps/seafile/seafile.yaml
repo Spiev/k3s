@@ -98,7 +98,7 @@ spec:
     spec:
       containers:
         - name: mariadb
-          image: mariadb:12.3@sha256:ab1c3dd381940233af12512b97d47b508fd3a0f17fbe3ba388739b7bc17cbc0b
+          image: mariadb:13.0@sha256:6364857ae6bd6640139189c632df94f76329c7b1402d33fb9e64b05bf1ca628d
           env:
             - name: MYSQL_ROOT_PASSWORD
               valueFrom:
