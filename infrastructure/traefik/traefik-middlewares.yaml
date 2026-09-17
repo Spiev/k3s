@@ -32,9 +32,10 @@ spec:
     average: 20
     burst: 50
     period: 1s
-    sourceCriterion:
-      ipStrategy:
-        depth: 1
+    # Edge = Traefik (post-flip): traffic arrives direct via Fritzbox NAT, no
+    # X-Forwarded-For. Omitting sourceCriterion makes Traefik group by the real
+    # TCP source IP (ConnRemoteAddr, NAT-preserved) — do NOT use ipStrategy.depth
+    # here (it would read a now-absent/spoofable XFF header).
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -48,9 +49,7 @@ spec:
     average: 5
     burst: 10
     period: 1m
-    sourceCriterion:
-      ipStrategy:
-        depth: 1
+    # See rate-limit-general: group by real source IP, no ipStrategy.depth.
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware

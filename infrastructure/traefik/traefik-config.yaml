@@ -10,9 +10,10 @@ spec:
   valuesContent: |-
     ports:
       web:
-        forwardedHeaders:
-          trustedIPs:
-            - "${PROXY_IP}/32"
+        # Edge = Traefik (post-flip): traffic arrives direct via Fritzbox NAT.
+        # No nginx upstream to trust, so forwardedHeaders/trustedIPs is removed —
+        # Traefik uses the real TCP source IP. (Was: trustedIPs [${PROXY_IP}/32]
+        # when nginx sat in front and set X-Forwarded-For.)
         # Bound how long a client may take to send a request / receive a response.
         # Without this, readTimeout defaults to 0 (unlimited) — a Slowloris client
         # could hold a connection open indefinitely. readTimeout covers the full
@@ -25,9 +26,6 @@ spec:
             writeTimeout: 300s
             idleTimeout: 180s
       websecure:
-        forwardedHeaders:
-          trustedIPs:
-            - "${PROXY_IP}/32"
         transport:
           respondingTimeouts:
             readTimeout: 300s

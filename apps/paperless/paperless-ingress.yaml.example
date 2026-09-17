@@ -1,14 +1,68 @@
+# Edge = Traefik (post-flip): HTTPS on websecure, TLS from the bridge cert
+# (later: cert-manager). Copy to paperless-ingress.yaml (gitignored), set host +
+# TLS secret. See .hermes/plans/2026-09-17_nginx-to-traefik-edge-flip.md.
+#
+# Two Ingress objects: the auth paths get the strict 5/min login limit, the rest
+# gets the general limit. Traefik matches the more specific path first, so the
+# auth rule wins on /api/token & /api/auth (mirrors the old nginx location).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: paperless-auth
+  namespace: paperless
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: >-
+      kube-system-security-headers@kubernetescrd,
+      kube-system-rate-limit-login@kubernetescrd,
+      kube-system-body-limit-default@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - paperless.example.com       # <-- deine Domain
+      secretName: edge-bridge-cert
+  rules:
+    - host: paperless.example.com     # <-- deine Domain
+      http:
+        paths:
+          - path: /api/token
+            pathType: Prefix
+            backend:
+              service:
+                name: paperless-webserver
+                port:
+                  number: 8000
+          - path: /api/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: paperless-webserver
+                port:
+                  number: 8000
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: paperless
   namespace: paperless
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: >-
+      kube-system-security-headers@kubernetescrd,
+      kube-system-rate-limit-general@kubernetescrd,
+      kube-system-body-limit-upload@kubernetescrd
+    # cert-manager.io/cluster-issuer: letsencrypt-prod   # step 3, after cutover
 spec:
   ingressClassName: traefik
+  tls:
+    - hosts:
+        - paperless.example.com       # <-- deine Domain
+      secretName: edge-bridge-cert  # bridge; later: cert-manager secret
   rules:
-    - host: paperless.fritz.box
+    - host: paperless.example.com     # <-- deine Domain
       http:
         paths:
           - path: /
