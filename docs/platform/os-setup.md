@@ -1,6 +1,6 @@
 # Raspberry Pi 5: OS & NVMe Boot
 
-Hardware: Raspberry Pi 5 (8 GB RAM), M.2 HAT+, 256 GB NVMe SSD.
+Hardware: Raspberry Pi 5 (8 GB RAM), M.2 HAT+, NVMe SSD (Server-Node 4 TB, Agent-Node 2 TB).
 
 **OS: Raspberry Pi OS Lite (64-bit, Trixie)**
 Ships all hardware tools natively: `raspi-config`, `vcgencmd`, `rpi-eeprom-update` — ideal for headless operation and future hardware adjustments.

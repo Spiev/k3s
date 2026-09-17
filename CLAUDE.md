@@ -2,12 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Private k3s (lightweight Kubernetes) infrastructure repository. Target hardware: Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Companion to the Docker-based homelab in `../docker-runtime`.
+Private k3s (lightweight Kubernetes) infrastructure repository. Target hardware: 2× Raspberry Pi 5 (8 GB RAM). Companion to the Docker-based homelab in `../docker-runtime`.
 
 ## Architecture
 
 - **OS**: Raspberry Pi OS Lite (64-bit, Trixie) — keeps native hardware tools (`raspi-config`, `vcgencmd`, `rpi-eeprom-update`)
-- **Hardware**: 2× Raspberry Pi 5 (8 GB RAM) — Server-Node 256 GB NVMe, Agent-Node 2 TB NVMe (currently Docker, joins k3s after full migration)
+- **Hardware**: 2× Raspberry Pi 5 (8 GB RAM) — Server-Node 4 TB NVMe (Control Plane + Immich), Agent-Node 2 TB NVMe (currently Docker, joins k3s after full migration; hosts all other services)
 - **k3s** single-node to start; Agent-Node joins when all Docker services are migrated
 - **local-path-provisioner** (k3s built-in) for persistent storage — files stored directly on node filesystem
 - **Traefik** (k3s built-in) as ingress controller with cert-manager for Let's Encrypt

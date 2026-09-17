@@ -29,12 +29,27 @@ Applying: see [`ansible/README.md`](../../ansible/README.md).
 | allow in/routed on `cni0` | — | trust the CNI pod bridge |
 | IGMP + `224.0.0.0/4` | — | mDNS / Google Cast discovery |
 
-**Not managed by UFW:** `80`/`443`. Internet traffic enters via Fritzbox NAT →
-k3s ServiceLB hostPort (`svclb-traefik`) → Traefik, riding the FORWARD +
-`KUBE-*` / `CNI-HOSTPORT-*` iptables chains. UFW does not filter that path, so
-opening 80/443 in UFW is neither needed nor effective. Internet-facing security
-is CrowdSec + Traefik middleware — see
-[`docs/decisions/ingress-security.md`](../decisions/ingress-security.md).
+**Not managed by UFW:** `80`/`443`. UFW does not filter the ingress path, so
+opening 80/443 in UFW is neither needed nor effective — for both the current and
+the target topology:
+
+- **Current state (edge = nginx on `raspberrypi`).** The public entry point is
+  nginx in the Docker homelab: it holds the public IP, terminates TLS (certbot →
+  Let's Encrypt), runs host-level fail2ban, and reverse-proxies to the
+  Server-Node's Traefik over the LAN. Traffic reaching the k3s node arrives from
+  nginx and rides the FORWARD + `KUBE-*` / `CNI-HOSTPORT-*` iptables chains into
+  `svclb-traefik`, not UFW's INPUT chain.
+- **Target state (edge = Traefik, after the edge-flip).** Once cert-manager
+  issues certificates in-cluster and the Fritzbox forwards 80/443 straight to the
+  Server-Node, internet traffic enters via Fritzbox NAT → k3s ServiceLB hostPort
+  (`svclb-traefik`) → Traefik directly. Same iptables path, nginx removed.
+
+Internet-facing security today is nginx + fail2ban (on `raspberrypi`); in the
+target state it becomes Traefik middleware (rate-limit/headers, already deployed)
+plus **CrowdSec** (decided, not yet deployed) — see
+[`docs/decisions/ingress-security.md`](../decisions/ingress-security.md). The
+edge-flip (cert-manager → Traefik edge → decommission nginx/fail2ban) is a
+distinct, pending migration milestone, not the current state.
 
 ## Why the k3s-specific rules exist
 

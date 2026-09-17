@@ -1,8 +1,8 @@
 # k3s Homelab
 
-Kubernetes infrastructure on a Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration of existing Docker services from [docker-runtime](../docker-runtime).
+Kubernetes infrastructure on 2× Raspberry Pi 5 (8 GB RAM). Migration of existing Docker services from [docker-runtime](../docker-runtime).
 
-**Hardware:** 2× Raspberry Pi 5 (8 GB RAM) — Server-Node 256 GB NVMe, Agent-Node 2 TB NVMe
+**Hardware:** 2× Raspberry Pi 5 (8 GB RAM) — Server-Node 4 TB NVMe (Control Plane + Immich), Agent-Node 2 TB NVMe (all other services)
 
 **Stack:** k3s · local-path · Traefik · SOPS · Flux CD
 
@@ -32,7 +32,7 @@ Kubernetes infrastructure on a Raspberry Pi 5 (8 GB RAM, 256 GB NVMe). Migration
 | [Pi-hole](docs/services/pihole.md) | Pi-hole: DNS via LoadBalancer + Ingress |
 | [Seafile](docs/services/seafile.md) | Migration: Seafile, multi-container, Secrets |
 | [Teslamate](docs/services/teslamate.md) | Migration: Teslamate + PostgreSQL + Grafana |
-| [Immich](docs/services/immich.md) | Migration: Immich, Restic restore strategy (1.5 TB library) |
+| [Immich](docs/services/immich.md) | Migration: Immich, Restic restore strategy (1.5 TB library) → Server-Node |
 | [Vaultwarden](docs/services/vaultwarden.md) | Password manager: concept, SSO, YubiKey, backup, Tier-0 emergency plan |
 | **Operations** | |
 | [Shutdown & Startup](docs/operations/shutdown-startup.md) | Gracefully shutting down and starting up the cluster |
@@ -71,7 +71,7 @@ clusters/       Flux CD configuration
 | FreshRSS | ✅ Migrated | Running on k3s, volume migration |
 | Pi-hole | ✅ Migrated | DNS via LoadBalancer + Ingress |
 | Seafile | ✅ Migrated | Set up directly in k3s |
-| Immich | Open | Restic restore strategy (no space to copy) — after Agent-Node join |
+| Immich | Open | Restic restore strategy (no space to copy) — onto Server-Node after Agent-Node join |
 | Paperless | ✅ Migrated | DB + media volumes migrated from Docker, Google OIDC |
 | Teslamate | ✅ Migrated | Running on k3s, DB restore from pg_dump |
 | Home Assistant | Planned (Agent-Node) | `hostNetwork` + `nodeAffinity` for Zigbee dongle |

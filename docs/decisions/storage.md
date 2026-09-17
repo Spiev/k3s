@@ -3,6 +3,16 @@
 **Date:** 2026-04-06
 **Status:** Decided
 
+> **Update 2026-09-12 — hardware change, decision unchanged.** A 4 TB NVMe was
+> added to the Server-Node (replacing its 256 GB). The node/disk layout below now
+> reads: Server-Node 4 TB, Agent-Node 2 TB. The storage-heavy service (Immich)
+> now lands on the **Server-Node** (largest disk) via `nodeSelector`, not the
+> Agent-Node as the original constraints assumed. This does **not** change the
+> local-path-vs-Longhorn decision — services are still pinned per node, so
+> Longhorn's replication/migration still adds no value. Only the *which node gets
+> the big volume* mapping flipped. See [architecture.md](../architecture.md) and
+> [immich.md](../services/immich.md) for the current placement.
+
 ---
 
 ## Context

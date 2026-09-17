@@ -6,10 +6,10 @@
 
 | Node | Role | RAM | NVMe | Status |
 |---|---|---|---|---|
-| Raspi 5 "new" | k3s Server-Node (Control Plane) | 8 GB | 256 GB | k3s |
-| Raspi 5 "old" | k3s Agent-Node (Workloads + Storage) | 8 GB | 2 TB | Docker → k3s (after migration) |
+| Raspi 5 "new" | k3s Server-Node (Control Plane + Immich) | 8 GB | 4 TB | k3s |
+| Raspi 5 "old" | k3s Agent-Node (all other workloads) | 8 GB | 2 TB | Docker → k3s (after migration) |
 
-Both nodes are identical hardware (Raspberry Pi 5, 8 GB RAM). The old Raspi has significantly more storage thanks to its 2 TB NVMe — it will be the primary workload node for large volumes (Immich, Paperless).
+Both nodes are identical hardware (Raspberry Pi 5, 8 GB RAM). The Server-Node carries the largest disk and runs the Control Plane plus the single storage-heavy service, Immich (~1.5 TB library). All other services run on the Agent-Node, including Home Assistant (Zigbee dongle attached there).
 
 ---
 
@@ -28,12 +28,13 @@ Both nodes are identical hardware (Raspberry Pi 5, 8 GB RAM). The old Raspi has 
                │  ┌─────────────────────┐  ┌──────────────────────┐   │
                │  │  Server-Node        │  │  Agent-Node          │   │
                │  │  Raspi 5 "new"      │  │  Raspi 5 "old"       │   │
-               │  │  256 GB NVMe        │  │  2 TB NVMe           │   │
+               │  │  4 TB NVMe          │  │  2 TB NVMe           │   │
                │  │                     │  │                      │   │
-               │  │  Control Plane      │  │  [freshrss]          │   │
-               │  │  Traefik (Ingress)  │  │  [seafile]           │   │
-               │  │  CoreDNS            │  │  [immich]            │   │
-               │  │  Pi-hole (DNS)      │  │  [paperless]         │   │
+               │  │  Control Plane      │  │  [pihole] (DNS)      │   │
+               │  │  Traefik (Ingress)  │  │  [freshrss]          │   │
+               │  │  CoreDNS            │  │  [seafile]           │   │
+               │  │                     │  │  [paperless]         │   │
+               │  │  [immich] (1.5 TB)  │  │  [teslamate]         │   │
                │  │                     │  │  [homeassistant] ←┐  │   │
                │  └─────────────────────┘  │  [mosquitto]      │  │   │
                │                           └───────────────────┼──┘   │
@@ -100,7 +101,7 @@ Traefik then takes over everything nginx does today. Fail2ban can run as a Daemo
 
 `local-path-provisioner` (k3s built-in) stores data at `/var/lib/rancher/k3s/storage/<pvc-name>/` — directly on NVMe, directly backupable with Restic. PVCs automatically get `nodeAffinity` for the node they were created on.
 
-Large volumes (Immich, Paperless) go on the Agent-Node (2 TB NVMe) via `nodeSelector`. Small volumes (FreshRSS, Seafile) go on the Server-Node.
+The storage-heavy service (Immich, ~1.5 TB) goes on the Server-Node via `nodeSelector`. All other volumes (Pi-hole, FreshRSS, Seafile, Paperless, Teslamate) go on the Agent-Node.
 
 → [Storage Decision](decisions/storage.md) · [Immich Migration](services/immich.md) · [Backup & Restore](operations/backup-restore.md)
 
@@ -133,23 +134,24 @@ Secrets are encrypted with SOPS + age and committed as `*.sops.yaml` files. Flux
 ```
 Starting point (all Docker)         Target (all k3s)
 ──────────────────────────────      ──────────────────────────────────────
-Raspi 5 "new" (256 GB)              Raspi 5 "new": k3s Server-Node
+Raspi 5 "new" (256 GB → 4 TB)      Raspi 5 "new": k3s Server-Node (4 TB)
   └── k3s (empty)                     └── Control Plane, Traefik, CoreDNS
+                                      └── Immich        (4 TB NVMe, 1.5 TB)
 
 Raspi 5 "old" (2 TB)                Raspi 5 "old": k3s Agent-Node
-  └── Docker                           └── FreshRSS
-        └── FreshRSS                   └── Seafile
-        └── Immich                     └── Immich        (2 TB NVMe)
-        └── Paperless                  └── Paperless     (2 TB NVMe)
-        └── Home Assistant             └── Home Assistant (hostNetwork +
-        └── Teslamate                  └── Teslamate      USB nodeAffinity)
-        └── Pi-hole                    └── Pi-hole
-        └── Nginx Proxy                └── Mosquitto
-        └── Mosquitto                  └── Matter Hub
+  └── Docker                           └── Pi-hole
+        └── FreshRSS                   └── FreshRSS
+        └── Immich                     └── Seafile
+        └── Paperless                  └── Paperless
+        └── Home Assistant             └── Teslamate
+        └── Teslamate                  └── Home Assistant (hostNetwork +
+        └── Pi-hole                    └── Mosquitto      USB nodeAffinity)
+        └── Nginx Proxy                └── Matter Hub
+        └── Mosquitto
         └── Matter Hub
 ```
 
-Both Pis are identical hardware (Raspi 5, 8 GB RAM) — a full migration to k3s is realistic. Home Assistant runs on the Agent-Node with `hostNetwork: true` and `nodeAffinity` for the Zigbee dongle — no re-plugging needed. nginx stays as the external proxy for now, and can be replaced by Traefik later.
+Both Pis are identical hardware (Raspi 5, 8 GB RAM) — a full migration to k3s is realistic. The Server-Node hosts Immich (the only storage-heavy service) alongside the Control Plane; every other service runs on the Agent-Node. Home Assistant runs on the Agent-Node with `hostNetwork: true` and `nodeAffinity` for the Zigbee dongle — no re-plugging needed. nginx stays as the external proxy for now, and can be replaced by Traefik later.
 
 → Current migration progress: [README — Migration Status](../README.md#migration-status)
 

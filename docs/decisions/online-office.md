@@ -19,6 +19,11 @@ Both Collabora and OnlyOffice are **self-hosted** — the file never leaves our 
 - The primary desktop office suite in daily use is **LibreOffice**
 - The Agent-Node (2 TB) is not yet in the cluster; placement should stay flexible
 
+> **Update 2026-09-12:** A 4 TB NVMe was added to the Server-Node; the Agent-Node
+> (2 TB) still joins later. This does not affect the Collabora decision —
+> Collabora is stateless (no PVC), so it stays freely schedulable on any node
+> regardless of the disk layout (see Consequences).
+
 ---
 
 ## Decision
