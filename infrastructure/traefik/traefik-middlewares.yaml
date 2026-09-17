@@ -32,6 +32,13 @@ spec:
     average: 20
     burst: 50
     period: 1s
+    # Edge = Traefik (post-flip). With the Traefik Service on
+    # externalTrafficPolicy: Local (no SNAT), Traefik itself sets a correct
+    # X-Forwarded-For carrying the real client IP; RemoteAddr is only the
+    # internal pod IP. So KEEP ipStrategy.depth: 1 to read the real client IP
+    # from XFF — verified empirically (depth:1 → per-client 429 works; dropping
+    # it collapses all clients onto the pod IP). Requires externalTrafficPolicy:
+    # Local on svc/traefik (kube-system).
     sourceCriterion:
       ipStrategy:
         depth: 1
@@ -48,6 +55,8 @@ spec:
     average: 5
     burst: 10
     period: 1m
+    # See rate-limit-general: keep depth:1 (reads real client IP from Traefik's
+    # own XFF under externalTrafficPolicy: Local).
     sourceCriterion:
       ipStrategy:
         depth: 1
