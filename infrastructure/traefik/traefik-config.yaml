@@ -8,6 +8,22 @@ metadata:
     managed-by: flux
 spec:
   valuesContent: |-
+    # Access log (JSON → stdout, visible via `kubectl -n kube-system logs deploy/traefik`).
+    # Enabled for operational debugging: shows per-request client IP, host, path,
+    # status code, duration and backend — the first thing to check when a service
+    # misbehaves after a change. keepingHeaders records X-Forwarded-For (real client
+    # IP thanks to externalTrafficPolicy: Local). Not a security tool (that's a later
+    # CrowdSec/Traefik-bouncer job); just visibility.
+    logs:
+      access:
+        enabled: true
+        format: json
+        fields:
+          headers:
+            defaultmode: drop
+            names:
+              X-Forwarded-For: keep
+              User-Agent: keep
     # externalTrafficPolicy: Local — preserve the real client IP.
     # With the default (Cluster), k3s ServiceLB SNATs the source IP to an internal
     # node IP, so Traefik's X-Forwarded-For carries a Flannel IP, not the client —
@@ -19,15 +35,10 @@ spec:
         externalTrafficPolicy: Local
     ports:
       web:
-        # While nginx is the edge it sets X-Forwarded-For; trustedIPs must list the
-        # nginx host so Traefik trusts that XFF. AT CUTOVER (traffic direct from the
-        # Fritzbox, nginx gone) trustedIPs is REMOVED — Traefik then sets XFF itself
-        # from the real connection IP (needs externalTrafficPolicy: Local above), and
-        # the rate-limit middlewares read it via ipStrategy.depth:1. So: keep the
-        # trustedIPs block below UNTIL cutover, delete it as part of the flip.
-        forwardedHeaders:
-          trustedIPs:
-            - "${PROXY_IP}/32"
+        # Cutover done: traffic now arrives DIRECT from the Fritzbox (nginx bypassed),
+        # so forwardedHeaders/trustedIPs was removed — Traefik sets X-Forwarded-For
+        # itself from the real connection IP (relies on externalTrafficPolicy: Local
+        # above), and the rate-limit middlewares read it via ipStrategy.depth:1.
         # Bound how long a client may take to send a request / receive a response.
         # Without this, readTimeout defaults to 0 (unlimited) — a Slowloris client
         # could hold a connection open indefinitely. readTimeout covers the full
@@ -40,9 +51,6 @@ spec:
             writeTimeout: 300s
             idleTimeout: 180s
       websecure:
-        forwardedHeaders:
-          trustedIPs:
-            - "${PROXY_IP}/32"
         transport:
           respondingTimeouts:
             readTimeout: 300s
