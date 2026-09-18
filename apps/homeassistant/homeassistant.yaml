@@ -70,8 +70,7 @@ spec:
         - name: homeassistant
           image: homeassistant/home-assistant:2026.9.2
           securityContext:
-            capabilities:
-              add: ["NET_ADMIN", "NET_RAW"]
+            privileged: true
           volumeMounts:
             - { name: config, mountPath: /config }
             - { name: zigbee, mountPath: /dev/ttyACM0 }
@@ -121,6 +120,9 @@ metadata:
   namespace: homeassistant
   labels: { app: mosquitto }
 spec:
+  type: LoadBalancer   # ServiceLB binds 1883/9001 on the node LAN IPs (like the old
+                       # docker port mapping) so external MQTT clients / monitoring
+                       # scripts can reach it; HA still uses the in-cluster service name.
   selector: { app: mosquitto }
   ports:
     - { name: mqtt, port: 1883, targetPort: 1883 }
