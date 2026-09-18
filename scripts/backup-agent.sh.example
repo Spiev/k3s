@@ -146,7 +146,7 @@ EOF
       -u "$MQTT_USER" -P "$MQTT_PASSWORD" \
       -t "$DISCOVERY_TOPIC" \
       -m "$discovery_payload" \
-      -r  # Retain discovery message
+      -r 2>/dev/null || echo "WARN: MQTT discovery failed (non-fatal, backup continues)"
 }
 
 # Send state update
@@ -157,7 +157,7 @@ send_state() {
       -u "$MQTT_USER" -P "$MQTT_PASSWORD" \
       -t "$STATE_TOPIC" \
       -r \
-      -m "$state"
+      -m "$state" 2>/dev/null || echo "WARN: MQTT state publish failed (non-fatal)"
 }
 
 # Send attributes (JSON with backup details)
@@ -168,7 +168,7 @@ send_attributes() {
       -u "$MQTT_USER" -P "$MQTT_PASSWORD" \
       -t "$ATTRIBUTES_TOPIC" \
       -r \
-      -m "$attributes"
+      -m "$attributes" 2>/dev/null || echo "WARN: MQTT attributes publish failed (non-fatal)"
 }
 
 # Parse restic stats output
