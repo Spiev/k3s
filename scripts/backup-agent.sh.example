@@ -1,0 +1,438 @@
+#!/bin/bash
+set -euo pipefail  # Exit on error, undefined variables, and pipe failures
+
+# ============================================================================
+# k3s Agent-Node (k3s-a1) Restic backup — Immich + Home Assistant
+# ============================================================================
+# Backs up the Immich library and Home Assistant config from k3s local-path
+# storage (/var/lib/rancher/k3s/storage) to the T7 HDD (primary Restic repo)
+# and optionally mirrors offsite to Hetzner S3 via `restic copy --from-repo`.
+# Status is reported to Home Assistant via MQTT discovery/state/attributes.
+#
+# This is the k3s-adapted successor of the Docker-era backup.sh — DOCKER_BASE
+# is no longer used; the PVC directories are auto-discovered under local-path
+# storage instead. restic runs under `sudo -E` because local-path PVC dirs are
+# root-owned (see the sudo -E comments below).
+#
+# SCHEDULING: This MUST run AFTER Immich's internal DB dump (which the built-in
+# backup worker writes into the library around ~02:00). Cron is therefore set
+# to 03:03 to guarantee a fresh DB dump is present in the library before backup.
+#
+# For logging details
+echo "Backup script started at $(date --iso-8601=ns)"
+
+# ============================================================================
+# Configuration
+# ============================================================================
+
+SCRIPT_DIR="$(dirname "$0")"
+
+# MQTT Topics (static — no need to customize per environment)
+STATE_TOPIC="homeassistant/sensor/backup_status/state"
+ATTRIBUTES_TOPIC="homeassistant/sensor/backup_status/attributes"
+DISCOVERY_TOPIC="homeassistant/sensor/backup_status/config"
+DEVICE_ID="restic_backup"
+DEVICE_NAME="Restic Backup"
+
+# All other config (HDD_DEVICE, HDD_MOUNT, MQTT_HOST, MQTT_PORT,
+# RESTIC_REPO, RESTIC_PASSWORD, S3_* ) comes from .restic.env — see .restic.env.example
+# NOTE: DOCKER_BASE is no longer used (k3s local-path storage instead).
+
+# ============================================================================
+# Load Credentials
+# ============================================================================
+
+# Load MQTT credentials with validation
+MQTT_CREDENTIALS="$SCRIPT_DIR/.mqtt_credentials"
+if [[ ! -f "$MQTT_CREDENTIALS" ]]; then
+    echo "ERROR: MQTT credentials file not found at $MQTT_CREDENTIALS" >&2
+    echo "Please create it from .mqtt_credentials.example" >&2
+    exit 1
+fi
+
+# Check file permissions (should be 600)
+MQTT_PERMS=$(stat -c %a "$MQTT_CREDENTIALS")
+if [[ "$MQTT_PERMS" != "600" ]]; then
+    echo "WARNING: Insecure permissions on $MQTT_CREDENTIALS (found: $MQTT_PERMS, expected: 600)" >&2
+fi
+
+source "$MQTT_CREDENTIALS"
+
+# Validate required MQTT variables are set
+if [[ -z "${MQTT_USER:-}" ]] || [[ -z "${MQTT_PASSWORD:-}" ]]; then
+    echo "ERROR: MQTT_USER or MQTT_PASSWORD not set in $MQTT_CREDENTIALS" >&2
+    exit 1
+fi
+
+# Load Restic password with validation
+RESTIC_ENV="$SCRIPT_DIR/.restic.env"
+if [[ ! -f "$RESTIC_ENV" ]]; then
+    echo "ERROR: Restic credentials file not found at $RESTIC_ENV" >&2
+    echo "Please create it from .restic.env.example" >&2
+    exit 1
+fi
+
+# Check file permissions (should be 600)
+RESTIC_PERMS=$(stat -c %a "$RESTIC_ENV")
+if [[ "$RESTIC_PERMS" != "600" ]]; then
+    echo "WARNING: Insecure permissions on $RESTIC_ENV (found: $RESTIC_PERMS, expected: 600)" >&2
+fi
+
+source "$RESTIC_ENV"
+
+# Validate required variables are set
+for VAR in RESTIC_PASSWORD RESTIC_REPO HDD_DEVICE HDD_MOUNT MQTT_HOST MQTT_PORT; do
+    if [[ -z "${!VAR:-}" ]]; then
+        echo "ERROR: $VAR is not set in $RESTIC_ENV" >&2
+        exit 1
+    fi
+done
+
+# ============================================================================
+# Resolve k3s local-path PVC directories (replaces DOCKER_BASE paths)
+# ============================================================================
+# local-path-provisioner names PVC dirs <pvc-uid>_<namespace>_<pvc-name>.
+# We match on the stable suffix. sudo because these dirs are root-owned.
+STORAGE="/var/lib/rancher/k3s/storage"
+IMMICH_LIB=$(sudo find "$STORAGE" -maxdepth 1 -name "*_immich_immich-library" -type d 2>/dev/null | head -1)
+HA_CONFIG=$(sudo find "$STORAGE" -maxdepth 1 -name "*_homeassistant_homeassistant-config" -type d 2>/dev/null | head -1)
+if [[ -z "$IMMICH_LIB" || ! -d "$IMMICH_LIB" ]]; then echo "FATAL: immich library PVC dir not found under $STORAGE" >&2; exit 1; fi
+if [[ -z "$HA_CONFIG"  || ! -d "$HA_CONFIG"  ]]; then echo "FATAL: HA config PVC dir not found under $STORAGE" >&2; exit 1; fi
+# Anti-scheinbackup guard: refuse to back up an empty library (the old Docker path went stale after migration)
+if [[ -z "$(sudo ls -A "$IMMICH_LIB" 2>/dev/null)" ]]; then echo "FATAL: immich library dir is EMPTY — refusing to run (would create a false 'success' backup)" >&2; exit 1; fi
+
+S3_REPO="${RESTIC_REPO_S3:-}"
+S3_PASSWORD="${RESTIC_PASSWORD_S3:-}"
+# Defensive unset: restic auto-detects RESTIC_REPOSITORY2 as --repo2, which
+# conflicts with --from-repo. Unset to guard against old .restic.env files.
+unset RESTIC_REPOSITORY2 RESTIC_PASSWORD2
+
+# Check if S3 offsite backup is fully configured
+S3_ENABLED=false
+if [[ -n "$S3_REPO" ]] && [[ -n "${AWS_ACCESS_KEY_ID:-}" ]] && \
+   [[ -n "${AWS_SECRET_ACCESS_KEY:-}" ]] && [[ -n "$S3_PASSWORD" ]]; then
+    S3_ENABLED=true
+    echo "S3 offsite backup enabled: $S3_REPO"
+else
+    echo "S3 offsite backup not configured (optional) — skipping"
+fi
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+# Send MQTT Discovery message (only needed once, but idempotent)
+send_discovery() {
+    local discovery_payload=$(cat <<EOF
+{
+  "name": "Status",
+  "object_id": "restic_backup_status",
+  "unique_id": "restic_backup_status",
+  "state_topic": "$STATE_TOPIC",
+  "json_attributes_topic": "$ATTRIBUTES_TOPIC",
+  "icon": "mdi:backup-restore",
+  "device": {
+    "identifiers": ["$DEVICE_ID"],
+    "name": "$DEVICE_NAME",
+    "model": "Restic Backup Script",
+    "manufacturer": "Homelab"
+  }
+}
+EOF
+)
+    mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" \
+      -u "$MQTT_USER" -P "$MQTT_PASSWORD" \
+      -t "$DISCOVERY_TOPIC" \
+      -m "$discovery_payload" \
+      -r  # Retain discovery message
+}
+
+# Send state update
+send_state() {
+    local state="$1"
+    echo "MQTT: Sending state: $state"
+    mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" \
+      -u "$MQTT_USER" -P "$MQTT_PASSWORD" \
+      -t "$STATE_TOPIC" \
+      -r \
+      -m "$state"
+}
+
+# Send attributes (JSON with backup details)
+send_attributes() {
+    local attributes="$1"
+    echo "MQTT: Sending attributes: $attributes"
+    mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" \
+      -u "$MQTT_USER" -P "$MQTT_PASSWORD" \
+      -t "$ATTRIBUTES_TOPIC" \
+      -r \
+      -m "$attributes"
+}
+
+# Parse restic stats output
+parse_restic_stats() {
+    local stats_output="$1"
+    local files_new=$(echo "$stats_output" | grep "Files:" | awk '{print $2}' | grep -o '[0-9]*' || echo "0")
+    local files_changed=$(echo "$stats_output" | grep "Files:" | awk '{print $4}' | grep -o '[0-9]*' || echo "0")
+    local dirs_new=$(echo "$stats_output" | grep "Dirs:" | awk '{print $2}' | grep -o '[0-9]*' || echo "0")
+    local added_size=$(echo "$stats_output" | grep "Added to the repository:" | awk '{print $5}' || echo "0")
+
+    echo "$files_new|$files_changed|$dirs_new|$added_size"
+}
+
+# Cleanup function for error handling
+cleanup() {
+    local exit_code=$?
+    if [ $exit_code -ne 0 ]; then
+        echo "ERROR: Backup failed with exit code $exit_code"
+
+        local error_json=$(cat <<EOF
+{
+  "last_run": "$(date --iso-8601=seconds)",
+  "duration_seconds": $(($(date +%s) - START_TIME)),
+  "error": "Backup failed with exit code $exit_code",
+  "last_error_time": "$(date --iso-8601=seconds)",
+  "s3_status": "${S3_STATUS:-unknown}",
+  "repository_size_gb": ${REPO_SIZE_GB:-0},
+  "snapshot_count": ${SNAPSHOT_COUNT:-0},
+  "s3_repository_size_gb": ${S3_REPO_SIZE_GB:-0},
+  "s3_snapshot_count": ${S3_SNAPSHOT_COUNT:-0},
+  "files_new": ${TOTAL_FILES_NEW:-0},
+  "files_changed": ${TOTAL_FILES_CHANGED:-0},
+  "dirs_new": ${TOTAL_DIRS_NEW:-0},
+  "immich_files_new": ${immich_files_new:-0},
+  "immich_files_changed": ${immich_files_changed:-0},
+  "homeassistant_files_new": ${homeassistant_files_new:-0},
+  "homeassistant_files_changed": ${homeassistant_files_changed:-0}
+}
+EOF
+)
+        send_state "failed"
+        send_attributes "$error_json"
+    fi
+
+    # Always try to unmount
+    if mountpoint -q "$HDD_MOUNT"; then
+        echo "Unmounting $HDD_MOUNT..."
+        sudo umount "$HDD_MOUNT" 2>/dev/null || true
+    fi
+
+    # Clean credentials from memory (security best practice)
+    echo "Removing secrets from memory..."
+    unset RESTIC_PASSWORD MQTT_PASSWORD
+}
+
+trap cleanup EXIT
+
+# ============================================================================
+# Main Backup Process
+# ============================================================================
+
+START_TIME=$(date +%s)
+
+# Send MQTT Discovery
+send_discovery
+
+# Send initial state
+send_state "running"
+
+# Mount HDD with correct permissions
+echo "Mounting $HDD_DEVICE to $HDD_MOUNT..."
+sudo mount "$HDD_DEVICE" "$HDD_MOUNT" -o rw,uid=$UID,user,dmask=007,fmask=117
+
+# Initialize counters
+TOTAL_FILES_NEW=0
+TOTAL_FILES_CHANGED=0
+TOTAL_DIRS_NEW=0
+TOTAL_ADDED_SIZE="0 B"
+S3_STATUS="disabled"
+
+# ============================================================================
+# Backup Immich
+# ============================================================================
+
+echo ""
+echo "=========================================="
+echo "Starting Immich Backup"
+echo "=========================================="
+
+# Note: Immich DB backup is handled by Immich's built-in backup worker.
+# The worker exports DB dumps into the library directory, so they are
+# automatically included here — no separate pg_dumpall needed (DRY).
+
+# Run backup and capture output (works in both interactive and cron).
+# sudo -E: local-path PVC dirs are root-owned, so restic must run as root,
+# and -E preserves the RESTIC_REPO/RESTIC_PASSWORD/AWS_* shell environment.
+IMMICH_OUTPUT=$(sudo -E restic -r "$RESTIC_REPO" backup "$IMMICH_LIB" --verbose 2>&1)
+echo "$IMMICH_OUTPUT"
+IMMICH_STATS=$(parse_restic_stats "$IMMICH_OUTPUT")
+
+IFS='|' read -r immich_files_new immich_files_changed immich_dirs_new immich_added_size <<< "$IMMICH_STATS"
+echo "Immich backup complete: $immich_files_new new files, $immich_files_changed changed files"
+
+# ============================================================================
+# Backup Home Assistant
+# ============================================================================
+
+echo ""
+echo "=========================================="
+echo "Starting Home Assistant Backup"
+echo "=========================================="
+
+# Backup Home Assistant configuration directory
+# Includes: configuration.yaml, automations.yaml, scripts.yaml, secrets.yaml,
+#           custom_components/, backup/ (HA's own full backups)
+# Excludes: .storage/ (included in HA backups), .cloud/ (Nabu Casa, not needed)
+# Note: Using --ignore-inode to handle locked files (e.g., database, logs)
+#       Exit code 3 (incomplete) is downgraded to success if most files backed up
+# sudo -E: same reason as Immich — root-owned local-path dir, preserve env.
+HOMEASSISTANT_OUTPUT=$(sudo -E restic -r "$RESTIC_REPO" backup "$HA_CONFIG" \
+  --ignore-inode \
+  --exclude="*.log" \
+  --exclude="*.db" \
+  --exclude="*.db-shm" \
+  --exclude="*.db-wal" \
+  --exclude=".storage" \
+  --exclude=".cloud" \
+  --verbose 2>&1) || HOMEASSISTANT_EXIT_CODE=$?
+
+# Restic exit code 3 = incomplete backup (some files couldn't be read)
+# This is acceptable for HA as some files may be locked during operation
+if [[ ${HOMEASSISTANT_EXIT_CODE:-0} -eq 3 ]]; then
+    echo "Warning: Home Assistant backup incomplete (some files locked), but continuing..."
+    HOMEASSISTANT_EXIT_CODE=0
+elif [[ ${HOMEASSISTANT_EXIT_CODE:-0} -ne 0 ]]; then
+    echo "ERROR: Home Assistant backup failed with exit code $HOMEASSISTANT_EXIT_CODE"
+    exit $HOMEASSISTANT_EXIT_CODE
+fi
+echo "$HOMEASSISTANT_OUTPUT"
+HOMEASSISTANT_STATS=$(parse_restic_stats "$HOMEASSISTANT_OUTPUT")
+
+IFS='|' read -r homeassistant_files_new homeassistant_files_changed homeassistant_dirs_new homeassistant_added_size <<< "$HOMEASSISTANT_STATS"
+echo "Home Assistant backup complete: $homeassistant_files_new new files, $homeassistant_files_changed changed files"
+
+
+# ============================================================================
+# Calculate Totals
+# ============================================================================
+
+TOTAL_FILES_NEW=$((immich_files_new + homeassistant_files_new))
+TOTAL_FILES_CHANGED=$((immich_files_changed + homeassistant_files_changed))
+TOTAL_DIRS_NEW=$((immich_dirs_new + homeassistant_dirs_new))
+
+# ============================================================================
+# Get Repository Stats
+# ============================================================================
+
+echo ""
+echo "=========================================="
+echo "Repository Statistics"
+echo "=========================================="
+
+# sudo -E for consistency: the repo was written by the sudo'd backups above.
+REPO_STATS=$(sudo -E restic -r "$RESTIC_REPO" stats --mode raw-data --json 2>/dev/null || echo "{}")
+REPO_SIZE_BYTES=$(echo "$REPO_STATS" | jq -r '.total_size // 0')
+REPO_SIZE_GB=$(echo "scale=2; $REPO_SIZE_BYTES / 1024 / 1024 / 1024" | bc)
+
+# Count snapshots
+SNAPSHOT_COUNT=$(sudo -E restic -r "$RESTIC_REPO" snapshots --json 2>/dev/null | jq '. | length' || echo "0")
+
+echo "Repository size: ${REPO_SIZE_GB} GB"
+echo "Total snapshots: $SNAPSHOT_COUNT"
+
+# ============================================================================
+# S3 Offsite Copy
+# ============================================================================
+# Uses `restic copy` which only transfers snapshots not yet in the S3 repo —
+# Restic deduplication keeps this efficient even for large Immich libraries.
+# S3 is a full mirror of the local repo — no retention policy applied here.
+# To manually prune S3 if needed, run forget/prune by hand.
+#
+# IMPORTANT: The S3 repo must be initialized once before first use:
+#   source scripts/.restic.env
+#   RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" init
+
+if [[ "$S3_ENABLED" == "true" ]]; then
+    echo ""
+    echo "=========================================="
+    echo "Starting S3 Offsite Copy"
+    echo "=========================================="
+
+    # Remove stale locks from previous interrupted runs
+    echo "Checking for stale locks in S3 repo..."
+    RESTIC_PASSWORD="$S3_PASSWORD" sudo -E restic -r "$S3_REPO" unlock 2>&1 || true
+
+    # RESTIC_FROM_PASSWORD = source (local HDD), RESTIC_PASSWORD = destination (S3)
+    # sudo -E: source repo on HDD + local-path data were written as root; -E keeps AWS_* creds.
+    # Pruning is intentionally NOT done here — S3 is a DR repo, keep all snapshots.
+    # To prune manually if needed:
+    #   source scripts/.restic.env
+    #   RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" forget \
+    #     --keep-weekly 52 --keep-monthly 24 --prune
+    if RESTIC_FROM_PASSWORD="$RESTIC_PASSWORD" RESTIC_PASSWORD="$S3_PASSWORD" \
+       sudo -E restic -r "$S3_REPO" copy --from-repo "$RESTIC_REPO" --verbose 2>&1; then
+        echo "S3 copy complete."
+        S3_STATUS="success"
+    else
+        S3_STATUS="failed"
+        echo "WARNING: S3 offsite copy failed — local backup still succeeded"
+    fi
+
+    # Collect S3 repo stats for dashboard comparison
+    echo "Collecting S3 repository stats..."
+    S3_REPO_STATS=$(RESTIC_PASSWORD="$S3_PASSWORD" sudo -E restic -r "$S3_REPO" stats --mode raw-data --json 2>/dev/null || echo "{}")
+    S3_REPO_SIZE_BYTES=$(echo "$S3_REPO_STATS" | jq -r '.total_size // 0')
+    S3_REPO_SIZE_GB=$(echo "scale=2; $S3_REPO_SIZE_BYTES / 1024 / 1024 / 1024" | bc)
+    S3_SNAPSHOT_COUNT=$(RESTIC_PASSWORD="$S3_PASSWORD" sudo -E restic -r "$S3_REPO" snapshots --json 2>/dev/null | jq '. | length' || echo "0")
+    echo "S3 repository size: ${S3_REPO_SIZE_GB} GB, snapshots: $S3_SNAPSHOT_COUNT"
+fi
+
+# ============================================================================
+# Unmount and Finalize
+# ============================================================================
+
+echo "Unmounting $HDD_MOUNT..."
+sudo umount "$HDD_MOUNT"
+
+END_TIME=$(date +%s)
+DURATION=$((END_TIME - START_TIME))
+
+echo ""
+echo "=========================================="
+echo "Backup Complete!"
+echo "=========================================="
+echo "Duration: ${DURATION}s"
+echo "Files added: $TOTAL_FILES_NEW"
+echo "Files changed: $TOTAL_FILES_CHANGED"
+echo "Directories added: $TOTAL_DIRS_NEW"
+
+# ============================================================================
+# Send Final MQTT Update
+# ============================================================================
+
+SUCCESS_JSON=$(cat <<EOF
+{
+  "last_run": "$(date --iso-8601=seconds)",
+  "duration_seconds": $DURATION,
+  "files_new": $TOTAL_FILES_NEW,
+  "files_changed": $TOTAL_FILES_CHANGED,
+  "dirs_new": $TOTAL_DIRS_NEW,
+  "immich_files_new": $immich_files_new,
+  "immich_files_changed": $immich_files_changed,
+  "homeassistant_files_new": $homeassistant_files_new,
+  "homeassistant_files_changed": $homeassistant_files_changed,
+  "repository_size_gb": $REPO_SIZE_GB,
+  "snapshot_count": $SNAPSHOT_COUNT,
+  "s3_repository_size_gb": ${S3_REPO_SIZE_GB:-0},
+  "s3_snapshot_count": ${S3_SNAPSHOT_COUNT:-0},
+  "s3_status": "$S3_STATUS",
+  "last_success_time": "$(date --iso-8601=seconds)"
+}
+EOF
+)
+
+send_state "success"
+send_attributes "$SUCCESS_JSON"
+
+echo "MQTT notifications sent successfully"
+echo "Backup script completed at $(date --iso-8601=ns)"
