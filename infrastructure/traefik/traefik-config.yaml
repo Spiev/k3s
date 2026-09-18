@@ -11,19 +11,20 @@ spec:
     # Access log (JSON → stdout, visible via `kubectl -n kube-system logs deploy/traefik`).
     # Enabled for operational debugging: shows per-request client IP, host, path,
     # status code, duration and backend — the first thing to check when a service
-    # misbehaves after a change. keepingHeaders records X-Forwarded-For (real client
-    # IP thanks to externalTrafficPolicy: Local). Not a security tool (that's a later
-    # CrowdSec/Traefik-bouncer job); just visibility.
-    logs:
-      access:
-        enabled: true
-        format: json
-        fields:
-          headers:
-            defaultmode: drop
-            names:
-              X-Forwarded-For: keep
-              User-Agent: keep
+    # misbehaves after a change. headers keep X-Forwarded-For (real client IP thanks
+    # to externalTrafficPolicy: Local) + User-Agent. Not a security tool (that's a
+    # later CrowdSec/Traefik-bouncer job); just visibility.
+    # NOTE: key is top-level `accessLog:` in the traefik chart (v41.x) — NOT
+    # `logs.access` (that silently no-ops; Helm ignores unknown values).
+    accessLog:
+      enabled: true
+      format: json
+      fields:
+        headers:
+          defaultMode: drop
+          names:
+            X-Forwarded-For: keep
+            User-Agent: keep
     # externalTrafficPolicy: Local — preserve the real client IP.
     # With the default (Cluster), k3s ServiceLB SNATs the source IP to an internal
     # node IP, so Traefik's X-Forwarded-For carries a Flannel IP, not the client —
