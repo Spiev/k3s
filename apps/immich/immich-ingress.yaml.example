@@ -10,7 +10,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls: "true"
     traefik.ingress.kubernetes.io/router.middlewares: >-
       kube-system-security-headers@kubernetescrd,
-      kube-system-rate-limit-general@kubernetescrd
+      kube-system-rate-limit-immich@kubernetescrd
     # cert-manager.io/cluster-issuer: letsencrypt-prod   # Block A
 spec:
   ingressClassName: traefik
