@@ -34,6 +34,14 @@ spec:
     service:
       spec:
         externalTrafficPolicy: Local
+    # Pin Traefik to the Server-Node (k3s), the single ingress-entry node where the
+    # Fritzbox forwards :80/:443. externalTrafficPolicy: Local only preserves the
+    # real client IP when the entry node == the Traefik-pod node; if Traefik lands
+    # on the agent (k3s-a1), kube-proxy hops cross-node and SNATs → access log +
+    # per-IP rate-limit see only the svclb pod IP (10.42.x). Traefik already
+    # tolerates the control-plane NoSchedule taint, so it schedules here fine.
+    nodeSelector:
+      kubernetes.io/hostname: k3s
     ports:
       web:
         # Cutover done: traffic now arrives DIRECT from the Fritzbox (nginx bypassed),
