@@ -96,8 +96,10 @@ done
 STORAGE="/var/lib/rancher/k3s/storage"
 IMMICH_LIB=$(sudo find "$STORAGE" -maxdepth 1 -name "*_immich_immich-library" -type d 2>/dev/null | head -1)
 HA_CONFIG=$(sudo find "$STORAGE" -maxdepth 1 -name "*_homeassistant_homeassistant-config" -type d 2>/dev/null | head -1)
-if [[ -z "$IMMICH_LIB" || ! -d "$IMMICH_LIB" ]]; then echo "FATAL: immich library PVC dir not found under $STORAGE" >&2; exit 1; fi
-if [[ -z "$HA_CONFIG"  || ! -d "$HA_CONFIG"  ]]; then echo "FATAL: HA config PVC dir not found under $STORAGE" >&2; exit 1; fi
+# Note: -d is checked via `sudo test` because $STORAGE is root-only (0700);
+# an unprivileged stat cannot traverse it and would false-negative.
+if [[ -z "$IMMICH_LIB" ]] || ! sudo test -d "$IMMICH_LIB"; then echo "FATAL: immich library PVC dir not found under $STORAGE" >&2; exit 1; fi
+if [[ -z "$HA_CONFIG"  ]] || ! sudo test -d "$HA_CONFIG";  then echo "FATAL: HA config PVC dir not found under $STORAGE" >&2; exit 1; fi
 # Anti-scheinbackup guard: refuse to back up an empty library (the old Docker path went stale after migration)
 if [[ -z "$(sudo ls -A "$IMMICH_LIB" 2>/dev/null)" ]]; then echo "FATAL: immich library dir is EMPTY — refusing to run (would create a false 'success' backup)" >&2; exit 1; fi
 
