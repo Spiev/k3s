@@ -1,0 +1,189 @@
+# Immich on k3s (node: k3s-a1). Migrated from Docker (~/docker/immich).
+# library + postgres data via `mv` into local-path PVCs (gratis, same partition).
+# See .hermes/plans/2026-09-17_phase2-k3s-agent-join-ha-immich.md (Block 4).
+#
+# CRITICAL: postgres image MUST stay the exact vectorchord tag used in Docker,
+# otherwise the migrated data dir won't load.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: immich
+  labels:
+    app: immich
+    type: service
+---
+# ---------- PVCs ----------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: immich-library     # mv target: ~/docker/immich/library (~1.5 TB)
+  namespace: immich
+  labels: { app: immich }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources: { requests: { storage: 1700Gi } }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: immich-postgres    # mv target: ~/docker/immich/postgres
+  namespace: immich
+  labels: { app: immich-db }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources: { requests: { storage: 30Gi } }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: immich-model-cache
+  namespace: immich
+  labels: { app: immich-ml }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources: { requests: { storage: 5Gi } }
+---
+# ---------- Postgres (vectorchord — EXACT image) ----------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-postgres
+  namespace: immich
+  labels: { app: immich-db }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: immich-db } }
+  template:
+    metadata:
+      labels: { app: immich-db }
+    spec:
+      nodeSelector: { kubernetes.io/hostname: k3s-a1 }
+      containers:
+        - name: postgres
+          image: ghcr.io/immich-app/postgres:16-vectorchord0.4.3-pgvectors0.2.0
+          envFrom:
+            - secretRef: { name: immich-secrets }
+          args: ["postgres", "-c", "shared_buffers=256MB"]
+          volumeMounts:
+            - { name: pgdata, mountPath: /var/lib/postgresql/data }
+      volumes:
+        - name: pgdata
+          persistentVolumeClaim: { claimName: immich-postgres }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: immich-postgres
+  namespace: immich
+  labels: { app: immich-db }
+spec:
+  selector: { app: immich-db }
+  ports: [ { port: 5432, targetPort: 5432 } ]
+---
+# ---------- Redis (valkey) ----------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-redis
+  namespace: immich
+  labels: { app: immich-redis }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: immich-redis } }
+  template:
+    metadata:
+      labels: { app: immich-redis }
+    spec:
+      nodeSelector: { kubernetes.io/hostname: k3s-a1 }
+      containers:
+        - name: redis
+          image: docker.io/valkey/valkey:8-bookworm
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: immich-redis
+  namespace: immich
+  labels: { app: immich-redis }
+spec:
+  selector: { app: immich-redis }
+  ports: [ { port: 6379, targetPort: 6379 } ]
+---
+# ---------- Machine Learning ----------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-machine-learning
+  namespace: immich
+  labels: { app: immich-ml }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: immich-ml } }
+  template:
+    metadata:
+      labels: { app: immich-ml }
+    spec:
+      nodeSelector: { kubernetes.io/hostname: k3s-a1 }
+      containers:
+        - name: immich-ml
+          image: ghcr.io/immich-app/immich-machine-learning:v3.2.2
+          envFrom:
+            - secretRef: { name: immich-secrets }
+          volumeMounts:
+            - { name: cache, mountPath: /cache }
+      volumes:
+        - name: cache
+          persistentVolumeClaim: { claimName: immich-model-cache }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: immich-machine-learning
+  namespace: immich
+  labels: { app: immich-ml }
+spec:
+  selector: { app: immich-ml }
+  ports: [ { port: 3003, targetPort: 3003 } ]
+---
+# ---------- Immich Server ----------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-server
+  namespace: immich
+  labels: { app: immich-server }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: immich-server } }
+  template:
+    metadata:
+      labels: { app: immich-server }
+    spec:
+      nodeSelector: { kubernetes.io/hostname: k3s-a1 }
+      containers:
+        - name: immich-server
+          image: ghcr.io/immich-app/immich-server:v3.2.2
+          envFrom:
+            - secretRef: { name: immich-secrets }
+          ports: [ { containerPort: 2283 } ]
+          volumeMounts:
+            - { name: library, mountPath: /data }
+      volumes:
+        - name: library
+          persistentVolumeClaim: { claimName: immich-library }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: immich-server
+  namespace: immich
+  labels: { app: immich-server }
+spec:
+  selector: { app: immich-server }
+  ports: [ { port: 2283, targetPort: 2283 } ]

@@ -1,0 +1,29 @@
+# Immich ingress — NO body-limit (unlimited uploads, like nginx client_max_body_size 0).
+# Copy to immich-ingress.yaml (gitignored), set host. See plan Block 4.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: immich
+  namespace: immich
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: >-
+      kube-system-security-headers@kubernetescrd,
+      kube-system-rate-limit-general@kubernetescrd
+    # cert-manager.io/cluster-issuer: letsencrypt-prod   # Block A
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: [ photos.example.com ]        # <-- deine Domain
+      secretName: edge-bridge-cert
+  rules:
+    - host: photos.example.com             # <-- deine Domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: immich-server
+                port: { number: 2283 }

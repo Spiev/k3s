@@ -1,0 +1,53 @@
+# HA runs hostNetwork (:8123 on k3s-a1). Traefik reaches it via a headless/ExternalName
+# path. Simplest robust option: a Service with explicit Endpoints to the node IP:8123,
+# then an Ingress. Copy to homeassistant-ingress.yaml (gitignored), set host.
+# See plan Block 4.
+apiVersion: v1
+kind: Service
+metadata:
+  name: homeassistant
+  namespace: homeassistant
+  labels: { app: homeassistant }
+spec:
+  ports:
+    - { name: http, port: 8123, targetPort: 8123 }
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: homeassistant           # same name as Service → binds to it
+  namespace: homeassistant
+  labels: { app: homeassistant }
+subsets:
+  - addresses:
+      - ip: 192.168.178.XXX      # <-- k3s-a1 node IP (HA hostNetwork listens here)
+    ports:
+      - { name: http, port: 8123 }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: homeassistant
+  namespace: homeassistant
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: >-
+      kube-system-security-headers@kubernetescrd,
+      kube-system-rate-limit-general@kubernetescrd
+    # cert-manager.io/cluster-issuer: letsencrypt-prod   # Block A
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: [ ha.example.com ]           # <-- deine Domain
+      secretName: edge-bridge-cert
+  rules:
+    - host: ha.example.com                # <-- deine Domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: homeassistant
+                port: { number: 8123 }

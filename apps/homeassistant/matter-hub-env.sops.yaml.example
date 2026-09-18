@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: matter-hub-env
+  namespace: homeassistant
+  labels:
+    app: matter-hub
+    managed-by: flux
+stringData:
+  # Copy from ~/docker/homeassistant/home-assistant-matter-hub/.env on the node.
+  # HA URL: with hostNetwork the HA pod is reachable on the node — use the LAN URL
+  # that worked in Docker (e.g. http://<node-ip>:8123).
+  HAMH_HOME_ASSISTANT_URL: "<copy HAMH_HOME_ASSISTANT_URL from .env>"
+  HAMH_HOME_ASSISTANT_ACCESS_TOKEN: "<copy long-lived token from .env>"
+  HAMH_LOG_LEVEL: "<copy or 'info'>"
+  HAMH_MDNS_STRIP_GLOBAL_IPV6: "<copy from .env>"
+  HAMH_MDNS_NETWORK_INTERFACE: "<copy from .env>"
+# After filling: rename to matter-hub-env.sops.yaml and
+#   sops --encrypt --in-place matter-hub-env.sops.yaml

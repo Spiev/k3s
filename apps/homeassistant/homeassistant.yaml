@@ -1,0 +1,157 @@
+# Home Assistant + Mosquitto + Matter-Hub on k3s (node: k3s-a1)
+# Migrated from Docker (~/docker/homeassistant). Data via `mv` into local-path PVCs.
+# See .hermes/plans/2026-09-17_phase2-k3s-agent-join-ha-immich.md (Block 4).
+#
+# Networking: HA + matter-hub use hostNetwork (like docker network_mode: host) so
+# they see the LAN / mDNS directly. dnsPolicy ClusterFirstWithHostNet lets them still
+# resolve cluster services (mosquitto). Zigbee dongle via hostPath device on k3s-a1.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homeassistant
+  labels:
+    app: homeassistant
+    type: service
+---
+# ---------- PVCs (mv targets) ----------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: homeassistant-config
+  namespace: homeassistant
+  labels: { app: homeassistant }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources: { requests: { storage: 15Gi } }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mosquitto-data
+  namespace: homeassistant
+  labels: { app: mosquitto }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources: { requests: { storage: 5Gi } }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: matter-hub-data
+  namespace: homeassistant
+  labels: { app: matter-hub }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources: { requests: { storage: 2Gi } }
+---
+# ---------- Home Assistant (hostNetwork + Zigbee dongle) ----------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homeassistant
+  namespace: homeassistant
+  labels: { app: homeassistant }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }   # RWO PVC + fixed node
+  selector: { matchLabels: { app: homeassistant } }
+  template:
+    metadata:
+      labels: { app: homeassistant }
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: k3s-a1
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: homeassistant
+          image: homeassistant/home-assistant:2026.9.2
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN", "NET_RAW"]
+          volumeMounts:
+            - { name: config, mountPath: /config }
+            - { name: zigbee, mountPath: /dev/ttyACM0 }
+      volumes:
+        - name: config
+          persistentVolumeClaim: { claimName: homeassistant-config }
+        - name: zigbee
+          hostPath:
+            path: /dev/serial/by-id/usb-ITEAD_SONOFF_Zigbee_3.0_USB_Dongle_Plus_V2_20220714144702-if00
+            type: CharDevice
+---
+# ---------- Mosquitto (ClusterIP; HA reaches it via cluster DNS) ----------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mosquitto
+  namespace: homeassistant
+  labels: { app: mosquitto }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: mosquitto } }
+  template:
+    metadata:
+      labels: { app: mosquitto }
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: k3s-a1
+      securityContext:
+        runAsUser: 0    # matches docker `user: root`
+      containers:
+        - name: mosquitto
+          image: eclipse-mosquitto:2.0.22
+          ports:
+            - { containerPort: 1883 }
+            - { containerPort: 9001 }
+          volumeMounts:
+            - { name: data, mountPath: /mosquitto }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: mosquitto-data }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mosquitto
+  namespace: homeassistant
+  labels: { app: mosquitto }
+spec:
+  selector: { app: mosquitto }
+  ports:
+    - { name: mqtt, port: 1883, targetPort: 1883 }
+    - { name: ws, port: 9001, targetPort: 9001 }
+---
+# ---------- Matter-Hub (hostNetwork, needs HA token via SOPS secret) ----------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matter-hub
+  namespace: homeassistant
+  labels: { app: matter-hub }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: matter-hub } }
+  template:
+    metadata:
+      labels: { app: matter-hub }
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: k3s-a1
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: matter-hub
+          image: ghcr.io/riddix/home-assistant-matter-hub:2.0.57
+          envFrom:
+            - secretRef: { name: matter-hub-env }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: matter-hub-data }
