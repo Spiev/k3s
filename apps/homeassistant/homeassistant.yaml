@@ -68,7 +68,7 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: homeassistant
-          image: homeassistant/home-assistant:2026.9.2
+          image: homeassistant/home-assistant:2026.9.3@sha256:d8922685169707fd91e8b9729902d975f06157d005e422874d201e0261dda196
           securityContext:
             privileged: true
           volumeMounts:
