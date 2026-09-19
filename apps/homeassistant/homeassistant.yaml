@@ -68,7 +68,7 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: homeassistant
-          image: homeassistant/home-assistant:2026.9.2
+          image: homeassistant/home-assistant:2026.9.2@sha256:a1bc133af84ee6505fe2c266d9805b7c75b780dfdc188edfee3b11e8f3cd8efe
           securityContext:
             privileged: true
           volumeMounts:
@@ -103,7 +103,7 @@ spec:
         runAsUser: 0    # matches docker `user: root`
       containers:
         - name: mosquitto
-          image: eclipse-mosquitto:2.0.22
+          image: eclipse-mosquitto:2.0.22@sha256:199ea8ef2e35ec2b1b37e59cfd1dbae538ed4dfa4a2251a121a52215a6248a21
           ports:
             - { containerPort: 1883 }
             - { containerPort: 9001 }
@@ -149,7 +149,7 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: matter-hub
-          image: ghcr.io/riddix/home-assistant-matter-hub:2.0.57
+          image: ghcr.io/riddix/home-assistant-matter-hub:2.0.57@sha256:3f63aca9cd94162c0736859b43949e95d164d2d47dbd1239574738e583c77661
           envFrom:
             - secretRef: { name: matter-hub-env }
           volumeMounts:
