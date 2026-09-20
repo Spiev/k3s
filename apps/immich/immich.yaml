@@ -64,7 +64,7 @@ spec:
       nodeSelector: { kubernetes.io/hostname: k3s-a1 }
       containers:
         - name: postgres
-          image: ghcr.io/immich-app/postgres:16-vectorchord0.4.3-pgvectors0.2.0
+          image: ghcr.io/immich-app/postgres:16-vectorchord0.4.3-pgvectors0.2.0@sha256:1a078b237c1d9b420b0ee59147386b4aa60d3a07a8e6a402fc84a57e41b043a4
           envFrom:
             - secretRef: { name: immich-secrets }
           volumeMounts:
@@ -100,7 +100,7 @@ spec:
       nodeSelector: { kubernetes.io/hostname: k3s-a1 }
       containers:
         - name: redis
-          image: docker.io/valkey/valkey:8-bookworm
+          image: docker.io/valkey/valkey:8-bookworm@sha256:fea8b3e67b15729d4bb70589eb03367bab9ad1ee89c876f54327fc7c6e618571
 ---
 apiVersion: v1
 kind: Service
@@ -130,7 +130,7 @@ spec:
       nodeSelector: { kubernetes.io/hostname: k3s-a1 }
       containers:
         - name: immich-ml
-          image: ghcr.io/immich-app/immich-machine-learning:v3.2.2
+          image: ghcr.io/immich-app/immich-machine-learning:v3.2.2@sha256:60dfcf266a9ef3b7376f5678e8c980d4fb61db5fc48c078fe8a326ab1535d60d
           envFrom:
             - secretRef: { name: immich-secrets }
           volumeMounts:
@@ -167,7 +167,7 @@ spec:
       nodeSelector: { kubernetes.io/hostname: k3s-a1 }
       containers:
         - name: immich-server
-          image: ghcr.io/immich-app/immich-server:v3.2.2
+          image: ghcr.io/immich-app/immich-server:v3.2.2@sha256:79cc1623323d5894922686d8743b4780181428f98eecbfb58ce12c41ef02d1ea
           envFrom:
             - secretRef: { name: immich-secrets }
           ports: [ { containerPort: 2283 } ]
