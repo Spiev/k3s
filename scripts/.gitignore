@@ -1,4 +1,7 @@
-# Actual credentials — never commit these
-backup.sh
-.mqtt.env
+# Actual credential files — never commit these
+.mqtt_credentials
 .restic.env
+.ha.env
+# Legacy names
+.mqtt.env
+backup.sh

@@ -34,8 +34,8 @@ DISCOVERY_TOPIC="homeassistant/sensor/backup_status/config"
 DEVICE_ID="restic_backup"
 DEVICE_NAME="Restic Backup"
 
-# All other config (HDD_DEVICE, HDD_MOUNT, MQTT_HOST, MQTT_PORT,
-# RESTIC_REPO, RESTIC_PASSWORD, S3_* ) comes from .restic.env — see .restic.env.example
+# MQTT config (MQTT_HOST, MQTT_PORT) comes from .mqtt_credentials — see .mqtt_credentials.example
+# Restic config (HDD_DEVICE, HDD_MOUNT, RESTIC_REPO, RESTIC_PASSWORD, S3_*) comes from .restic.env — see .restic.env.example
 # NOTE: DOCKER_BASE is no longer used (k3s local-path storage instead).
 
 # ============================================================================
@@ -59,8 +59,8 @@ fi
 source "$MQTT_CREDENTIALS"
 
 # Validate required MQTT variables are set
-if [[ -z "${MQTT_USER:-}" ]] || [[ -z "${MQTT_PASSWORD:-}" ]]; then
-    echo "ERROR: MQTT_USER or MQTT_PASSWORD not set in $MQTT_CREDENTIALS" >&2
+if [[ -z "${MQTT_USER:-}" ]] || [[ -z "${MQTT_PASSWORD:-}" ]] || [[ -z "${MQTT_HOST:-}" ]] || [[ -z "${MQTT_PORT:-}" ]]; then
+    echo "ERROR: MQTT_USER, MQTT_PASSWORD, MQTT_HOST or MQTT_PORT not set in $MQTT_CREDENTIALS" >&2
     exit 1
 fi
 
@@ -81,7 +81,7 @@ fi
 source "$RESTIC_ENV"
 
 # Validate required variables are set
-for VAR in RESTIC_PASSWORD RESTIC_REPO HDD_DEVICE HDD_MOUNT MQTT_HOST MQTT_PORT; do
+for VAR in RESTIC_PASSWORD RESTIC_REPO HDD_DEVICE HDD_MOUNT; do
     if [[ -z "${!VAR:-}" ]]; then
         echo "ERROR: $VAR is not set in $RESTIC_ENV" >&2
         exit 1

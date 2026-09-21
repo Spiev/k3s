@@ -202,15 +202,15 @@ views:
           - type: entities
             title: FritzBox WAN
             entities:
-              - entity: binary_sensor.ypbpmx2q8pofnv6f_myfritz_net
+              - entity: binary_sensor.YOUR_MYFRITZ_ID_myfritz_net
                 name: Fritzbox WAN Interface
-              - entity: sensor.ypbpmx2q8pofnv6f_myfritz_net_durchschnittliche_umlaufzeit
+              - entity: sensor.YOUR_MYFRITZ_ID_myfritz_net_durchschnittliche_umlaufzeit
                 name: Durchschnittliche Umlaufzeit
-              - entity: sensor.ypbpmx2q8pofnv6f_myfritz_net_jitter
+              - entity: sensor.YOUR_MYFRITZ_ID_myfritz_net_jitter
                 name: Jitter
-              - entity: sensor.ypbpmx2q8pofnv6f_myfritz_net_minimale_umlaufzeit
+              - entity: sensor.YOUR_MYFRITZ_ID_myfritz_net_minimale_umlaufzeit
                 name: Minimale Umlaufzeit
-              - entity: sensor.ypbpmx2q8pofnv6f_myfritz_net_maximale_umlaufzeit
+              - entity: sensor.YOUR_MYFRITZ_ID_myfritz_net_maximale_umlaufzeit
                 name: Maximale Umlaufzeit
           - type: entities
             title: Google DNS2
