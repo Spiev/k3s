@@ -1,0 +1,373 @@
+title: 11 Homelab
+views:
+  # ===========================================================================
+  # HARDWARE
+  # ===========================================================================
+  - title: Hardware
+    type: sections
+    cards: []
+    sections:
+      - type: grid
+        cards:
+          - type: entities
+            title: System Monitor PI 1
+            entities:
+              - entity: sensor.system_monitor_processor_temperature
+                name: Prozessortemperatur
+              - entity: sensor.system_monitor_processor_use
+                name: Prozessornutzung
+              - entity: sensor.pi5_fan_speed
+              - entity: sensor.system_monitor_memory_usage
+                name: Arbeitsspeicherauslastung
+              - entity: sensor.system_monitor_disk_free
+                name: Freier Massenspeicher /
+              - entity: sensor.system_monitor_last_boot
+                name: Letzter Systemstart
+      - type: grid
+        cards:
+          - type: entities
+            title: System Monitor PI 2
+            entities:
+              - entity: sensor.k3s_cpu_temp
+                name: Prozessortemperatur
+              - entity: sensor.k3s_cpu_usage
+                name: Prozessornutzung
+              - entity: sensor.k3s_fan_rpm
+              - entity: sensor.k3s_ram_usage
+                name: Arbeitsspeicherauslastung
+              - entity: sensor.k3s_disk_free_gb
+                name: Freier Massenspeicher /
+              - entity: sensor.k3s_nvme_temp
+                name: nvme Temperatur
+              - entity: sensor.k3s_last_boot
+                name: Letzter Systemstart
+
+  # ===========================================================================
+  # BACKUP (Pi1 + k3s)
+  # ===========================================================================
+  - title: Backup
+    path: backup
+    type: sections
+    cards: []
+    sections:
+      - type: grid
+        title: k3s-a1
+        cards:
+          - type: entity
+            entity: sensor.restic_backup_status
+            name: Backup Status k3s-a1
+            icon: mdi:backup-restore
+            state_color: true
+          - type: markdown
+            title: Letzter Backup
+            content: >
+              | | |
+
+              |---|---|
+
+              | **Letzter Lauf** | {{ state_attr('sensor.restic_backup_status',
+              'last_run') | as_datetime | relative_time }} |
+
+              | **Dauer** | {{ state_attr('sensor.restic_backup_status',
+              'duration_seconds') }}s |
+
+              | **S3 Status** | {{ state_attr('sensor.restic_backup_status',
+              's3_status') }} |
+          - type: markdown
+            title: Repository
+            content: >
+              | | **Lokal (SSD)** | **S3** |
+
+              |---|---|---|
+
+              | **Größe** | {{ state_attr('sensor.restic_backup_status',
+              'repository_size_gb') }} GB | {{
+              state_attr('sensor.restic_backup_status', 's3_repository_size_gb') }}
+              GB |
+
+              | **Snapshots** | {{ state_attr('sensor.restic_backup_status',
+              'snapshot_count') }} | {{ state_attr('sensor.restic_backup_status',
+              's3_snapshot_count') }} |
+          - type: markdown
+            title: Details pro Service
+            content: >
+              | Service | Neue Dateien | Geändert |
+
+              |---------|-------------|----------|
+
+              | Immich | {{ state_attr('sensor.restic_backup_status',
+              'immich_files_new') }} | {{ state_attr('sensor.restic_backup_status',
+              'immich_files_changed') }} |
+
+              | Home Assistant | {{ state_attr('sensor.restic_backup_status',
+              'homeassistant_files_new') }} | {{
+              state_attr('sensor.restic_backup_status',
+              'homeassistant_files_changed') }} |
+          - type: logbook
+            title: Backup-Verlauf Pi1
+            entities:
+              - sensor.restic_backup_status
+            hours_to_show: 168
+      - type: grid
+        title: k3s
+        cards:
+          - type: entity
+            entity: sensor.backup_overall_status
+            name: k3s Server Backup
+            icon: mdi:backup-restore
+            state_color: true
+          - type: markdown
+            title: Letzter Backup
+            content: >
+              | | |
+
+              |---|---|
+
+              | **Letzter Lauf** | {% set t = state_attr('sensor.backup_overall_status',
+              'last_run') %}{{ t | as_datetime | relative_time if t else '—' }} |
+
+              | **Dauer** | {{ state_attr('sensor.backup_overall_status',
+              'duration_seconds') | default('—') }}s |
+
+              | **Repo-Größe** | {{ state_attr('sensor.backup_overall_status',
+              'repository_size_gb') | default('—') }} GB |
+
+              | **Snapshots gesamt** | {{ state_attr('sensor.backup_overall_status',
+              'snapshot_count') | default('—') }} |
+          - type: markdown
+            title: Details pro Service
+            content: >
+              | Service | Neue Dateien | Geändert | Snapshots |
+
+              |---|---|---|---|
+
+              | **Paperless** | {{ state_attr('sensor.backup_paperless_ngx',
+              'files_new') | default('—') }} | {{ state_attr('sensor.backup_paperless_ngx',
+              'files_changed') | default('—') }} | {{ state_attr('sensor.backup_paperless_ngx',
+              'snapshot_count') | default('—') }} |
+
+              | **Seafile** | {{ state_attr('sensor.backup_seafile_status',
+              'files_new') | default('—') }} | {{ state_attr('sensor.backup_seafile_status',
+              'files_changed') | default('—') }} | {{ state_attr('sensor.backup_seafile_status',
+              'snapshot_count') | default('—') }} |
+
+              | **Teslamate** | {{ state_attr('sensor.backup_teslamate_status',
+              'files_new') | default('—') }} | {{ state_attr('sensor.backup_teslamate_status',
+              'files_changed') | default('—') }} | {{ state_attr('sensor.backup_teslamate_status',
+              'snapshot_count') | default('—') }} |
+          - type: logbook
+            title: Backup-Verlauf k3s
+            hours_to_show: 168
+            target:
+              entity_id:
+                - sensor.backup_overall_status
+                - sensor.backup_teslamate_status
+                - sensor.backup_seafile_status
+                - sensor.backup_paperless_ngx
+
+  # ===========================================================================
+  # NETZWERK
+  # ===========================================================================
+  - title: Netzwerk
+    path: netzwerk
+    type: sections
+    cards: []
+    sections:
+      - type: grid
+        cards:
+          - type: entities
+            title: FRITZ!Box 7590 AX
+            entities:
+              - entity: update.fritz_box_7590_ax_fritz_os
+              - entity: sensor.fritz_box_7590_ax_cpu_temperatur
+              - entity: sensor.fritz_box_7590_ax_connection_uptime
+                name: Verbindungsverfügbarkeit
+              - entity: sensor.fritz_box_7590_ax_link_download_throughput
+                name: Link-Download-Durchsatz
+              - entity: sensor.fritz_box_7590_ax_link_upload_throughput
+                name: Link-Upload-Durchsatz
+              - entity: sensor.fritz_box_7590_ax_download_speed
+              - entity: sensor.fritz_box_7590_ax_upload_speed
+              - entity: sensor.fritz_box_7590_ax_last_restart
+                name: Letzter Neustart
+          - type: entities
+            title: FRITZ!Powerline 1260
+            entities:
+              - entity: update.fritz_powerline_1260_fritz_os
+                name: FRITZ!OS
+              - entity: sensor.fritz_powerline_1260_cpu_temperatur
+              - entity: sensor.fritz_powerline_1260_letzter_neustart
+      - type: grid
+        cards:
+          - type: entities
+            title: FritzBox WAN
+            entities:
+              - entity: binary_sensor.ypbpmx2q8pofnv6f_myfritz_net
+                name: Fritzbox WAN Interface
+              - entity: sensor.ypbpmx2q8pofnv6f_myfritz_net_durchschnittliche_umlaufzeit
+                name: Durchschnittliche Umlaufzeit
+              - entity: sensor.ypbpmx2q8pofnv6f_myfritz_net_jitter
+                name: Jitter
+              - entity: sensor.ypbpmx2q8pofnv6f_myfritz_net_minimale_umlaufzeit
+                name: Minimale Umlaufzeit
+              - entity: sensor.ypbpmx2q8pofnv6f_myfritz_net_maximale_umlaufzeit
+                name: Maximale Umlaufzeit
+          - type: entities
+            title: Google DNS2
+            entities:
+              - entity: binary_sensor.8_8_4_4
+                title: Google DNS2
+              - entity: sensor.8_8_4_4_durchschnittliche_umlaufzeit
+                name: Durchschnittliche Umlaufzeit
+              - entity: sensor.8_8_4_4_jitter
+                name: Jitter
+              - entity: sensor.8_8_4_4_maximale_umlaufzeit
+                name: Maximale Umlaufzeit
+              - entity: sensor.8_8_4_4_minimale_umlaufzeit
+                name: Minimale Umlaufzeit
+      - type: grid
+        cards:
+          - type: entities
+            title: Pi-Hole
+            entities:
+              - entity: binary_sensor.pi_hole_status
+                name: Status
+              - entity: sensor.pi_hole_anteil_blockierter_anzeigen
+                name: Anteil blockierter Anzeigen
+              - entity: sensor.pi_hole_blockierte_anzeigen
+                name: Blockierte Anzeigen
+              - entity: sensor.pi_hole_blockierte_domains
+                name: Blockierte Domains
+              - entity: sensor.pi_hole_dns_abfragen
+                name: DNS-Abfragen
+              - entity: sensor.pi_hole_dns_abfragen_weitergeleitet
+                name: DNS-Abfragen weitergeleitet
+              - entity: sensor.pi_hole_dns_abfragen_zwischengespeichert
+                name: DNS-Abfragen zwischengespeichert
+              - entity: sensor.pi_hole_eindeutige_dns_clients
+                name: Eindeutige DNS-Clients
+              - entity: sensor.pi_hole_eindeutige_dns_domains
+                name: Eindeutige DNS-Domains
+              - entity: sensor.pi_hole_gesehene_clients
+                name: Gesehene Clients
+              - entity: sensor.pi_hole_dns_latency_ipv4
+                name: DNS Latenz (ipv4) heise.de
+              - entity: sensor.pi_hole_dns_latency_ipv6
+                name: DNS Latenz (ipv6) heise.de
+      - type: grid
+        cards:
+          - type: entities
+            title: Haustüre
+            entities:
+              - entity: sensor.vordereingang_batterie
+                name: Batterie
+          - type: entities
+            title: Wohnungstüre
+            entities:
+              - entity: sensor.wohnungsture_battery
+                name: Battery
+              - entity: binary_sensor.wohnungsture_battery_charging
+                name: Battery charging
+              - entity: binary_sensor.wohnungsture_battery_critical
+                name: Battery critical
+              - entity: sensor.wohnungsture_firmware_version
+                name: Firmware version
+
+  # ===========================================================================
+  # SERVICES
+  # ===========================================================================
+  - title: Services
+    type: sections
+    max_columns: 4
+    cards: []
+    sections:
+      - type: grid
+        cards:
+          - type: entities
+            title: 🌐 Erreichbarkeit
+            entities:
+              - entity: binary_sensor.home_assistant
+                name: Home Assistant
+                state_color: true
+              - entity: binary_sensor.immich
+                name: Immich
+                state_color: true
+              - entity: binary_sensor.paperless
+                name: Paperless
+                state_color: true
+              - entity: binary_sensor.seafile
+                name: Seafile
+                state_color: true
+              - entity: binary_sensor.freshrss
+                name: FreshRSS
+                state_color: true
+      - type: grid
+        cards:
+          - type: entities
+            title: 🖥️ k3s-a1 Updates
+            entities:
+              - entity: sensor.rpi_system_updates
+                name: System-Updates
+              - entity: sensor.rpi_eeprom_status
+                name: EEPROM Firmware
+                state_color: true
+          - type: entities
+            title: Pi-Hole
+            entities:
+              - entity: update.pi_hole_core_update_verfugbar
+                name: Core-Update verfügbar
+              - entity: update.pi_hole_ftl_update_verfugbar
+                name: FTL-Update verfügbar
+              - entity: update.pi_hole_web_update_verfugbar
+                name: Web-Update verfügbar
+      - type: grid
+        cards:
+          - type: entities
+            title: Home Assistant
+            entities:
+              - entity: binary_sensor.docker_hub_update_available
+                name: Software Version
+              - entity: sensor.docker_hub
+          - type: entities
+            title: Fotobibliothek
+            entities:
+              - entity: update.stefan_version
+                name: Software Version
+          - type: entities
+            title: Paperless
+            entities:
+              - entity: update.https_paperless_miesem_de_software
+                name: Software Version
+              - entity: sensor.https_paperless_miesem_de_datenbank_status
+                name: Datenbank-Status
+              - entity: sensor.https_paperless_miesem_de_plausibilitatsstatus
+                name: Plausibilitätsstatus
+              - entity: sensor.https_paperless_miesem_de_redis_status
+                name: Redis-Status
+              - entity: sensor.https_paperless_miesem_de_dokumente_im_posteingang
+                name: Posteingang
+      - type: grid
+        cards:
+          - type: entities
+            title: 🖥️ K3s Updates
+            entities:
+              - entity: sensor.k3s_server_node_system_updates
+                name: System-Updates
+              - entity: sensor.k3s_server_node_eeprom_status
+                name: EEPROM Firmware
+                state_color: true
+          - type: entities
+            title: ☸️  k8s Services
+            entities:
+              - entity: sensor.k3s_unbound_pvcs
+                name: Unbound PVCs
+              - entity: sensor.k3s_unhealthy_pods
+                name: Unhealthy Pods
+              - entity: binary_sensor.k3s_server_node_flux_ready
+                name: Flux Ready
+              - entity: sensor.k3s_server_node_flux_git_fetched_at
+                name: Flux Git Fetched At
+              - entity: sensor.k3s_server_node_flux_git_revision
+                name: Flux Git Revision
+              - entity: sensor.k3s_server_node_flux_applied_revision
+                name: Flux Applied Revision

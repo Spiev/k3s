@@ -1,0 +1,181 @@
+# =============================================================================
+# LICHT-DASHBOARD
+# =============================================================================
+# Eigenstaendiges Lovelace-Dashboard (Sidebar-Eintrag "Licht").
+# Alle Lichter nach Raum gruppiert; Tile-Karten mit Helligkeits-Slider.
+# Mehrfach-Leuchten laufen ueber die vorhandenen Zigbee-Gruppen.
+# =============================================================================
+title: 09 Licht
+views:
+  - title: Lichter
+    path: lichter
+    icon: mdi:lightbulb-group
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Lichter
+            icon: mdi:lightbulb-group
+            heading_style: title
+          - type: button
+            name: Alle Lichter aus
+            icon: mdi:lightbulb-off
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: light.turn_off
+              target:
+                entity_id: all
+      - type: grid
+        cards:
+          - type: heading
+            heading: Stefan
+            icon: mdi:account
+          - type: tile
+            entity: light.sofa_light
+            features:
+              - type: light-brightness
+          - type: tile
+            entity: light.ikea_of_sweden_tradfri_bulb_e27_cws_806lm_light
+            features:
+              - type: light-brightness
+            name: Kugel
+          - type: tile
+            entity: light.paulmann_licht_500_47_light
+            features:
+              - type: light-brightness
+            name: LED
+          - type: tile
+            entity: light.ikea_of_sweden_tradfri_bulb_e27_ww_g95_cl_470lm_light
+            features:
+              - type: light-brightness
+            name: Sideboard
+      - type: grid
+        cards:
+          - type: heading
+            heading: Noah
+            icon: mdi:human-male-boy
+          - type: tile
+            entity: light.gaming
+            features:
+              - type: light-brightness
+          - type: tile
+            entity: light.generic_zigbee_coordinator_ezsp_noah_wandlampen
+            features:
+              - type: light-brightness
+            name: Wandlampen
+          - type: tile
+            entity: light.kalax_lang
+            features:
+              - type: light-brightness
+          - type: tile
+            entity: light.bett_vorne
+            features:
+              - type: light-brightness
+          - type: tile
+            entity: light.bett_hinten
+            features:
+              - type: light-brightness
+          - type: tile
+            entity: light.wheinachtsbaum
+            features:
+              - type: light-brightness
+            name: Weihnachtsbaum
+      - type: grid
+        cards:
+          - type: heading
+            heading: Yella
+            icon: mdi:human-female-girl
+          - type: tile
+            entity: light.ikea_of_sweden_tradfribulbgu10ws345lm
+            features:
+              - type: light-brightness
+            name: Nachttisch
+          - type: tile
+            entity: light.gameing_ecke
+            features:
+              - type: light-brightness
+          - type: tile
+            entity: light.badewanne
+            features:
+              - type: light-brightness
+          - type: tile
+            entity: light.yella_kalax
+            features:
+              - type: light-brightness
+            name: Regal
+          - type: tile
+            entity: light.kleiderschrank
+            features:
+              - type: light-brightness
+          - type: tile
+            entity: light.generic_zigbee_coordinator_ezsp_yella_kronleuchter_bett
+            features:
+              - type: light-brightness
+            name: Kronleuchter Bett
+          - type: tile
+            entity: light.generic_zigbee_coordinator_ezsp_yella_kronleuchter_schrank
+            features:
+              - type: light-brightness
+            name: Kronleuchter Schrank
+      - type: grid
+        cards:
+          - type: heading
+            heading: Bad
+            icon: mdi:shower
+          - type: tile
+            entity: light.wandlampe_links_unten_light
+            features:
+              - type: light-brightness
+            name: Wand links unten
+          - type: tile
+            entity: light.ikea_of_sweden_tradfri_bulb_gu10_cws_345lm_3
+            features:
+              - type: light-brightness
+            name: Wand links oben
+          - type: tile
+            entity: light.ikea_of_sweden_tradfri_bulb_gu10_cws_345lm
+            features:
+              - type: light-brightness
+            name: Wand rechts unten
+          - type: tile
+            entity: light.ikea_of_sweden_tradfri_bulb_gu10_cws_345lm_2
+            features:
+              - type: light-brightness
+            name: Wand rechts oben
+      - type: grid
+        cards:
+          - type: heading
+            heading: Küche
+            icon: mdi:silverware-fork-knife
+          - type: tile
+            entity: light.stehlampe_light_2
+            features:
+              - type: light-brightness
+            name: Stehlampe
+          - type: tile
+            entity: light.tischlampe
+            features:
+              - type: light-brightness
+          - type: tile
+            entity: light.kuchenzeile_led
+            features:
+              - type: light-brightness
+            name: Küchenzeile
+          - type: tile
+            entity: light.generic_zigbee_coordinator_ezsp_abzug
+            features:
+              - type: light-brightness
+            name: Abzug
+      - type: grid
+        cards:
+          - type: heading
+            heading: Flur
+            icon: mdi:door
+          - type: tile
+            entity: light.lichterkette
+            features:
+              - type: light-brightness
+            name: Lichterkette
