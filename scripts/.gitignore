@@ -5,3 +5,6 @@
 # Legacy names
 .mqtt.env
 backup.sh
+
+# k3s-monitor.sh state caches
+.*_cache

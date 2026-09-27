@@ -1,0 +1,6 @@
+# Flux source-controller: paths excluded from the GitRepository artifact.
+# Anything here is invisible to all Flux Kustomizations.
+
+# Home Assistant Lovelace dashboards — not Kubernetes manifests.
+# Deployed to the HA config PVC by scripts/ha_dashboard_sync.sh instead.
+apps/homeassistant/dashboards/
