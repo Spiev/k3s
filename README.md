@@ -1,8 +1,8 @@
 # k3s Homelab
 
-Kubernetes infrastructure on 2× Raspberry Pi 5 (8 GB RAM). Migration of existing Docker services from [docker-runtime](../docker-runtime).
+Kubernetes infrastructure on 2× Raspberry Pi 5 (8 GB RAM). Migration from a Docker Compose homelab is complete; both Docker and its edge nginx/fail2ban reverse proxy have been decommissioned.
 
-**Hardware:** 2× Raspberry Pi 5 (8 GB RAM) — Server-Node 4 TB NVMe (Control Plane + Immich), Agent-Node 2 TB NVMe (all other services)
+**Hardware:** 2× Raspberry Pi 5 (8 GB RAM) — Server-Node `k3s` (4 TB NVMe, control plane), Agent-Node `k3s-a1` (2 TB NVMe, all workloads incl. Immich)
 
 **Stack:** k3s · local-path · Traefik · SOPS · Flux CD
 
@@ -40,7 +40,6 @@ Kubernetes infrastructure on 2× Raspberry Pi 5 (8 GB RAM). Migration of existin
 | [Renovate](docs/operations/renovate.md) | Automated dependency updates via GitHub Action |
 | [Backup & Restore](docs/operations/backup-restore.md) | Restic → Hetzner S3, DB dumps, restore procedures |
 | [Image Updates](docs/operations/update-images.md) | Manual image update, crictl pre-pull for RWO PVCs |
-| [Proxy Migration](docs/proxy-migration.md) | nginx/fail2ban → Traefik/CrowdSec: cert-manager, temp routes, switchover |
 | [Security Hardening Notes](docs/security-hardening-notes.md) | Local-only: ingress security status, open items (gitignored, not in this repo on GitHub) |
 
 ---
@@ -67,13 +66,15 @@ clusters/       Flux CD configuration
 
 ## Migration Status
 
-| Service | Status | Notes |
-|---|---|---|
-| FreshRSS | ✅ Migrated | Running on k3s, volume migration |
-| Pi-hole | ✅ Migrated | DNS via LoadBalancer + Ingress |
-| Seafile | ✅ Migrated | Set up directly in k3s |
-| Immich | Open | Restic restore strategy (no space to copy) — onto Server-Node after Agent-Node join |
-| Paperless | ✅ Migrated | DB + media volumes migrated from Docker, Google OIDC |
-| Teslamate | ✅ Migrated | Running on k3s, DB restore from pg_dump |
-| Home Assistant | Planned (Agent-Node) | `hostNetwork` + `nodeAffinity` for Zigbee dongle |
-| Vaultwarden | Concept | Google SSO (OIDC fork), YubiKey 2FA — Kubernetes deployment pending |
+Migration from Docker Compose to k3s is complete. All services listed below run on k3s; the Docker Compose homelab (and its nginx/fail2ban edge proxy) has been fully decommissioned.
+
+| Service | Notes |
+|---|---|
+| FreshRSS | Volume migrated |
+| Pi-hole | DNS via LoadBalancer + Ingress |
+| Seafile | Set up directly in k3s |
+| Immich | Restic-restored, runs on the Agent-Node (`k3s-a1`) alongside the other workloads — not the Server-Node as originally planned, see [Immich Migration](docs/services/immich.md) |
+| Paperless | DB + media volumes migrated, Google OIDC |
+| Teslamate | DB restored from pg_dump |
+| Home Assistant | `hostNetwork` + `nodeAffinity` for Zigbee dongle, runs on the Agent-Node |
+| Vaultwarden | Concept only — Google SSO (OIDC fork), YubiKey 2FA — Kubernetes deployment not yet started |

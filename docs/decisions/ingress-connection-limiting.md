@@ -63,20 +63,32 @@ The correct control is **entry-point timeouts**. Two factors:
 
    `readTimeout` covers the **entire** request (including body), so it is sized to the largest legitimate slow upload (Seafile/Immich had no size limit and `client_body_timeout 300s` in nginx) rather than tighter — a lower value would break legitimate large/slow uploads. This bounds a Slowloris connection to 5 minutes instead of forever, with Go's connection model and CrowdSec (banning IPs that open many connections) as the real backstop.
 
-### Migration note: total vs. inactivity timeout (check at the edge-flip)
+### Migration note: total vs. inactivity timeout — the edge-flip has happened
 
-⚠️ **Flip-check for when Traefik becomes the edge (replacing nginx).**
+**Update (2026-09-30): Traefik is now the edge.** nginx has been fully
+decommissioned along with the rest of the Docker Compose homelab. The
+flip-check below, originally written as a future to-do, is now due.
 
-Traefik's `readTimeout`/`writeTimeout` are **total** durations for the whole request/response. nginx's equivalents (`client_body_timeout`, `proxy_read_timeout`) were **inactivity** timeouts — the clock reset on every chunk of data transferred.
+Traefik's `readTimeout`/`writeTimeout` are **total** durations for the whole
+request/response. nginx's equivalents (`client_body_timeout`,
+`proxy_read_timeout`) were **inactivity** timeouts — the clock reset on
+every chunk of data transferred. Now that Traefik receives internet traffic
+directly (no nginx LAN hop absorbing the difference), a very large Seafile
+transfer over a slow line could exceed the 300s **total** limit even though
+it streamed fine under nginx's old inactivity model.
 
-- **While Traefik sits behind nginx (current state):** irrelevant. The slow client leg terminates at nginx; the nginx↔Traefik hop is fast LAN, so the 300s total is never approached.
-- **Once Traefik is the edge:** a very large Seafile transfer over a slow line could exceed the 300s **total** limit even though it streamed fine under nginx's inactivity model. At the flip, **re-check the Seafile route timeouts** — raise the entry-point value, or set a per-route timeout via a dedicated `Middleware`/`ServersTransport` rather than loosening the global entry point.
+**Action needed (not yet done):** re-check the Seafile route timeouts —
+either raise the entry-point value, or set a per-route timeout via a
+dedicated `Middleware`/`ServersTransport` rather than loosening the global
+entry point. Tracked in `docs/security-hardening-notes.md` (local-only).
 
-Tracked alongside the other open edge-flip items: CrowdSec + Traefik bouncer, cert-manager ClusterIssuer, and the `trustedIPs`/`ipStrategy.depth` fix.
+Tracked alongside the other open edge-flip items: CrowdSec + Traefik
+bouncer (open), cert-manager ClusterIssuer (exists and `Ready`, but not yet
+wired to the ingresses — open, see `docs/security-hardening-notes.md`).
 
 ## Consequences
 
 - No `inFlightReq` middlewares are created or referenced
-- Abuse/DoS protection relies on CrowdSec (IP banning) and rate limiting (request throttling)
+- Abuse/DoS protection relies on CrowdSec (IP banning, not yet implemented — see `docs/decisions/ingress-security.md`) and rate limiting (request throttling, implemented)
 - Slowloris is bounded by entry-point `respondingTimeouts`, not connection limiting
-- Pod resource limits in each service manifest remain the backstop against resource exhaustion
+- **Pod resource limits are assumed here as a backstop against resource exhaustion, but none are currently set on any Deployment in the cluster** — this assumption does not hold today. Tracked as an open item in `docs/security-hardening-notes.md` (local-only).

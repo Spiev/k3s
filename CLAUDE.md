@@ -2,19 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Private k3s (lightweight Kubernetes) infrastructure repository. Target hardware: 2× Raspberry Pi 5 (8 GB RAM). Companion to the Docker-based homelab in `../docker-runtime`.
+Private k3s (lightweight Kubernetes) infrastructure repository. Hardware: 2× Raspberry Pi 5 (8 GB RAM). Migration from the Docker-based homelab in `../docker-runtime` is complete — Docker Compose and its nginx/fail2ban edge proxy have been fully decommissioned.
 
 ## Architecture
 
 - **OS**: Raspberry Pi OS Lite (64-bit, Trixie) — keeps native hardware tools (`raspi-config`, `vcgencmd`, `rpi-eeprom-update`)
-- **Hardware**: 2× Raspberry Pi 5 (8 GB RAM) — Server-Node 4 TB NVMe (Control Plane + Immich), Agent-Node 2 TB NVMe (currently Docker, joins k3s after full migration; hosts all other services)
-- **k3s** single-node to start; Agent-Node joins when all Docker services are migrated
+- **Hardware**: 2× Raspberry Pi 5 (8 GB RAM) — Server-Node `k3s` (4 TB NVMe, control plane + Traefik only), Agent-Node `k3s-a1` (2 TB NVMe, all workloads incl. Immich — joined the cluster after the Docker migration completed)
+- **k3s**: both nodes joined, Agent-Node runs the workloads
 - **local-path-provisioner** (k3s built-in) for persistent storage — files stored directly on node filesystem
-- **Traefik** (k3s built-in) as ingress controller with cert-manager for Let's Encrypt
+- **Traefik** (k3s built-in) as ingress controller — the sole internet-facing entry point (cert-manager is installed and `Ready` but not yet wired to any ingress; a manually-imported cert is in use, see `docs/security-hardening-notes.md`, local-only, for the open migration)
 - **Flux CD** for GitOps (pull-based, bootstrapped from this repo)
 - **SOPS + age** for encrypting secrets that can be committed to this public repo (built into Flux's kustomize-controller, no extra controller needed)
 
-### Repository Structure (target)
+### Repository Structure
 
 ```
 clusters/raspi/     ← Flux entrypoint for the cluster
@@ -25,7 +25,7 @@ docs/               ← learning path and setup guides
 
 ## Services Migration Status
 
-Current status is tracked in the [README — Migration Status](README.md#migration-status). Services are migrated from `../docker-runtime`.
+Current status is tracked in the [README — Migration Status](README.md#migration-status). All services have been migrated from `../docker-runtime`; that repo's Docker Compose stack is decommissioned.
 
 ## Conventions
 

@@ -71,6 +71,5 @@ nginx wrote access logs to the host filesystem, fail2ban ran on the host and rea
 - CrowdSec runs as a Deployment in k3s (or DaemonSet for multi-node)
 - The Traefik Bouncer is registered as a plugin in the Traefik Helm values / k3s config
 - A `Middleware` resource is created and referenced in all IngressRoutes
-- fail2ban is decommissioned on the Pi nodes once CrowdSec is active
-- nginx (docker-runtime proxy) is decommissioned once all services are on k3s
+- nginx and fail2ban (docker-runtime proxy) have already been decommissioned along with the rest of the Docker Compose homelab — this happened independently of CrowdSec's implementation status, and is not blocked on it. Until CrowdSec lands, distributed brute-force/scanner traffic across many source IPs has no ingress-layer mitigation (per-IP rate-limit middlewares still apply, see `infrastructure/traefik/traefik-middlewares.yaml`).
 - Some application-level auth failures are not detectable at the HTTP proxy layer (HTTP 2xx response regardless of auth outcome). For affected services, application-native brute-force protection and rate limiting at the ingress layer serve as mitigations until a service-specific log parser is available in CrowdSec.

@@ -4,37 +4,37 @@
 
 ## Hardware
 
-| Node | Role | RAM | NVMe | Status |
+| Node | Hostname | Role | RAM | NVMe |
 |---|---|---|---|---|
-| Raspi 5 "new" | k3s Server-Node (Control Plane + Immich) | 8 GB | 4 TB | k3s |
-| Raspi 5 "old" | k3s Agent-Node (all other workloads) | 8 GB | 2 TB | Docker → k3s (after migration) |
+| Raspi 5 "new" | `k3s` | Control Plane (Server-Node) | 8 GB | 4 TB |
+| Raspi 5 "old" | `k3s-a1` | Agent-Node — all workloads | 8 GB | 2 TB |
 
-Both nodes are identical hardware (Raspberry Pi 5, 8 GB RAM). The Server-Node carries the largest disk and runs the Control Plane plus the single storage-heavy service, Immich (~1.5 TB library). All other services run on the Agent-Node, including Home Assistant (Zigbee dongle attached there).
+Both nodes are identical hardware (Raspberry Pi 5, 8 GB RAM). The Server-Node (`k3s`) runs only the control plane and Traefik — pinned there via `nodeSelector` so `externalTrafficPolicy: Local` preserves the real client IP (see `infrastructure/traefik/traefik-config.yaml`). Every application workload, including Immich, runs on the Agent-Node (`k3s-a1`) — this differs from the original plan (see [Immich Migration](services/immich.md)), which assumed Immich would stay on the Server-Node for storage locality; in practice it was migrated onto the Agent-Node with the rest of the fleet instead.
 
 ---
 
-## Big picture (target state)
+## Big picture (current state)
 
 ```
                            Internet
                                │
                         ┌──────▼──────┐
-                        │   Router    │  Port 80/443
+                        │   Router    │  Port 80/443 forwarded directly to k3s
                         └──────┬──────┘
                                │
                ┌───────────────▼──────────────────────────────────────┐
                │                   k3s Cluster                        │
                │                                                      │
                │  ┌─────────────────────┐  ┌──────────────────────┐   │
-               │  │  Server-Node        │  │  Agent-Node          │   │
-               │  │  Raspi 5 "new"      │  │  Raspi 5 "old"       │   │
+               │  │  Server-Node (k3s)  │  │  Agent-Node (k3s-a1) │   │
                │  │  4 TB NVMe          │  │  2 TB NVMe           │   │
                │  │                     │  │                      │   │
-               │  │  Control Plane      │  │  [pihole] (DNS)      │   │
-               │  │  Traefik (Ingress)  │  │  [freshrss]          │   │
-               │  │  CoreDNS            │  │  [seafile]           │   │
+               │  │  Control Plane      │  │  [immich] (1.5 TB)   │   │
+               │  │  Traefik (Ingress)  │  │  [pihole] (DNS)      │   │
+               │  │  CoreDNS            │  │  [freshrss]          │   │
+               │  │  cert-manager       │  │  [seafile]           │   │
                │  │                     │  │  [paperless]         │   │
-               │  │  [immich] (1.5 TB)  │  │  [teslamate]         │   │
+               │  │                     │  │  [teslamate]         │   │
                │  │                     │  │  [homeassistant] ←┐  │   │
                │  └─────────────────────┘  │  [mosquitto]      │  │   │
                │                           └───────────────────┼──┘   │
@@ -46,54 +46,34 @@ Both nodes are identical hardware (Raspberry Pi 5, 8 GB RAM). The Server-Node ca
                                             plugged into Agent-Node
 ```
 
+There is no Docker Compose homelab anymore, and no separate nginx edge proxy — that migration is complete. Traefik on the Server-Node is the single internet-facing entry point.
+
 ---
 
 ## Network: how a request flows through the cluster
 
-### During migration (transition phase)
-
-nginx remains the external entry point — it knows the public IP, holds the certificates, and all Docker services still run behind it. For k3s services, nginx simply forwards to the new Raspi:
-
 ```
-Browser: https://freshrss.example.com
+Browser: https://<service>.example.com
          │
          ▼
-    Router → nginx (old Raspi, :443)
-         │  TLS termination, rate limiting, security headers, Fail2ban
-         │  proxy_pass → http://raspi5-ip:80
+    Router (Fritzbox) → forwards 80/443 directly → Traefik (Server-Node k3s)
+         │  TLS termination (manually-imported multi-SAN cert today — cert-manager
+         │  migration open, see docs/security-hardening-notes.md, local-only)
+         │  rate limiting + security headers + LAN-only IP allowlist via Traefik
+         │  Middleware (infrastructure/traefik/traefik-middlewares.yaml)
          ▼
-    Traefik (new Raspi, :80)
-         │  checks: which domain? → IngressRoute rules
-         ▼
-    Service "freshrss" (ClusterIP, cluster-internal)
+    Service (ClusterIP, cluster-internal)
          │
          ▼
-    Pod "freshrss-xxxx"
+    Pod (scheduled on whichever node the workload runs on — almost
+         always the Agent-Node; only Traefik/control-plane pin to the
+         Server-Node)
          │
          ▼
-    PVC → local-path volume → NVMe
+    PVC → local-path volume → NVMe (on whichever node the pod lives on)
 ```
 
-Two proxy hops, but clean separation of concerns: nginx = external security layer, Traefik = internal Kubernetes routing. No DNS change needed, both Raspis run independently.
-
-### After full migration (target state)
-
-Once all services run on k3s, nginx can be consolidated:
-
-```
-Browser: https://freshrss.example.com
-         │
-         ▼
-    Router → Traefik (new Raspi, :443)
-         │  TLS via cert-manager (Let's Encrypt)
-         │  rate limiting + security headers via Traefik Middleware
-         ▼
-    Service → Pod → local-path → NVMe
-```
-
-Traefik then takes over everything nginx does today. Fail2ban can run as a DaemonSet in the cluster or be replaced by Traefik-native rate limits.
-
-**This decision does not need to be made now.** Only once all services are migrated does a comparison make sense: nginx is battle-tested and configured, Traefik is more k8s-native.
+Brute-force/scanner protection (CrowdSec) is decided but not yet implemented — see [Decision: Ingress Security](decisions/ingress-security.md).
 
 ---
 
@@ -101,7 +81,7 @@ Traefik then takes over everything nginx does today. Fail2ban can run as a Daemo
 
 `local-path-provisioner` (k3s built-in) stores data at `/var/lib/rancher/k3s/storage/<pvc-name>/` — directly on NVMe, directly backupable with Restic. PVCs automatically get `nodeAffinity` for the node they were created on.
 
-The storage-heavy service (Immich, ~1.5 TB) goes on the Server-Node via `nodeSelector`. All other volumes (Pi-hole, FreshRSS, Seafile, Paperless, Teslamate) go on the Agent-Node.
+Immich (~1.5 TB) and every other service's volumes live on the Agent-Node's 2 TB NVMe. The Server-Node's larger 4 TB disk currently only holds the control plane — there is no storage-heavy workload pinned there today, despite the original plan (see Hardware section above).
 
 → [Storage Decision](decisions/storage.md) · [Immich Migration](services/immich.md) · [Backup & Restore](operations/backup-restore.md)
 
@@ -127,33 +107,7 @@ No webhook needed. Flux pulls actively — works behind NAT without a public IP 
 
 Secrets are encrypted with SOPS + age and committed as `*.sops.yaml` files. Flux decrypts them in memory during reconciliation — decrypted values never touch disk or Git. → [SOPS + age](platform/sops.md)
 
----
-
-## Starting point vs. target state
-
-```
-Starting point (all Docker)         Target (all k3s)
-──────────────────────────────      ──────────────────────────────────────
-Raspi 5 "new" (256 GB → 4 TB)      Raspi 5 "new": k3s Server-Node (4 TB)
-  └── k3s (empty)                     └── Control Plane, Traefik, CoreDNS
-                                      └── Immich        (4 TB NVMe, 1.5 TB)
-
-Raspi 5 "old" (2 TB)                Raspi 5 "old": k3s Agent-Node
-  └── Docker                           └── Pi-hole
-        └── FreshRSS                   └── FreshRSS
-        └── Immich                     └── Seafile
-        └── Paperless                  └── Paperless
-        └── Home Assistant             └── Teslamate
-        └── Teslamate                  └── Home Assistant (hostNetwork +
-        └── Pi-hole                    └── Mosquitto      USB nodeAffinity)
-        └── Nginx Proxy                └── Matter Hub
-        └── Mosquitto
-        └── Matter Hub
-```
-
-Both Pis are identical hardware (Raspi 5, 8 GB RAM) — a full migration to k3s is realistic. The Server-Node hosts Immich (the only storage-heavy service) alongside the Control Plane; every other service runs on the Agent-Node. Home Assistant runs on the Agent-Node with `hostNetwork: true` and `nodeAffinity` for the Zigbee dongle — no re-plugging needed. nginx stays as the external proxy for now, and can be replaced by Traefik later.
-
-→ Current migration progress: [README — Migration Status](../README.md#migration-status)
+**Not everything is Flux-managed.** The real per-service Ingress manifests (`apps/*/**-ingress.yaml`) are gitignored by design (they'd otherwise leak real hostnames into this public repo) and are applied manually via `kubectl apply -f` from a workstation copy — this is a known gap, tracked in `docs/security-hardening-notes.md` (local-only).
 
 ---
 
@@ -161,14 +115,16 @@ Both Pis are identical hardware (Raspi 5, 8 GB RAM) — a full migration to k3s 
 
 | Component | Type | Purpose | Where |
 |---|---|---|---|
-| k3s | Kubernetes distribution | Cluster orchestration | Raspi 5 |
-| nginx | Reverse proxy | External entry point, TLS, Fail2ban (runs on old Raspi) | Docker |
-| Traefik | Ingress Controller | Internal k8s routing (may replace nginx later) | k3s built-in |
+| k3s | Kubernetes distribution | Cluster orchestration | Both Raspi 5 nodes |
+| Traefik | Ingress Controller | Internet-facing entry point, TLS, rate limiting, security headers | k3s built-in, pinned to Server-Node |
 | CoreDNS | DNS | Cluster-internal DNS | k3s built-in |
 | Flannel | CNI | Pod networking | k3s built-in |
 | MetalLB | Load Balancer | External IPs for services on bare metal (replaces k3s ServiceLB) | Installed via kubectl |
 | local-path-provisioner | Storage | Persistent volumes directly on node filesystem | k3s built-in |
-| cert-manager | Controller | Let's Encrypt TLS — only needed when Traefik replaces nginx | Later |
+| cert-manager | Controller | Let's Encrypt TLS — installed and `Ready`, but ingresses still use a manually-imported cert; migration to cert-manager-issued certs is open (see `docs/security-hardening-notes.md`, local-only) | `cert-manager` namespace |
 | Flux CD | GitOps | Automated deployment | Installed via flux CLI |
 | SOPS + age | Tool | Secret encryption (built into kustomize-controller) | Flux built-in, age key bootstrapped manually |
 | Prometheus + Grafana | Monitoring | Metrics & dashboards | kube-prometheus-stack |
+| Ansible | Host/OS config | Firewall (UFW), sysctl — the layer below Flux | `ansible/`, see [Node Configuration](decisions/node-configuration.md) |
+
+→ Current migration progress: [README — Migration Status](../README.md#migration-status)

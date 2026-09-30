@@ -3,7 +3,6 @@ apps/*/overlays/*/ingress-patch.yaml
 apps/*/**-ingress.yaml
 
 # Sensitive architecture docs — local only, not for public repo
-docs/proxy-migration.md
 docs/security-hardening-notes.md
 
 # Secrets and credentials — never commit

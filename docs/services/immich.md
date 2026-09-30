@@ -2,6 +2,14 @@
 
 Immich is the most complex migration candidate due to its data volume. This guide describes the strategy and concrete steps.
 
+> **Status: done, but not exactly as planned.** This guide's original plan
+> put Immich on the Server-Node for storage locality. In practice, Immich
+> was migrated onto the **Agent-Node (`k3s-a1`)** instead, alongside the
+> rest of the workloads — the Server-Node only runs the control plane and
+> Traefik today. The restore strategy below (Restic → fresh disk) is still
+> what was used; only the final node placement differs from what's written
+> here. Kept as-is for historical/strategy reference.
+
 ---
 
 ## Starting point & constraints

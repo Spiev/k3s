@@ -59,7 +59,6 @@ The goal was to migrate to a proper orchestration platform that:
 
 - All services are defined as Kubernetes manifests (Deployments, StatefulSets, Services, PVCs)
 - Secrets are managed via SOPS + age, committed encrypted to the public repo
-- Flux CD handles all deployments — no manual `kubectl apply` in normal operation
-- Traefik replaces nginx as the ingress/reverse proxy
-- Docker Compose remains in use for services not yet migrated (docker-runtime)
-- The Agent-Node joins the cluster once all Docker services are migrated
+- Flux CD handles all deployments for in-cluster resources — no manual `kubectl apply` in normal operation (exception: real per-service Ingress manifests, which are gitignored and applied manually — see `docs/security-hardening-notes.md`, local-only)
+- Traefik replaced nginx as the ingress/reverse proxy
+- Migration is complete: the Docker Compose homelab (docker-runtime) and its nginx/fail2ban edge proxy have been fully decommissioned, and the Agent-Node has joined the cluster

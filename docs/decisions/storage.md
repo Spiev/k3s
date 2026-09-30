@@ -62,7 +62,10 @@ Longhorn was chosen as the storage backend during initial setup. After running t
 - Both nodes are running productively in the cluster
 - Services are allowed to move dynamically between nodes
 
-If the Agent-Node joins and these requirements emerge, Longhorn can be introduced later.
+Both nodes now run productively in the cluster (Agent-Node `k3s-a1` joined
+after the Docker migration completed), but automatic pod failover between
+nodes still isn't a requirement here — so this decision stands as-is.
+Longhorn remains an option to revisit only if that requirement changes.
 
 ---
 
