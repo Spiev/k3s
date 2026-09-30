@@ -1,7 +1,18 @@
 # Architecture Decision: CrowdSec instead of fail2ban for Ingress Security
 
 **Date:** 2026-04-14
-**Status:** Decided — implementation pending
+**Status:** Decided — CrowdSec implementation still pending
+
+**Update (2026-09-30):** A related, narrower gap was closed ahead of
+CrowdSec: LAN-only services (Pi-hole web UI, TeslaMate, TeslaMate-Grafana)
+are now protected by a `lan-only` Traefik Middleware (`ipAllowList`
+restricted to private source ranges), since the Fritzbox forwards all of
+port 80 to Traefik, which previously routed purely by the client-controlled
+Host header. A `redirect-https` catch-all was added alongside it. Verified
+externally — spoofed Host headers from a public IP now get `403`. This does
+not replace CrowdSec: it blocks host-header spoofing to LAN-only apps, not
+brute-force/scanner traffic against public-facing services, which remains
+unprotected until CrowdSec lands.
 
 ---
 
