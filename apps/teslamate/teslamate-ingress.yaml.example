@@ -5,6 +5,8 @@ metadata:
   namespace: teslamate
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: web
+    # LAN-only: blocks internet clients spoofing the Host header via the :80 forward
+    traefik.ingress.kubernetes.io/router.middlewares: kube-system-lan-only@kubernetescrd
 spec:
   ingressClassName: traefik
   rules:

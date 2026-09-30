@@ -1,0 +1,36 @@
+# Catch-all HTTP → HTTPS redirect on the `web` entrypoint (:80).
+#
+# Port 80 is forwarded by the Fritzbox only for Let's Encrypt HTTP-01 validation;
+# no app should be served over plain HTTP from the internet (login forms in
+# cleartext, and plain-HTTP routers carry none of the rate-limit middlewares).
+#
+# Deliberately NOT an entrypoint-level redirect (ports.web.redirections): that
+# would also redirect
+#   - cert-manager's HTTP-01 solver ingresses (/.well-known/acme-challenge/…)
+#   - LAN-only HTTP apps on *.fritz.box (pihole-web, teslamate), which have no
+#     TLS router on websecure.
+# Instead this router has the lowest priority (1) and no host match: any
+# more specific Ingress on `web` (a host rule is always longer) still wins, and
+# the ACME path is excluded explicitly as a second safety net.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: http-to-https-redirect
+  namespace: kube-system
+  labels:
+    app: traefik-middlewares
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: PathPrefix(`/`) && !PathPrefix(`/.well-known/acme-challenge/`)
+      priority: 1
+      middlewares:
+        - name: redirect-https
+          namespace: kube-system
+      services:
+        # Never reached — the redirect middleware answers first — but an
+        # IngressRoute route requires a service.
+        - kind: TraefikService
+          name: noop@internal

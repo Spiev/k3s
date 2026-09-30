@@ -104,3 +104,39 @@ spec:
     maxRequestBodyBytes: 104857600
     memRequestBodyBytes: 10485760
     retryExpression: "IsNetworkError() && Attempts() < 3"
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-https
+  namespace: kube-system
+  labels:
+    app: traefik-middlewares
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+---
+# Restrict a router to private source addresses (LAN + pod networks).
+# For LAN-only apps on the `web` entrypoint (*.fritz.box): the Fritzbox forwards
+# :80 from the internet to Traefik, and Traefik routes by the client-controlled
+# Host header — without this, `Host: teslamate.fritz.box` from the internet works.
+# Generic private ranges instead of the real LAN CIDRs (public-repo hygiene, see
+# docs/platform/firewall.md). Pod ranges are needed too: traffic from the other
+# node arrives flannel-masqueraded as 10.42.x.0. Checks RemoteAddr (no
+# ipStrategy): internet clients arrive with their real IP thanks to
+# externalTrafficPolicy: Local and never with a private source address.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: lan-only
+  namespace: kube-system
+  labels:
+    app: traefik-middlewares
+spec:
+  ipAllowList:
+    sourceRange:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+      - fc00::/7
