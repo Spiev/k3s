@@ -27,12 +27,12 @@ Kubernetes infrastructure on 2× Raspberry Pi 5 (8 GB RAM). Migration from a Doc
 | [SOPS + age](docs/platform/sops.md) | Encrypting secrets for a public Git repo |
 | [Flux CD](docs/platform/flux.md) | GitOps: automated deployment from Git |
 | [Firewall (UFW)](docs/platform/firewall.md) | Host firewall as code with Ansible; k3s/multicast rules |
-| **Service Migrations** | |
-| [FreshRSS](docs/services/freshrss.md) | Deploy & migrate FreshRSS |
-| [Pi-hole](docs/services/pihole.md) | Pi-hole: DNS via LoadBalancer + Ingress |
-| [Seafile](docs/services/seafile.md) | Migration: Seafile, multi-container, Secrets |
-| [Teslamate](docs/services/teslamate.md) | Migration: Teslamate + PostgreSQL + Grafana |
-| [Immich](docs/services/immich.md) | Migration: Immich, Restic restore strategy (1.5 TB library) → Server-Node |
+| **Services** | |
+| [FreshRSS](docs/services/freshrss.md) | Deploy, backup (OPML), troubleshooting |
+| [Pi-hole](docs/services/pihole.md) | DNS via LoadBalancer + Ingress, setup + troubleshooting |
+| [Seafile](docs/services/seafile.md) | Seafile, multi-container, Collabora/WOPI integration, Secrets |
+| [Teslamate](docs/services/teslamate.md) | Teslamate + PostgreSQL + Grafana, Tesla API auth, backup |
+| [Immich](docs/services/immich.md) | Immich, Restic restore strategy (1.5 TB library) — rebuild reference |
 | [Vaultwarden](docs/services/vaultwarden.md) | Password manager: concept, SSO, YubiKey, backup, Tier-0 emergency plan |
 | **Operations** | |
 | [Shutdown & Startup](docs/operations/shutdown-startup.md) | Gracefully shutting down and starting up the cluster |

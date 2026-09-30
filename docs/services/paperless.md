@@ -46,7 +46,7 @@ Managed via SOPS in `paperless-secrets.sops.yaml`:
 
 ## Access
 
-- URL: https://paperless.<your-domain> (nginx → k3s Traefik → paperless-webserver)
+- URL: https://paperless.<your-domain> (Traefik → paperless-webserver)
 - Login: Google OIDC only (`PAPERLESS_DISABLE_REGULAR_LOGIN=true`)
 - New user registration disabled (`PAPERLESS_SOCIALACCOUNT_ALLOW_SIGNUPS=false`)
 

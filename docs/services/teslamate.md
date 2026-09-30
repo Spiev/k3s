@@ -52,12 +52,18 @@ apps/teslamate/
 [#5384]: https://github.com/teslamate-org/teslamate/issues/5384
 [#5406]: https://github.com/teslamate-org/teslamate/pull/5406
 
-### Fleet API (fallback — was active 2026-06-14 … 2026-06-23)
+### Fleet API (fallback — was active 2026-06-14 … 2026-06-23, not currently used)
 
 The **direct Fleet API** — deliberately **without** any external proxy (MyTeslaMate /
 Teslemetry) and **without** a local vehicle-command proxy (read-only data collection only).
 
-### One-time setup (already done, for reference)
+Kept here purely as documented fallback should the Owner API ever close for
+good — not part of current operation. The `.well-known` public-key hosting
+step below assumed the old nginx edge and is stale; if the Fleet API is
+ever reactivated, that step needs a fresh home (Traefik-served static file
+or similar) since nginx no longer exists.
+
+### One-time setup (historical — was done when Fleet API was active, not currently relevant)
 
 - A Tesla **Developer App** provides `client_id` + `client_secret`.
 - Partner registration requires a public EC key served at
