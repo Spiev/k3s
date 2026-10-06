@@ -50,18 +50,49 @@ Upstream references: [k3s-io/k3s#4683](https://github.com/k3s-io/k3s/issues/4683
 
 ## 2. Install k3s
 
+### Server-Node
+
 ```bash
 curl -sfL https://get.k3s.io | sh -
 ```
 
 The script:
 - downloads k3s (single binary, contains everything)
-- sets up a systemd service
+- sets up a systemd service (`k3s.service`)
 - starts the cluster using the `config.yaml` from Step 1
 
 Check status:
 ```bash
 sudo systemctl status k3s
+```
+
+### Agent-Node
+
+The Agent-Node needs only the server address and the join token. Both go into the agent's `/etc/rancher/k3s/config.yaml` — **not** into `K3S_URL`/`K3S_TOKEN` environment variables. The installer rewrites `/etc/systemd/system/k3s-agent.service.env` on every run (including updates) and drops any variables not passed on that run; `config.yaml` is never touched by the installer, so updates cannot lose the join settings.
+
+Read the token on the Server-Node:
+```bash
+sudo cat /var/lib/rancher/k3s/server/node-token
+```
+
+On the Agent-Node (do not paste the token anywhere else — it grants full cluster join rights):
+```bash
+sudo mkdir -p /etc/rancher/k3s
+sudo install -m 600 /dev/null /etc/rancher/k3s/config.yaml
+sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
+server: https://<server-node-ip>:6443
+token: <node-token>
+EOF
+
+curl -sfL https://get.k3s.io | sh -s - agent
+```
+
+The trailing `agent` is essential — without it the script installs a second, independent k3s **server** on this node (see the warning in [§9](#9-updating-k3s)).
+
+Check status (on the Agent-Node, then from the Server-Node):
+```bash
+sudo systemctl status k3s-agent
+kubectl get nodes   # Agent-Node shows up as Ready
 ```
 
 ---
@@ -259,49 +290,60 @@ sudo systemctl restart k3s
 
 **Logs:**
 ```bash
-sudo journalctl -u k3s -f
+sudo journalctl -u k3s -f         # Server-Node
+sudo journalctl -u k3s-agent -f   # Agent-Node
 ```
 
 **Restart:**
 ```bash
-sudo systemctl restart k3s
+sudo systemctl restart k3s         # Server-Node
+sudo systemctl restart k3s-agent   # Agent-Node
 ```
 
-**Uninstall** (deletes everything including etcd):
+**Uninstall** — deletes all of `/var/lib/rancher/k3s/`, **including `storage/` with every local-path PVC** (databases, photos, documents). Only for a deliberate node rebuild with a verified backup:
 ```bash
-/usr/local/bin/k3s-uninstall.sh
+/usr/local/bin/k3s-uninstall.sh         # Server-Node
+/usr/local/bin/k3s-agent-uninstall.sh   # Agent-Node
 ```
 
 ---
 
 ## 9. Updating k3s
 
-k3s is updated by running the install script again — it detects the existing installation and performs an in-place update. The cluster continues running afterwards.
+> This section is the single source for the k3s update procedure. Other docs and
+> `infrastructure/k3s-version.env` link here instead of repeating the commands.
+
+k3s is updated by running the install script again — it detects the existing installation and performs an in-place update. Running containers keep running while the k3s service restarts.
+
+The target version is pinned in `infrastructure/k3s-version.env` (`K3S_VERSION=…`) and tracked by Renovate (→ [Renovate](../operations/renovate.md)): Renovate opens a PR bumping it whenever a new k3s release appears. **Merging that PR changes nothing on the nodes** — the update below has to be run by hand on every node.
+
+> ⚠️ **The install command differs per node role.** The plain server command (`… | sh -`) run on the Agent-Node installs a second, independent k3s *server* there. It generates its own CA, overwrites the agent's certificates under `/var/lib/rancher/k3s/agent/`, and the Agent-Node drops out of the cluster (`x509: certificate signed by unknown authority`, node `NotReady`). This happened once during the v1.37.0 → v1.37.1 update. The command below derives the role from the installed systemd unit, so the same command is correct on both nodes.
+
+**Order:** Server-Node first, then the Agent-Node. Never leave the nodes on different versions longer than necessary.
+
+Run on **each node**, one after the other (no repo checkout needed — the version is read from `main`):
 
 ```bash
-curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=stable sh -
+K3S_VERSION=$(curl -sfL https://raw.githubusercontent.com/Spiev/k3s/main/infrastructure/k3s-version.env \
+  | sed -n 's/^K3S_VERSION=//p')
+ROLE=$(systemctl cat k3s-agent.service >/dev/null 2>&1 && echo agent || echo server)
+echo "Updating $(hostname) as $ROLE to $K3S_VERSION"   # check before continuing
+
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" sh -s - "$ROLE"
 ```
 
-Or pin to a specific version. The pinned version lives in
-`infrastructure/k3s-version.env` and is tracked by Renovate (→ [Renovate](../operations/renovate.md)).
-Since that file is a shell-sourceable `KEY=VALUE` file, source it and let the
-installer pick up the version — no need to copy the number by hand:
+- `INSTALL_K3S_VERSION` is what the installer reads; the env file uses the descriptive name `K3S_VERSION`, hence the mapping.
+- On the Agent-Node the server address and token come from `/etc/rancher/k3s/config.yaml` ([§2 Agent-Node](#agent-node)) — do **not** pass `K3S_URL`/`K3S_TOKEN` on the command line.
+- If the `echo` line prints an empty version or the wrong role, stop and investigate.
+
+Verify (from the Server-Node or laptop):
 
 ```bash
-# run from the repo root on the server node
-source infrastructure/k3s-version.env
-curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" sh -
+kubectl get nodes -o wide   # both Ready, both VERSION = $K3S_VERSION
+kubectl get pods -A         # nothing stuck in Pending / ContainerCreating / CrashLoopBackOff
 ```
 
-> The installer reads `INSTALL_K3S_VERSION`; the env file uses the descriptive
-> name `K3S_VERSION`, hence the mapping in the command. Renovate opens a PR
-> bumping `K3S_VERSION` whenever a new k3s release appears.
-
-Check current version:
-
-```bash
-k3s --version
-```
+If the Agent-Node goes `NotReady` after an update, check `sudo journalctl -u k3s-agent -e` on it and make sure no stray server unit exists there: `systemctl list-unit-files 'k3s*'` must list only `k3s-agent.service`.
 
 > **Traefik version:** Traefik is currently tied to the k3s version — a k3s update automatically brings the associated Traefik version. The long-term solution is to manage Traefik independently of k3s (→ Phase 5, Flux CD).
 

@@ -183,19 +183,11 @@ version in `infrastructure/k3s-version.env` instead:
 Renovate compares `K3S_VERSION` against GitHub releases of `k3s-io/k3s` and
 opens a PR when a newer release appears (major updates stay manual, see above).
 
-The file is a plain shell `KEY=VALUE` file, so the upgrade does **not** require
-copying the version number by hand — source it and let the installer pick it up:
+Merging the Renovate PR only changes the pinned version in git — the nodes are
+**not** updated automatically. The update has to be run by hand on every node,
+Server-Node first, then Agent-Node.
 
-```bash
-# run from the repo root on the server node
-source infrastructure/k3s-version.env
-curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" sh -
-```
-
-> The installer reads `INSTALL_K3S_VERSION`; the env file uses the descriptive
-> name `K3S_VERSION`, hence the mapping in the command.
-
-→ Full upgrade procedure: [Install k3s — Updating k3s](../platform/k3s-install.md#9-updating-k3s)
+→ Update procedure (single source): [Install k3s — Updating k3s](../platform/k3s-install.md#9-updating-k3s)
 
 ---
 
