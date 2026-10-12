@@ -1,0 +1,283 @@
+# =============================================================================
+# KLIMA-DASHBOARD
+# =============================================================================
+# Eigenstaendiges Lovelace-Dashboard (Sidebar-Eintrag "09 Klima").
+# Konvertiert aus dem urspruenglich UI-/Storage-verwalteten Dashboard
+# (.storage/lovelace.dashboard_klima), damit es in Git versioniert ist.
+# Tile-Cards + Statistics-Graph zeigen pro Raum den Live-Heizstatus
+# (binary_sensor.heizung_<raum>_aktiv) und die Heizdauer/Tag
+# (sensor.heizdauer_<raum>_heute), beide definiert in templates.yaml/sensor.yaml.
+# =============================================================================
+title: 09 Klima
+views:
+- title: Home
+  path: klima
+  icon: mdi:home-thermometer
+  type: sections
+  max_columns: 4
+  sections:
+  - type: grid
+    cards:
+    - type: heading
+      heading: Außen
+      heading_style: title
+      icon: mdi:sun-thermometer
+    - graph: line
+      type: sensor
+      entity: sensor.outside_temperature
+      name: Temperatur
+      detail: 1
+      hours_to_show: 168
+    - graph: line
+      type: sensor
+      entity: sensor.outside_humidity
+      name: Luftfeuchtigkeit
+      detail: 2
+      hours_to_show: 168
+    column_span: 4
+  - type: grid
+    cards:
+    - type: heading
+      icon: mdi:account
+      heading: Stefan
+      heading_style: title
+    - graph: line
+      type: sensor
+      entity: sensor.tado_smart_radiator_thermostat_va0509365504_current_temperature
+      detail: 1
+      hours_to_show: 48
+      grid_options:
+        columns: 6
+        rows: 2
+      name: Temperatur
+    - graph: line
+      type: sensor
+      entity: sensor.tado_smart_radiator_thermostat_va0509365504_current_humidity
+      detail: 1
+      hours_to_show: 48
+      grid_options:
+        columns: 6
+        rows: 2
+      name: Luftfeuchtigkeit
+    - type: tile
+      name: Soll-Temperatur
+      grid_options:
+        columns: full
+      entity: input_number.soll_temp_stefan
+      vertical: false
+      features:
+      - type: numeric-input
+        style: buttons
+      features_position: inline
+    - type: tile
+      entity: binary_sensor.heizung_stefan_aktiv
+      name: Heizung aktiv
+      vertical: false
+    - type: statistics-graph
+      entities:
+      - sensor.heizdauer_stefan_heute
+      stat_types:
+      - mean
+      days_to_show: 60
+      title: Heizdauer (Stunden/Tag)
+  - type: grid
+    cards:
+    - type: heading
+      icon: mdi:human-male-boy
+      heading: Noah
+      heading_style: title
+    - graph: line
+      type: sensor
+      entity: sensor.tado_smart_radiator_thermostat_va1159876864_current_temperature
+      detail: 1
+      hours_to_show: 48
+      grid_options: null
+      name: Temperatur
+    - graph: line
+      type: sensor
+      entity: sensor.tado_smart_radiator_thermostat_va1159876864_current_humidity
+      detail: 1
+      hours_to_show: 48
+      grid_options: null
+      name: Luftfeuchtigkeit
+    - type: tile
+      name: Soll-Temperatur
+      grid_options:
+        columns: full
+      entity: input_number.soll_temp_noah
+      vertical: false
+      features:
+      - type: numeric-input
+        style: buttons
+      features_position: inline
+    - type: tile
+      entity: binary_sensor.heizung_noah_bett_aktiv
+      name: Heizung Bett aktiv
+      vertical: false
+    - type: tile
+      entity: binary_sensor.heizung_noah_ture_aktiv
+      name: Heizung Türe aktiv
+      vertical: false
+    - type: statistics-graph
+      entities:
+      - sensor.heizdauer_noah_bett_heute
+      - sensor.heizdauer_noah_ture_heute
+      stat_types:
+      - mean
+      days_to_show: 60
+      title: Heizdauer (Stunden/Tag)
+    column_span: 1
+  - type: grid
+    cards:
+    - type: heading
+      icon: mdi:human-male-girl
+      heading: Yella
+      heading_style: title
+    - graph: line
+      type: sensor
+      entity: sensor.tado_smart_radiator_thermostat_va3469632000_current_temperature
+      detail: 1
+      hours_to_show: 48
+      grid_options: null
+      name: Temperatur
+    - graph: line
+      type: sensor
+      entity: sensor.tado_smart_radiator_thermostat_va3469632000_current_humidity
+      detail: 1
+      hours_to_show: 48
+      grid_options: null
+      name: Luftfeuchtigkeit
+    - type: tile
+      name: Soll-Temperatur
+      grid_options:
+        columns: full
+      entity: input_number.soll_temp_yella
+      vertical: false
+      features:
+      - type: numeric-input
+        style: buttons
+      features_position: inline
+    - type: tile
+      entity: binary_sensor.heizung_yella_aktiv
+      name: Heizung aktiv
+      vertical: false
+    - type: statistics-graph
+      entities:
+      - sensor.heizdauer_yella_heute
+      stat_types:
+      - mean
+      days_to_show: 60
+      title: Heizdauer (Stunden/Tag)
+  - type: grid
+    cards:
+    - type: heading
+      icon: mdi:shower
+      heading: Bad
+      heading_style: title
+    - graph: line
+      type: sensor
+      entity: sensor.eui_a8404126e1845bcc_tempc_sht
+      detail: 0
+      hours_to_show: 48
+      grid_options: null
+    - graph: line
+      type: sensor
+      entity: sensor.eui_a8404126e1845bcc_hum_sht
+      detail: 0
+      hours_to_show: 48
+      grid_options: null
+    - type: tile
+      name: Soll-Temperatur
+      grid_options:
+        columns: full
+      entity: input_number.soll_temp_bad
+      vertical: false
+      features:
+      - type: numeric-input
+        style: buttons
+      features_position: inline
+    - type: tile
+      entity: binary_sensor.heizung_bad_aktiv
+      name: Heizung aktiv
+      vertical: false
+    - type: statistics-graph
+      entities:
+      - sensor.heizdauer_bad_heute
+      stat_types:
+      - mean
+      days_to_show: 60
+      title: Heizdauer (Stunden/Tag)
+  - type: grid
+    cards:
+    - type: heading
+      icon: mdi:countertop-outline
+      heading: Küche
+      heading_style: title
+    - graph: line
+      type: sensor
+      entity: sensor.tado_smart_radiator_thermostat_va0287461632_current_temperature
+      detail: 1
+      hours_to_show: 48
+      grid_options: null
+      name: Temperatur
+    - graph: line
+      type: sensor
+      entity: sensor.tado_smart_radiator_thermostat_va0287461632_current_humidity
+      detail: 1
+      hours_to_show: 48
+      grid_options: null
+      name: Luftfeuchtigkeit
+    - type: tile
+      name: Soll-Temperatur
+      grid_options:
+        columns: full
+      entity: input_number.soll_temp_kueche
+      vertical: false
+      features:
+      - type: numeric-input
+        style: buttons
+      features_position: inline
+    - type: tile
+      entity: binary_sensor.heizung_kuche_aktiv
+      name: Heizung aktiv
+      vertical: false
+    - type: statistics-graph
+      entities:
+      - sensor.heizdauer_kuche_heute
+      stat_types:
+      - mean
+      days_to_show: 60
+      title: Heizdauer (Stunden/Tag)
+  - type: grid
+    cards:
+    - type: heading
+      icon: mdi:shoe-print
+      heading: Flur
+      heading_style: title
+    - graph: line
+      type: sensor
+      entity: sensor.tado_smart_radiator_thermostat_va1120887296_current_temperature
+      detail: 1
+      hours_to_show: 48
+      grid_options: null
+      name: Temperatur
+    - graph: line
+      type: sensor
+      entity: sensor.tado_smart_radiator_thermostat_va1120887296_current_humidity
+      detail: 1
+      hours_to_show: 48
+      grid_options: null
+      name: Luftfeuchtigkeit
+    - type: tile
+      name: Soll-Temperatur
+      grid_options:
+        columns: full
+      entity: input_number.soll_temp_flur
+      vertical: false
+      features:
+      - type: numeric-input
+        style: buttons
+      features_position: inline
+    - type: markdown
+      content: '_Hinweis: Dieses Tado-Geraet stellt keine climate-Entity (hvac_action) bereit, daher kein
+        Heizungs-Status/Heizdauer moeglich._'
