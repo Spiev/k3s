@@ -278,6 +278,14 @@ views:
       - type: numeric-input
         style: buttons
       features_position: inline
-    - type: markdown
-      content: '_Hinweis: Dieses Tado-Geraet stellt keine climate-Entity (hvac_action) bereit, daher kein
-        Heizungs-Status/Heizdauer moeglich._'
+    - type: tile
+      entity: binary_sensor.heizung_flur_aktiv
+      name: Heizung aktiv
+      vertical: false
+    - type: statistics-graph
+      entities:
+      - sensor.heizdauer_flur_heute
+      stat_types:
+      - mean
+      days_to_show: 60
+      title: Heizdauer (Stunden/Tag)
