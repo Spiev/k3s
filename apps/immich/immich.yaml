@@ -130,7 +130,7 @@ spec:
       nodeSelector: { kubernetes.io/hostname: k3s-a1 }
       containers:
         - name: immich-ml
-          image: ghcr.io/immich-app/immich-machine-learning:v3.3.3@sha256:73915f07e1f4289ba45b174c58443db74cef47ddf502613f475fc5e52458ea42
+          image: ghcr.io/immich-app/immich-machine-learning:v3.3.5@sha256:5b28c9352c8374b8a1ed96fbdd8d6755fea6e43510ec43fdf6538aa02ea40f56
           envFrom:
             - secretRef: { name: immich-secrets }
           volumeMounts:
@@ -167,7 +167,7 @@ spec:
       nodeSelector: { kubernetes.io/hostname: k3s-a1 }
       containers:
         - name: immich-server
-          image: ghcr.io/immich-app/immich-server:v3.3.4@sha256:f6475c58b07a8d89ec845aa8782731d36656c3c17d943e0a101dc6ed99a2e53f
+          image: ghcr.io/immich-app/immich-server:v3.3.5@sha256:485d546a2e31d6a8b4db8423fcba5c109de8c218d93410af115fd1ccfc4352a6
           envFrom:
             - secretRef: { name: immich-secrets }
           ports: [ { containerPort: 2283 } ]
