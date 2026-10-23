@@ -2,8 +2,9 @@ name: Renovate
 
 on:
   schedule:
-    # Runs daily at 03:00 Europe/Berlin (= 02:00 UTC)
-    - cron: "0 2 * * *"
+    # Runs daily at ~03:17 Europe/Berlin (off the top of the hour to avoid GitHub's peak-load delays)
+    - cron: "17 3 * * *"
+      timezone: "Europe/Berlin"
   workflow_dispatch: # allow manual trigger
 
 permissions:
