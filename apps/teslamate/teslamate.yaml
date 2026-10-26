@@ -246,7 +246,7 @@ spec:
           command: ['sh', '-c', 'until nc -z teslamate-db 5432; do echo "waiting for postgres..."; sleep 2; done']
       containers:
         - name: grafana
-          image: teslamate/grafana:4.3.0@sha256:7f5a119ad06c212c4122e12c957a6848b5718d9618826b5ce70a1ec12d84fed5
+          image: teslamate/grafana:4.4.0@sha256:2dd1fae85cd891e1d851350d13b547abf000efd602c8d0e5734eda6d43e22e01
           env:
             - name: DATABASE_HOST
               value: teslamate-db
