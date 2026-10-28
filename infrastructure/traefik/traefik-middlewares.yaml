@@ -82,6 +82,27 @@ spec:
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
+  name: rate-limit-homeassistant
+  namespace: kube-system
+  labels:
+    app: traefik-middlewares
+spec:
+  rateLimit:
+    # HA frontend code-splits into 50-100+ JS chunk files; the Companion App's
+    # WebView fires them all in parallel on a cold load. The general 20/s
+    # (burst 50) limit trips 429 on some chunks -> blank/white screen in the
+    # app, only reproducible away from home (on LAN the app bypasses Traefik
+    # via the internal URL). Matches the rate-limit-immich pattern.
+    average: 200
+    burst: 400
+    period: 1s
+    sourceCriterion:
+      ipStrategy:
+        depth: 1
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
   name: body-limit-default
   namespace: kube-system
   labels:
