@@ -44,7 +44,7 @@ After file changes: *Developer Tools → YAML → reload* the affected domain.
 
 - **One owner per device class:** only one automation controls a given set of devices (e.g. thermostats). Others change **helpers** (`input_*`), never devices of another owner.
 - **No automation controls another automation** (`automation.turn_on/off/trigger`) — references break silently on rename/merge.
-- **Repeated logic** with different entities → blueprint (`/config/blueprints/automation/<folder>/`). Blueprints are YAML only, the UI can just import/use them.
+- **Repeated logic** with different entities → blueprint in `/config/blueprints/automation/local/` (`local/` = self-written, file name = purpose). Blueprints are YAML only, the UI can just import/use them.
 - Before renaming/merging automations: `grep -n "automation\." /config/automations.yaml`.
 
 ---

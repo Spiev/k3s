@@ -67,7 +67,7 @@ rooms:
 - `input_number.soll_temp_<room>` per room — key `<room>` must match the helper suffix
 - `input_boolean.sommerbetrieb`
 - Thermostats via `homekit_controller` (Tado cloud API too limited)
-- Presence automations (blueprint `blueprints/automation/stefan/anwesenheit.yaml`) only set `soll_temp_*`
+- Presence automations (blueprint `blueprints/automation/local/anwesenheit.yaml`) only set `soll_temp_*`
 
 ---
 
