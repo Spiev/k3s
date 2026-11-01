@@ -33,6 +33,7 @@ Kubernetes infrastructure on 2× Raspberry Pi 5 (8 GB RAM). Migration from a Doc
 | [Seafile](docs/services/seafile.md) | Seafile, multi-container, Collabora/WOPI integration, Secrets |
 | [Teslamate](docs/services/teslamate.md) | Teslamate + PostgreSQL + Grafana, Tesla API auth, backup |
 | [Immich](docs/services/immich.md) | Immich, Restic restore strategy (1.5 TB library) — rebuild reference |
+| [Home Assistant](docs/services/homeassistant/README.md) | HA + Mosquitto + Matter-Hub, config on PVC, automation conventions, use-case docs (heating, …) |
 | [Vaultwarden](docs/services/vaultwarden.md) | Password manager: concept, SSO, YubiKey, backup, Tier-0 emergency plan |
 | **Operations** | |
 | [Shutdown & Startup](docs/operations/shutdown-startup.md) | Gracefully shutting down and starting up the cluster |
