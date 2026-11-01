@@ -27,7 +27,7 @@ presence automations (blueprint)                        sends only if actual ≠
 
 | Situation | Action |
 |---|---|
-| Summer mode on | All thermostats off; re-checked when a thermostat changes and every 15 min |
+| Summer mode on | All thermostats off — **has priority** over window and target temperature; re-checked when a thermostat switches on and every 15 min |
 | Window open ≥ room delay | Room thermostats 5 °C / off; optional one-shot `window_off` devices (e.g. AC) off |
 | All room windows closed | Heat at `soll_temp_<room>` |
 | Otherwise | Heat at `soll_temp_<room>` |
@@ -42,7 +42,7 @@ presence automations (blueprint)                        sends only if actual ≠
 | `soll_temp_<room>` changed (10 s debounce) | that room |
 | window open (for delay) / closed | that room |
 | summer mode toggled, hourly, manual run | all |
-| thermostat switched on, every 15 min | all — **only in summer mode** |
+| *summer mode only:* a thermostat was switched on (by hand, schedule, …), every 15 min | all → switched **off** again |
 
 ---
 
