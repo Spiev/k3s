@@ -27,7 +27,7 @@ apps/homeassistant/
 
 ## Configuration
 
-HA config (`/config`: `configuration.yaml`, `automations.yaml`, `blueprints/`, …) lives on PVC `homeassistant-config`, **not in git**. Only dashboards are versioned here.
+HA config (`/config`: `configuration.yaml`, `automations.yaml`, `blueprints/`, …) lives on PVC `homeassistant-config`, **not in git**. Only dashboards are versioned here. Backed up via HA's nightly backup and Restic — see [Backup & Restore](../../operations/backup-restore.md).
 
 ```bash
 # read / back up / validate

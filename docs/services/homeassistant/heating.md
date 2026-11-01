@@ -2,7 +2,7 @@
 
 Part of [Home Assistant](README.md).
 
-Automations live on the PVC (`/config/automations.yaml`), **not in git**. This doc describes the pattern, not the concrete entities.
+Automations live on the PVC, not in git (see [Configuration](README.md#configuration)). This doc describes the pattern, not the concrete entities.
 
 ---
 

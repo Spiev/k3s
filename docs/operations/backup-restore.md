@@ -7,6 +7,7 @@ Unified backup strategy via Restic for all services:
 | Strategy | Tool | Services | Restore granularity |
 |---|---|---|---|
 | DB dump + Restic → Hetzner S3 | Restic | Teslamate, Seafile, Paperless | individual files, entire service |
+| PVC files + Restic → external HDD, mirrored to Hetzner S3 | Restic ([`backup-agent.sh`](../../scripts/README.md#backup-agentsh), Agent-Node) | Immich library, Home Assistant config (incl. HA's own nightly backups) | individual files, entire service |
 
 The backup script runs as a cron job on the k3s node. It auto-detects running services, creates DB dumps, snapshots PVC data from the local-path filesystem, uploads everything to Hetzner S3 via Restic, and reports status per service via MQTT to Home Assistant.
 
