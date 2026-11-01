@@ -45,6 +45,7 @@ After file changes: *Developer Tools → YAML → reload* the affected domain.
 - **One owner per device class:** only one automation controls a given set of devices (e.g. thermostats). Others change **helpers** (`input_*`), never devices of another owner.
 - **No automation controls another automation** (`automation.turn_on/off/trigger`) — references break silently on rename/merge.
 - **Repeated logic** with different entities → blueprint in `/config/blueprints/automation/local/` (`local/` = self-written, file name = purpose). Blueprints are YAML only, the UI can just import/use them.
+- **Presence-driven automations:** decide from the current state rather than a single trigger, debounce leaving, don't use `mode: single` if dropped triggers matter. See [Presence](presence.md).
 - Before renaming/merging automations: `grep -n "automation\." /config/automations.yaml`.
 
 ---
@@ -54,3 +55,4 @@ After file changes: *Developer Tools → YAML → reload* the affected domain.
 | Doc | Content |
 |---|---|
 | [Heating](heating.md) | Desired state + reconciler: target temperature, windows, summer mode |
+| [Presence](presence.md) | Per-person blueprint and shared rooms: target temperature, lights, debounce |
