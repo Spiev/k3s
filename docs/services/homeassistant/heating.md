@@ -28,7 +28,7 @@ presence automations (blueprint)                        sends only if actual ≠
 | Situation | Action |
 |---|---|
 | Summer mode on | All thermostats off — **has priority** over window and target temperature; re-checked when a thermostat switches on and every 15 min |
-| Window open ≥ room delay | Room thermostats 5 °C / off; optional one-shot `window_off` devices (e.g. AC) off |
+| Window open ≥ room delay | Room thermostats 5 °C / off; optional `window_off` devices (e.g. AC) off — once, also in summer mode, never switched back on |
 | All room windows closed | Heat at `soll_temp_<room>` |
 | Otherwise | Heat at `soll_temp_<room>` |
 | Manual change at valve | Reverted at the next hourly run (not immediately) |
@@ -42,7 +42,7 @@ presence automations (blueprint)                        sends only if actual ≠
 | `soll_temp_<room>` changed (10 s debounce) | that room |
 | window open (for delay) / closed | that room |
 | summer mode toggled, hourly, manual run | all |
-| *summer mode only:* a thermostat was switched on (by hand, schedule, …), every 15 min | all → switched **off** again |
+| *summer mode only:* a thermostat was switched on (`to: heat` — Tado via HomeKit only knows `off`/`heat`), every 15 min | all → switched **off** again |
 
 ---
 
