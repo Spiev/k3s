@@ -27,10 +27,19 @@ Presence automations only change **helpers** (`input_number.soll_temp_<room>`) f
 | Trigger | Condition | Action |
 |---|---|---|
 | Nearest person approaching (< 500 m) | direction `towards`/`arrived` | target temperature = home, evening scene after sunset |
-| **Any** `zone.home` change | `zone.home > 0` | target temperature = home; evening scene only after sunset **and** on a real arrival (`from: 0`) |
+| **Any** `zone.home` change | `zone.home > 0` | target temperature = home; evening scene only after sunset, before 22:00 **and** on a real arrival (`from: 0`) |
 | `zone.home` = 0 **for 2 min**, or nearest > 500 m for 2 min | `zone.home` still 0 | target temperature = away, lights off, roof window closed |
 
 `mode: queued`.
+
+### Evening scene ownership
+
+| Case | Owner |
+|---|---|
+| Arriving home after sunset (before 22:00) | Shared rooms automation (above) |
+| Sunset while somebody is home | Light automation (sunset → `scene.abend_modus` if `zone.home > 0`; sunrise + 45 min → lights off) |
+
+The light automation must not trigger on `zone.home` itself — it has no sun check and would switch on the evening scene on any daytime arrival (incident 2026-11-02).
 
 ---
 
