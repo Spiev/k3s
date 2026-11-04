@@ -66,6 +66,7 @@ rooms:
 
 - `input_number.soll_temp_<room>` per room — key `<room>` must match the helper suffix
 - `input_boolean.sommerbetrieb`
+- `input_boolean.gaestemodus` is read only by the presence automations (keeps shared rooms at home temperature), not by the reconciler
 - Thermostats via `homekit_controller` (Tado cloud API too limited)
 - [Presence automations](presence.md) (blueprint `blueprints/automation/local/anwesenheit.yaml` and the shared-rooms automation) only set `soll_temp_*`
 

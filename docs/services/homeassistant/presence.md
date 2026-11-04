@@ -41,6 +41,18 @@ Presence automations only change **helpers** (`input_number.soll_temp_<room>`) f
 
 The light automation must not trigger on `zone.home` itself — it has no sun check and would switch on the evening scene on any daytime arrival (incident 2026-11-02).
 
+### Guest mode
+
+Guests are not tracked, so `zone.home` = 0 while only a guest is home. `input_boolean.gaestemodus` (dashboard *Übersicht*, next to *Sommerbetrieb*) counts as "occupied" for the shared rooms.
+
+| Automation | Guest mode effect |
+|---|---|
+| Shared rooms | Switched on → target temperature = home (no evening scene). *Leaving* only acts if guest mode is off. Switched off while `zone.home` = 0 → *Leaving* runs at once (away temperature, lights off, roof window closed) |
+| Light automation | Sunset → evening scene if `zone.home > 0` **or** guest mode on |
+| `Gästemodus Erinnerung` | On switch-on stores `input_datetime.gaestemodus_seit`; every 3 days at 18:00 pushes a reminder to Stefan's phone with a *Gästemodus beenden* button that switches it off |
+
+Per-person rooms and the door alert ignore guest mode.
+
 ---
 
 ## Design rules
