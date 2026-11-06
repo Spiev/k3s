@@ -25,7 +25,7 @@ spec:
     spec:
       containers:
         - name: redis
-          image: redis:8.10@sha256:6169dabab9f4050073203cf18517e83848f0f475b066992ebf90d38089e7ed7c
+          image: redis:8.10@sha256:f245f4c83b84a9e9a0588da1c9456e579455310f0945d5db52cd2ba27f2000cc
           ports:
             - containerPort: 6379
           readinessProbe:
