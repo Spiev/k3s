@@ -82,6 +82,26 @@ spec:
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
+  name: rate-limit-seafile
+  namespace: kube-system
+  labels:
+    app: traefik-middlewares
+spec:
+  rateLimit:
+    # Video playback via share links: iOS/macOS Safari streams MP4s as many small
+    # HTTP range requests (64 KB–1 MB each), peaking at ~70 req/s for one client.
+    # The general 20/s (burst 50) limit returned 429 on chunks -> playback stalls
+    # on large videos. Matches the rate-limit-immich pattern.
+    average: 100
+    burst: 200
+    period: 1s
+    sourceCriterion:
+      ipStrategy:
+        depth: 1
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
   name: rate-limit-homeassistant
   namespace: kube-system
   labels:
