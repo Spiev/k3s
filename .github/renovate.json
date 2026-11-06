@@ -27,6 +27,11 @@
       "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-ls(?<build>\\d+)$"
     },
     {
+      "description": "Gotenberg: stay on 8.x until Paperless-ngx supports v9",
+      "matchPackageNames": ["docker.io/gotenberg/gotenberg"],
+      "allowedVersions": "<9"
+    },
+    {
       "description": "Auto-merge minor, patch and digest updates",
       "matchUpdateTypes": ["minor", "patch", "digest"],
       "automerge": true,
