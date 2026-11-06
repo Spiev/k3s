@@ -189,6 +189,12 @@ spec:
               grep -q 'ENABLE_TWO_FACTOR_AUTH' /shared/seafile/conf/seahub_settings.py 2>/dev/null || \
               echo "ENABLE_TWO_FACTOR_AUTH = True" \
               >> /shared/seafile/conf/seahub_settings.py
+              # Chunked web uploads: many short requests instead of one long POST,
+              # so large uploads over slow lines stay within Traefik's 300s
+              # readTimeout. See docs/decisions/ingress-connection-limiting.md.
+              grep -q 'ENABLE_RESUMABLE_FILEUPLOAD' /shared/seafile/conf/seahub_settings.py 2>/dev/null || \
+              echo "ENABLE_RESUMABLE_FILEUPLOAD = True" \
+              >> /shared/seafile/conf/seahub_settings.py
               # Collabora Online / WOPI integration — see docs/decisions/online-office.md
               # OFFICE_WEB_APP_BASE_URL must be the public URL: Seahub uses this host
               # (not the discovery XML's own urlsrc) to build the iframe URL the browser

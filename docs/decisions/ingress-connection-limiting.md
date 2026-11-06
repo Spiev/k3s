@@ -58,7 +58,7 @@ The correct control is **entry-point timeouts**. Two factors:
    | Timeout | Value | Purpose |
    |---|---|---|
    | `readTimeout` | 300s | Max time to read the full request incl. body |
-   | `writeTimeout` | 300s | Max time to write the response |
+   | `writeTimeout` | 3600s | Max time to write the response (raised 2026-11-06, see below) |
    | `idleTimeout` | 180s | Close idle keep-alive connections |
 
    `readTimeout` covers the **entire** request (including body), so it is sized to the largest legitimate slow upload (Seafile/Immich had no size limit and `client_body_timeout 300s` in nginx) rather than tighter — a lower value would break legitimate large/slow uploads. This bounds a Slowloris connection to 5 minutes instead of forever, with Go's connection model and CrowdSec (banning IPs that open many connections) as the real backstop.
@@ -77,10 +77,30 @@ directly (no nginx LAN hop absorbing the difference), a very large Seafile
 transfer over a slow line could exceed the 300s **total** limit even though
 it streamed fine under nginx's old inactivity model.
 
-**Action needed (not yet done):** re-check the Seafile route timeouts —
-either raise the entry-point value, or set a per-route timeout via a
-dedicated `Middleware`/`ServersTransport` rather than loosening the global
-entry point. Tracked in `docs/security-hardening-notes.md` (local-only).
+**Resolved (2026-11-06):**
+
+- **Per-route timeout is not possible.** Traefik's `respondingTimeouts` exist
+  only per entry point. `ServersTransport` timeouts govern the Traefik → backend
+  connection, not the client side, so they can't extend a client download.
+- **`writeTimeout` raised to 3600s** on both entry points. Home upload bandwidth
+  limits external downloads: at ~5 MB/s, 300s allowed only ~1.5 GB, so full
+  share-link downloads of large videos were cut off. The value stays bounded
+  (never `0`).
+- **`readTimeout` stays at 300s.** Seafile web uploads are now chunked
+  (`ENABLE_RESUMABLE_FILEUPLOAD = True`, set by the `patch-seahub-settings`
+  init container), so no single upload request needs to last longer.
+- **Accepted risk: slow-read.** A client can read a large response very
+  slowly and hold a connection for up to 1h. A large response requires a
+  share link or a login, because anonymous responses are small and the kernel
+  send buffer absorbs them. Each held connection is cheap (goroutines).
+  Nothing limits concurrent connections per IP: the rate limit counts new
+  requests, not open ones. CrowdSec (open) remains the intended backstop.
+  Mitigation until then: give share links for large files an expiry date
+  and/or a password.
+
+Video streaming (Safari range requests) never came close to either timeout.
+The playback stalls seen on 2026-11-06 were 429s from `rate-limit-general`,
+fixed with the dedicated `rate-limit-seafile` middleware.
 
 Tracked alongside the other open edge-flip items: CrowdSec + Traefik
 bouncer (open), cert-manager ClusterIssuer (exists and `Ready`, but not yet

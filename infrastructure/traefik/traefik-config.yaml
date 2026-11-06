@@ -53,15 +53,18 @@ spec:
         # could hold a connection open indefinitely. readTimeout covers the full
         # request incl. body, so it is sized to the largest legitimate slow upload
         # (Seafile/Immich; nginx used 300s) rather than tighter.
+        # writeTimeout is a TOTAL response duration (not inactivity): 3600s so a
+        # full multi-GB download (e.g. Seafile share link) over the home uplink
+        # isn't cut off. Bounded (never 0) to cap slow-read connections.
         # See docs/decisions/ingress-connection-limiting.md.
         transport:
           respondingTimeouts:
             readTimeout: 300s
-            writeTimeout: 300s
+            writeTimeout: 3600s
             idleTimeout: 180s
       websecure:
         transport:
           respondingTimeouts:
             readTimeout: 300s
-            writeTimeout: 300s
+            writeTimeout: 3600s
             idleTimeout: 180s
