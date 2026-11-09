@@ -1,6 +1,6 @@
 # Pi-hole
 
-Prerequisite: [SOPS + age](../platform/sops.md) set up, Dual-Stack cluster running (see [k3s Platform](../platform/k3s-platform.md)).
+Prerequisite: [SOPS + age](../platform/sops.md) set up, Dual-Stack cluster running (see [k3s](../platform/k3s.md)).
 
 Pi-hole runs as the DNS resolver for the entire home network via a LoadBalancer service.
 

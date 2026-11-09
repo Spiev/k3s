@@ -352,4 +352,4 @@ sudo systemctl reload ssh
 
 ---
 
-## Next: [k3s Platform](./k3s-platform.md)
+## Next: [k3s](./k3s.md)

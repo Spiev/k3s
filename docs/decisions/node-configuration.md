@@ -9,7 +9,7 @@
 
 Flux CD reconciles the cluster's *in-cluster* state (Deployments, Services, Ingress, cert-manager, CrowdSec…) declaratively from this repo. But a k3s node also needs **host-level OS configuration** that has no Kubernetes API representation: the firewall (UFW), sysctl tuning, package/OS setup, and the k3s install itself. Flux cannot manage these — they live on the host, not in the cluster API.
 
-Until now these were applied by hand and captured only as narrative in `docs/platform/` (`os-setup.md`, `k3s-platform.md`). The trigger for formalising was the UFW firewall: hand-edited `/etc/ufw/before*.rules` are not reproducible, not reviewable, and drift silently — a problem that worsens once Agent-Node joins and two nodes must stay identical.
+Until now these were applied by hand and captured only as narrative in `docs/platform/` (`os-setup.md`, `k3s.md`). The trigger for formalising was the UFW firewall: hand-edited `/etc/ufw/before*.rules` are not reproducible, not reviewable, and drift silently — a problem that worsens once Agent-Node joins and two nodes must stay identical.
 
 **Constraints:**
 

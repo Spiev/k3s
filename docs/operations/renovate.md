@@ -187,7 +187,7 @@ Merging the Renovate PR only changes the pinned version in git — the nodes are
 **not** updated automatically. The update has to be run by hand on every node,
 Server-Node first, then Agent-Node.
 
-→ Update procedure (single source): [k3s Platform — Updating k3s](../platform/k3s-platform.md#9-updating-k3s)
+→ Update procedure (single source): [k3s — Updating k3s](../platform/k3s.md#9-updating-k3s)
 
 ---
 
