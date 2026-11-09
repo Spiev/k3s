@@ -67,7 +67,7 @@ Immich deployment in k3s (nodeSelector → Server-Node)
 
 1. The old Raspi (Docker Immich instance) is reinstalled as the k3s Agent-Node — this stops the Docker Immich and frees the 2 TB disk. Immich's data lives only in the Restic backup from here on.
 2. The Server-Node must already run on its new NVMe with ~3.6 TB free (see the migration runbook for the 256 GB → 4 TB disk swap).
-3. Flash / join steps for the old Raspi: enable cgroups, disable swap (→ [os-setup.md](../platform/os-setup.md)), install the k3s agent and join the cluster (→ [k3s-install](../platform/k3s-install.md)).
+3. Flash / join steps for the old Raspi: enable cgroups, disable swap (→ [os-setup.md](../platform/os-setup.md)), install the k3s agent and join the cluster (→ [k3s-platform](../platform/k3s-platform.md)).
 
 ### Phase 3 — Create local-path PVC on the Server-Node
 

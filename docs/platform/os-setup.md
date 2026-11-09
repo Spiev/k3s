@@ -352,4 +352,4 @@ sudo systemctl reload ssh
 
 ---
 
-## Next: [Install k3s](./k3s-install.md)
+## Next: [k3s Platform](./k3s-platform.md)

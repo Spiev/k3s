@@ -22,7 +22,7 @@ Kubernetes infrastructure on 2× Raspberry Pi 5 (8 GB RAM). Migration from a Doc
 | [Decision: Node Configuration](docs/decisions/node-configuration.md) | Ansible for host/OS config (firewall, sysctl) — the non-Flux layer |
 | **Platform Setup** | |
 | [OS Setup](docs/platform/os-setup.md) | Raspberry Pi OS on NVMe, EEPROM, cgroups |
-| [Install k3s](docs/platform/k3s-install.md) | k3s with Dual-Stack (IPv4+IPv6), kubectl, first steps |
+| [k3s Platform](docs/platform/k3s-platform.md) | k3s with Dual-Stack (IPv4+IPv6), kubectl, first steps, updates |
 | [MetalLB](docs/platform/metallb.md) | LoadBalancer VIPs for Bare Metal (DNS, stable service IPs) |
 | [SOPS + age](docs/platform/sops.md) | Encrypting secrets for a public Git repo |
 | [Flux CD](docs/platform/flux.md) | GitOps: automated deployment from Git |

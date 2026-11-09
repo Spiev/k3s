@@ -1,6 +1,6 @@
 # GitOps with Flux CD
 
-Prerequisite: [Install k3s](./k3s-install.md) and [SOPS + age](./sops.md) completed, cluster is running.
+Prerequisite: [k3s Platform](./k3s-platform.md) and [SOPS + age](./sops.md) completed, cluster is running.
 
 Flux monitors this Git repository and automatically deploys any change pushed to `main`. The cluster state always mirrors the repo state — no manual `kubectl apply` needed for managed services.
 

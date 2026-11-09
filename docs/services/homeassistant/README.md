@@ -1,6 +1,6 @@
 # Home Assistant
 
-Prerequisite: [Install k3s](../../platform/k3s-install.md) completed, Agent-Node `k3s-a1` joined.
+Prerequisite: [k3s Platform](../../platform/k3s-platform.md) completed, Agent-Node `k3s-a1` joined.
 
 Home Assistant with Mosquitto (MQTT) and Matter-Hub, pinned to `k3s-a1` (Zigbee dongle).
 

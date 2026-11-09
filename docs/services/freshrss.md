@@ -1,6 +1,6 @@
 # FreshRSS
 
-Prerequisite: [Install k3s](../platform/k3s-install.md) completed, cluster is running.
+Prerequisite: [k3s Platform](../platform/k3s-platform.md) completed, cluster is running.
 
 FreshRSS is a self-hosted RSS aggregator with a single volume (`/config`) and no external database.
 

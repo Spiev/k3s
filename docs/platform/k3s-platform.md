@@ -1,4 +1,4 @@
-# Install k3s (Dual-Stack: IPv4 + IPv6)
+# k3s Platform: Install & Update (Dual-Stack: IPv4 + IPv6)
 
 Prerequisite: [OS Setup](./os-setup.md) completed. Pi is running Raspberry Pi OS Trixie (64-bit) from NVMe, cgroups active, no swap.
 
