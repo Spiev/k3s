@@ -335,6 +335,7 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" sh -s - "$ROLE
 - `INSTALL_K3S_VERSION` is what the installer reads; the env file uses the descriptive name `K3S_VERSION`, hence the mapping.
 - On the Agent-Node the server address and token come from `/etc/rancher/k3s/config.yaml` ([§2 Agent-Node](#agent-node)) — do **not** pass `K3S_URL`/`K3S_TOKEN` on the command line.
 - If the `echo` line prints an empty version or the wrong role, stop and investigate.
+- **Before running the update on an Agent-Node, verify `/etc/rancher/k3s/config.yaml` actually contains `server:`/`token:` lines** (`sudo cat /etc/rancher/k3s/config.yaml`). If it's missing or empty, the Agent-Node was joined by some other means (e.g. `K3S_URL`/`K3S_TOKEN` only in the systemd env file) and the update will wipe that join info, leaving `k3s-agent` crash-looping with `Error: --server is required` and the node `NotReady` (happened 2026-11, took down every pod pinned to that node incl. Immich). Recreate `config.yaml` per [§2](#agent-node) first — the token is still on the Server-Node at `/var/lib/rancher/k3s/server/node-token` — then re-run the update.
 
 Verify (from the Server-Node or laptop):
 
