@@ -18,6 +18,7 @@ Kubernetes infrastructure on 2× Raspberry Pi 5 (8 GB RAM). Migration from a Doc
 | [Decision: Storage](docs/decisions/storage.md) | local-path instead of Longhorn — rationale and trade-offs |
 | [Decision: Ingress Security](docs/decisions/ingress-security.md) | CrowdSec instead of fail2ban — Traefik-native security layer |
 | [Decision: Uptime Monitoring](docs/decisions/uptime-monitoring.md) | UptimeRobot instead of self-hosted Uptime Kuma — external reachability checks |
+| [Decision: Cluster Monitoring](docs/decisions/cluster-monitoring.md) | kube-prometheus-stack alongside HA/MQTT — placement, limits, exposure, alerting split |
 | [Decision: Online Office](docs/decisions/online-office.md) | Collabora Online instead of OnlyOffice — RAM footprint & LibreOffice engine consistency |
 | [Decision: Node Configuration](docs/decisions/node-configuration.md) | Ansible for host/OS config (firewall, sysctl) — the non-Flux layer |
 | **Platform Setup** | |

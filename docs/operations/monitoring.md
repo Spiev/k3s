@@ -6,7 +6,7 @@ Prerequisite: cluster is running stably.
 
 **Primary: Home Assistant integration** — the most important node and cluster metrics are pushed into HA via an MQTT script. HA serves as the central dashboard for smart home and infrastructure.
 
-**Optional/exploratory: kube-prometheus-stack** — the full Prometheus/Grafana stack for deep Kubernetes metrics. Useful for learning, but no permanent operation planned (separate stack with its own resource footprint).
+**Secondary: kube-prometheus-stack** — the full Prometheus/Grafana/Alertmanager stack for deep, per-pod/historical Kubernetes metrics (bottleneck detection), running permanently alongside the HA/MQTT layer. See [Decision: Cluster Monitoring](../decisions/cluster-monitoring.md) for placement, resource-limit, exposure and alerting decisions.
 
 ---
 
@@ -126,31 +126,29 @@ Recommended HA automations:
 
 ---
 
-## 2. kube-prometheus-stack (optional/exploratory)
+## 2. kube-prometheus-stack
 
-The standard Kubernetes monitoring stack: **Prometheus + Grafana + Alertmanager**, installed via Helm. Useful for learning and deep Kubernetes metrics, but no permanent operation planned.
+The standard Kubernetes monitoring stack: **Prometheus + Grafana + Alertmanager**, installed via Helm for deep, per-pod/historical Kubernetes metrics and bottleneck detection. See [Decision: Cluster Monitoring](../decisions/cluster-monitoring.md) for the full rationale and the placement/limits/exposure/alerting design.
 
 ```bash
-# Install Helm (Arch Linux)
-sudo pacman -S helm
+# Setup (one-time, see docs/decisions/cluster-monitoring.md for the full rationale):
+cp infrastructure/monitoring/grafana-admin-secret.yaml.example infrastructure/monitoring/grafana-admin-secret.sops.yaml
+#   fill in admin-password, then: sops --encrypt --in-place infrastructure/monitoring/grafana-admin-secret.sops.yaml
+cp infrastructure/monitoring/grafana-ingress.yaml.example infrastructure/monitoring/grafana-ingress.yaml
+#   set the real host, then: kubectl apply -f infrastructure/monitoring/grafana-ingress.yaml
+# (both real files are gitignored — see infrastructure/monitoring/.gitignore)
 
-# Install stack
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo update
-helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-  --namespace monitoring --create-namespace \
-  --set grafana.adminPassword=<set-password>
+git add infrastructure/monitoring/ clusters/raspi/monitoring.yaml
+git commit -m "feat(monitoring): add kube-prometheus-stack via Flux HelmRelease"
+git push
+# Flux picks up the HelmRepository + HelmRelease automatically (interval: 10m,
+# or force with: flux reconcile kustomization monitoring --with-source)
 
-# Access Grafana
-kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
-# Browser: http://localhost:3000 (admin / <password>)
-
-# Configure persistence via Helm values
-helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-  --namespace monitoring --values infrastructure/monitoring/values.yaml
+# Access Grafana: via the LAN-only Ingress (grafana-ingress.yaml), or for a
+# quick check without DNS: kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
 ```
 
-Ships with pre-built dashboards for nodes, pods, PVCs, and host metrics (including Raspi CPU temperature via `node_thermal_zone_temp`).
+Ships with pre-built dashboards for nodes, pods, PVCs, and host metrics (including Raspi CPU temperature via `node_thermal_zone_temp`). Placement, resource limits, exposure and alerting scope are documented in [Decision: Cluster Monitoring](../decisions/cluster-monitoring.md); the actual Helm values live in `infrastructure/monitoring/kube-prometheus-stack.yaml`.
 
 ---
 

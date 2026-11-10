@@ -1,0 +1,157 @@
+# kube-prometheus-stack — deep, per-pod/historical Kubernetes metrics.
+# See docs/decisions/cluster-monitoring.md for the full rationale.
+#
+# Rolled out via Flux's Helm-controller (already bootstrapped, previously
+# unused — see HelmRepository/HelmRelease below), not a manual `helm install`.
+#
+# v1 scope: dashboards only, no Alertmanager routing configured, no
+# app-specific exporters (ServiceMonitors) — see ADR sub-decisions 4 and 7.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    app: kube-prometheus-stack
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: prometheus-community
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+spec:
+  interval: 1h
+  url: https://prometheus-community.github.io/helm-charts
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: "93.1.1"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: monitoring
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    # --- Placement: pin everything except node-exporter to the Server-Node ---
+    # (same pattern as Traefik in infrastructure/traefik/traefik-config.yaml).
+    # node-exporter is a DaemonSet and deliberately NOT pinned — it must run on
+    # k3s-a1 too, to collect Agent-Node metrics.
+    prometheus:
+      prometheusSpec:
+        nodeSelector:
+          kubernetes.io/hostname: k3s
+        retention: 30d
+        resources:
+          requests:
+            cpu: 200m
+            memory: 400Mi
+          limits:
+            cpu: 500m
+            memory: 800Mi
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: local-path
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 10Gi
+
+    alertmanager:
+      alertmanagerSpec:
+        nodeSelector:
+          kubernetes.io/hostname: k3s
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 150Mi
+        storage:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: local-path
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 1Gi
+      # v1: no custom routes/receivers — default config only, nothing wired to
+      # a notification channel yet (see ADR sub-decision 4).
+
+    grafana:
+      nodeSelector:
+        kubernetes.io/hostname: k3s
+      resources:
+        requests:
+          cpu: 100m
+          memory: 150Mi
+        limits:
+          cpu: 200m
+          memory: 300Mi
+      persistence:
+        enabled: true
+        storageClassName: local-path
+        size: 2Gi
+      # Admin credentials: SOPS-managed Secret, not --set/plaintext.
+      # See grafana-admin-secret.sops.yaml (derived from the .example template).
+      admin:
+        existingSecret: grafana-admin-secret
+        userKey: admin-user
+        passwordKey: admin-password
+      # Ingress is a separate, gitignored *-ingress.yaml (repo convention) —
+      # not the chart's built-in Ingress.
+      ingress:
+        enabled: false
+
+    kube-state-metrics:
+      nodeSelector:
+        kubernetes.io/hostname: k3s
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 100m
+          memory: 150Mi
+
+    prometheusOperator:
+      nodeSelector:
+        kubernetes.io/hostname: k3s
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 100m
+          memory: 150Mi
+
+    prometheus-node-exporter:
+      # No nodeSelector — must run on every node (incl. the Agent-Node) to
+      # collect its metrics too. Kept lightweight on purpose.
+      resources:
+        requests:
+          cpu: 25m
+          memory: 30Mi
+        limits:
+          cpu: 50m
+          memory: 50Mi

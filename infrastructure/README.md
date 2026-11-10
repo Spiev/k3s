@@ -9,7 +9,7 @@ infrastructure/
   cluster-vars/     ← cluster-specific variables (IPs, domains) — SOPS encrypted
   flux/             ← kustomize-controller patch to enable SOPS decryption
   metallb/          ← LoadBalancer IP pool for bare-metal services
-  monitoring/       ← kube-prometheus-stack Helm values
+  monitoring/       ← kube-prometheus-stack (Namespace, HelmRepository, HelmRelease) — see docs/decisions/cluster-monitoring.md
   traefik/          ← Traefik ingress controller configuration
   k3s-version.env   ← pinned k3s version, tracked by Renovate for update notifications
 ```
