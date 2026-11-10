@@ -25,6 +25,19 @@ spec:
           names:
             X-Forwarded-For: keep
             User-Agent: keep
+    # Prometheus metrics for kube-prometheus-stack (docs/decisions/cluster-monitoring.md,
+    # scrape-scope expanded to include Traefik in v1). The "metrics" entry point
+    # (port 9100) and Prometheus format are already chart defaults — this just
+    # exposes them via a dedicated Service + lets the chart create the matching
+    # ServiceMonitor, so Prometheus (serviceMonitorSelectorNilUsesHelmValues: false
+    # in infrastructure/monitoring/kube-prometheus-stack.yaml) picks it up with no
+    # manual ServiceMonitor needed.
+    metrics:
+      prometheus:
+        service:
+          enabled: true
+        serviceMonitor:
+          enabled: true
     # externalTrafficPolicy: Local — preserve the real client IP.
     # With the default (Cluster), k3s ServiceLB SNATs the source IP to an internal
     # node IP, so Traefik's X-Forwarded-For carries a Flannel IP, not the client —

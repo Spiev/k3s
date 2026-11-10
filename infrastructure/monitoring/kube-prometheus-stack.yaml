@@ -58,6 +58,12 @@ spec:
         nodeSelector:
           kubernetes.io/hostname: k3s
         retention: 30d
+        # Discover ServiceMonitors cluster-wide, not just ones carrying the
+        # Helm release label — needed for Traefik's chart-generated
+        # ServiceMonitor in kube-system (see infrastructure/traefik/traefik-config.yaml).
+        # serviceMonitorNamespaceSelector/-Selector default to {} (all), only
+        # this NilUsesHelmValues flag needs flipping.
+        serviceMonitorSelectorNilUsesHelmValues: false
         resources:
           requests:
             cpu: 200m
