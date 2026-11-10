@@ -74,6 +74,7 @@ spec:
         # pod network), DB name doesn't matter (pg_stat_database is cluster-wide).
         - name: postgres-exporter
           image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+          args: []
           env:
             - name: DATA_SOURCE_USER
               value: monitoring

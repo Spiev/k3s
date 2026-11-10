@@ -99,6 +99,7 @@ spec:
         # docs/decisions/cluster-monitoring.md.
         - name: postgres-exporter
           image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+          args: []
           env:
             - name: DATA_SOURCE_USER
               value: monitoring
