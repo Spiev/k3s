@@ -191,6 +191,32 @@ Server-Node first, then Agent-Node.
 
 ---
 
+## Tracking Helm charts (Flux HelmRelease)
+
+Since `infrastructure/monitoring/kube-prometheus-stack.yaml` introduced the
+first Flux-managed Helm chart (see [Decision: Cluster Monitoring](../decisions/cluster-monitoring.md)),
+the `flux` manager is enabled (`fileMatch: ["infrastructure/.+\\.yaml$"]`) —
+it tracks `HelmRelease.spec.chart.spec.version` against the chart's
+`HelmRepository` and opens a PR on a new release, the same way the
+`kubernetes` manager tracks plain `image:` fields.
+
+**`kube-prometheus-stack` never auto-merges, even patch/digest** — a chart
+release can silently bump a sub-component to a broken image without a major
+version bump (this happened with `prometheus-operator` v0.95.x never
+publishing an arm64 image — see the comments in `kube-prometheus-stack.yaml`
+and [Decision: Cluster Monitoring](../decisions/cluster-monitoring.md)).
+Every chart update needs a manual look at what actually changed before
+merging.
+
+**The `prometheus-operator` arm64-pin itself has its own tracker** — a
+`custom.regex` manager watches the `# renovate: prometheus-operator-arm64-pin`
+marker comments in `kube-prometheus-stack.yaml` against
+`prometheus-operator/prometheus-operator` GitHub releases. It only *notifies*
+(no automerge): a new tag existing does not mean arm64 images are fixed —
+verify via the chart's quay.io manifest list (see the ADR) before bumping.
+
+---
+
 ## Debugging
 
 If Renovate does not create a PR, first enable debug logging (temporarily):

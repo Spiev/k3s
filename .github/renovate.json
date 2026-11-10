@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
-  "enabledManagers": ["github-actions", "kubernetes", "custom.regex"],
+  "enabledManagers": ["github-actions", "kubernetes", "custom.regex", "flux"],
   "prHourlyLimit": 0,
   "prConcurrentLimit": 0,
   "customManagers": [
@@ -13,10 +13,22 @@
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "k3s-io/k3s",
       "versioningTemplate": "loose"
+    },
+    {
+      "description": "Track prometheus-operator releases for the arm64-pin workaround (see docs/decisions/cluster-monitoring.md) — manual review only, a newer tag doesn't mean arm64 is fixed",
+      "customType": "regex",
+      "fileMatch": ["^infrastructure/monitoring/kube-prometheus-stack\\.yaml$"],
+      "matchStrings": ["tag: v(?<currentValue>[0-9.]+) # renovate: prometheus-operator-arm64-pin"],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "prometheus-operator/prometheus-operator",
+      "versioningTemplate": "loose"
     }
   ],
   "kubernetes": {
     "fileMatch": ["apps/.+\\.yaml$", "infrastructure/.+\\.yaml$"]
+  },
+  "flux": {
+    "fileMatch": ["infrastructure/.+\\.yaml$"]
   },
   "dependencyDashboard": false,
   "pinDigests": true,
@@ -40,6 +52,17 @@
     {
       "description": "Major updates require manual review",
       "matchUpdateTypes": ["major"],
+      "automerge": false
+    },
+    {
+      "description": "kube-prometheus-stack: manual review always, even patch — a chart release can silently bump a sub-component to a broken image (see the prometheus-operator arm64 incident in docs/decisions/cluster-monitoring.md)",
+      "matchDatasources": ["helm"],
+      "matchPackageNames": ["kube-prometheus-stack"],
+      "automerge": false
+    },
+    {
+      "description": "prometheus-operator arm64-pin tracker: notify only, never auto-merge — arm64 availability must be checked manually before bumping",
+      "matchPackageNames": ["prometheus-operator/prometheus-operator"],
       "automerge": false
     }
   ]

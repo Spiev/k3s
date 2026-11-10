@@ -163,10 +163,10 @@ spec:
       # last known-good multi-arch release, until upstream republishes arm64
       # for a v0.95.x tag.
       image:
-        tag: v0.94.1
+        tag: v0.94.1 # renovate: prometheus-operator-arm64-pin
       prometheusConfigReloader:
         image:
-          tag: v0.94.1
+          tag: v0.94.1 # renovate: prometheus-operator-arm64-pin
 
     prometheus-node-exporter:
       # No nodeSelector — must run on every node (incl. the Agent-Node) to
