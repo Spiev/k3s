@@ -72,13 +72,14 @@ spec:
         # docs/decisions/cluster-monitoring.md.
         - name: postgres-exporter
           image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
-          args: ['--datasource.uri=localhost:5432/teslamate?sslmode=disable']
           env:
             - name: DATA_SOURCE_USER
               value: monitoring
             - name: DATA_SOURCE_PASS
               valueFrom:
                 secretKeyRef: { name: teslamate-monitoring-secrets, key: DATA_SOURCE_PASS }
+            - name: DATA_SOURCE_URI
+              value: "localhost:5432/teslamate?sslmode=disable"
           ports:
             - { name: metrics, containerPort: 9187 }
           resources:
