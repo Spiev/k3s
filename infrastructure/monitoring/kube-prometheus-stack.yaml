@@ -110,10 +110,13 @@ spec:
       resources:
         requests:
           cpu: 100m
-          memory: 150Mi
+          memory: 200Mi
         limits:
-          cpu: 200m
-          memory: 300Mi
+          cpu: 300m
+          # Bumped from 300Mi (OOMKilled in practice, exit 137) once 28
+          # default dashboards + the Traefik dashboard were all loaded —
+          # observed usage ~387Mi. 500Mi gives headroom for more dashboards.
+          memory: 500Mi
       persistence:
         enabled: true
         storageClassName: local-path

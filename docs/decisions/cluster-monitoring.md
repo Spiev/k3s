@@ -71,7 +71,7 @@ fill level and restart-count history — directly closing the gap above.
 | # | Decision | Rationale |
 |---|---|---|
 | 1 | **Placement:** pin the stack to the Server-Node via `nodeSelector`/affinity (same pattern already used for Traefik). | Server-Node has headroom (control plane + Traefik only); Agent-Node is already fully loaded with application workloads. |
-| 2 | **Resource limits:** set explicit `requests`/`limits` on Prometheus, Grafana and Alertmanager containers from day one; total stack budget capped at **~1.5 GB RAM**. | The cluster-wide absence of resource limits is a known gap; adding another unbounded, potentially RAM-hungry stack on 8 GB hardware without limits would repeat the same mistake at a larger scale. 1.5 GB was chosen as a concrete, deliberately-set ceiling rather than left to chart defaults. |
+| 2 | **Resource limits:** set explicit `requests`/`limits` on Prometheus, Grafana and Alertmanager containers from day one; total stack budget capped at **~1.75 GB RAM** (Grafana raised from an initial 300 Mi to 500 Mi after an observed OOM-kill once all 28 default dashboards + the Traefik dashboard were loaded — see Consequences). | The cluster-wide absence of resource limits is a known gap; adding another unbounded, potentially RAM-hungry stack on 8 GB hardware without limits would repeat the same mistake at a larger scale. The budget is a deliberately-set ceiling, revised once against real usage rather than left to chart defaults. |
 | 3 | **Exposure:** a real (gitignored) Ingress, LAN-only via the existing `lan-only` Traefik middleware pattern (already used for Pi-hole-web, Teslamate-Grafana) — not exposed to the internet. | It is a diagnostic tool for the operator only; no reason to add public attack surface for it. |
 | 4 | **Alerting (v1 scope):** none. Alertmanager ships with the chart but no custom rules/receivers are configured yet — v1 is dashboards-only. | Keeps the first rollout small and verifiable; alert rules + a notification channel (and the eventual split against HA/MQTT's existing automations) are deferred to a follow-up once real dashboard data exists to base thresholds on. |
 | 5 | **Deployment mechanism:** manage the stack as a `HelmRelease`, reconciled by Flux's existing Helm-controller (already running, previously unused — see above) like everything else under `infrastructure/`/`apps/`. | Supersedes the originally-considered "manual helm install" (matching cert-manager/MetalLB) — corrected once it turned out Flux already had a working Helm-controller. Brings drift detection and automatic apply for *all* future Helm charts, not just this one. **Consequence:** Renovate can potentially track the chart version going forward (to be confirmed once configured); no plaintext `helm install` command or flag history anywhere. |
@@ -120,9 +120,9 @@ fill level and restart-count history — directly closing the gap above.
 - Grafana is reachable only from the LAN via a gitignored Ingress + the
   `lan-only` middleware; no new public attack surface is added.
 - Resource `limits` exist for the monitoring stack's own pods from the first
-  install, capped at ~1.5 GB RAM total — a model other Deployments
-  cluster-wide still lack (tracked separately, see the security hardening
-  notes).
+  install, capped at ~1.75 GB RAM total (Grafana raised post-launch after an
+  OOM-kill — see sub-decision 2) — a model other Deployments cluster-wide
+  still lack (tracked separately, see the security hardening notes).
 - No alerting in v1 — Alertmanager ships but is unconfigured; a follow-up
   decision is needed once dashboard data exists to base thresholds on.
 - Storage sizing for Prometheus/Grafana/Alertmanager is a starting point and
