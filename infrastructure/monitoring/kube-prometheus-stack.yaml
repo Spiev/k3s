@@ -144,6 +144,16 @@ spec:
         limits:
           cpu: 100m
           memory: 150Mi
+      # Chart v93.1.1 pins prometheus-operator v0.95.1, whose quay.io image
+      # was only published for amd64 (upstream CI bug, confirmed via the
+      # manifest list — no arm64 entry at all). Pin to v0.94.1 instead, the
+      # last known-good multi-arch release, until upstream republishes arm64
+      # for a v0.95.x tag.
+      image:
+        tag: v0.94.1
+      prometheusConfigReloader:
+        image:
+          tag: v0.94.1
 
     prometheus-node-exporter:
       # No nodeSelector — must run on every node (incl. the Agent-Node) to
