@@ -250,10 +250,6 @@ views:
                 name: Eindeutige DNS-Domains
               - entity: sensor.pi_hole_gesehene_clients
                 name: Gesehene Clients
-              - entity: sensor.pi_hole_dns_latency_ipv4
-                name: DNS Latenz (ipv4) heise.de
-              - entity: sensor.pi_hole_dns_latency_ipv6
-                name: DNS Latenz (ipv6) heise.de
       - type: grid
         cards:
           - type: entities
