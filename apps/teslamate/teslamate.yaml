@@ -68,6 +68,22 @@ spec:
               command: [pg_isready, -U, teslamate]
             initialDelaySeconds: 10
             periodSeconds: 10
+        # Dedicated least-privilege (pg_monitor role) metrics sidecar — see
+        # docs/decisions/cluster-monitoring.md.
+        - name: postgres-exporter
+          image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+          args: ['--datasource.uri=localhost:5432/teslamate?sslmode=disable']
+          env:
+            - name: DATA_SOURCE_USER
+              value: monitoring
+            - name: DATA_SOURCE_PASS
+              valueFrom:
+                secretKeyRef: { name: teslamate-monitoring-secrets, key: DATA_SOURCE_PASS }
+          ports:
+            - { name: metrics, containerPort: 9187 }
+          resources:
+            requests: { cpu: 10m, memory: 20Mi }
+            limits: { cpu: 20m, memory: 40Mi }
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -86,6 +102,18 @@ spec:
   ports:
     - port: 5432
       targetPort: 5432
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: teslamate-db
+  namespace: teslamate
+  labels: { app: teslamate-db }
+spec:
+  selector:
+    matchLabels: { app: teslamate-db }
+  podMetricsEndpoints:
+    - port: metrics
 ---
 # NodePort für Home Assistant SQL-Integration (sensor.tesla_charging_cost_monthly/total).
 # HA läuft auf dem Pi (Docker, nicht k3s) und kann ClusterIP-Services nicht erreichen —

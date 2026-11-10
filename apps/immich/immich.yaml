@@ -69,6 +69,23 @@ spec:
             - secretRef: { name: immich-secrets }
           volumeMounts:
             - { name: pgdata, mountPath: /var/lib/postgresql/data }
+        # Dedicated least-privilege (pg_monitor role) metrics sidecar — see
+        # docs/decisions/cluster-monitoring.md. Connects via localhost (shared
+        # pod network), DB name doesn't matter (pg_stat_database is cluster-wide).
+        - name: postgres-exporter
+          image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+          args: ['--datasource.uri=localhost:5432/postgres?sslmode=disable']
+          env:
+            - name: DATA_SOURCE_USER
+              value: monitoring
+            - name: DATA_SOURCE_PASS
+              valueFrom:
+                secretKeyRef: { name: immich-monitoring-secrets, key: DATA_SOURCE_PASS }
+          ports:
+            - { name: metrics, containerPort: 9187 }
+          resources:
+            requests: { cpu: 10m, memory: 20Mi }
+            limits: { cpu: 20m, memory: 40Mi }
       volumes:
         - name: pgdata
           persistentVolumeClaim: { claimName: immich-postgres }
@@ -82,6 +99,18 @@ metadata:
 spec:
   selector: { app: immich-db }
   ports: [ { port: 5432, targetPort: 5432 } ]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: immich-postgres
+  namespace: immich
+  labels: { app: immich-db }
+spec:
+  selector:
+    matchLabels: { app: immich-db }
+  podMetricsEndpoints:
+    - port: metrics
 ---
 # ---------- Redis (valkey) ----------
 apiVersion: apps/v1

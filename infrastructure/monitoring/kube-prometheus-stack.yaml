@@ -64,6 +64,10 @@ spec:
         # serviceMonitorNamespaceSelector/-Selector default to {} (all), only
         # this NilUsesHelmValues flag needs flipping.
         serviceMonitorSelectorNilUsesHelmValues: false
+        # Same for PodMonitors — the per-app postgres_exporter sidecars (Immich,
+        # Teslamate, Paperless; see apps/<svc>/<svc>.yaml) ship their own
+        # PodMonitor next to the app, not here.
+        podMonitorSelectorNilUsesHelmValues: false
         resources:
           requests:
             cpu: 200m
