@@ -203,9 +203,9 @@ spec:
               # name here breaks the editor (browser tries to resolve "collabora" itself).
               #
               # NOTE ON $$: the Flux `apps` Kustomization has postBuild.substituteFrom
-              # (cluster-vars secret), which rewrites ANY ${VAR} in this manifest's text
+              # (cluster-vars secret), which rewrites ANY $${VAR} in this manifest's text
               # at render time — including inside this shell script. SEAFILE_HOSTNAME
-              # isn't one of its vars, so an unescaped ${SEAFILE_HOSTNAME} gets silently
+              # isn't one of its vars, so an unescaped $${SEAFILE_HOSTNAME} gets silently
               # replaced with an empty string before this script ever runs. $${VAR} is
               # Flux's escape for "pass this through literally" so the *shell* expands it
               # at container runtime instead. This bit the pre-existing CSRF_TRUSTED_ORIGINS
