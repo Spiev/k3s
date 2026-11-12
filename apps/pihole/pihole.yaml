@@ -6,24 +6,6 @@ metadata:
     app: pihole
     type: service
 ---
-# Legacy PVC of the former single-replica Deployment — kept as rollback path,
-# removed in phase 3 of the HA migration (docs/services/pihole.md).
-# Flux prunes it (and local-path deletes the data) once it's gone from this file.
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: pihole-config-new
-  namespace: pihole
-  labels:
-    app: pihole
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: local-path
-  resources:
-    requests:
-      storage: 1Gi
----
 # DNS-Service: LoadBalancer mit Dual-Stack → Pi-hole bekommt IPv4 + IPv6 vom Node
 apiVersion: v1
 kind: Service
