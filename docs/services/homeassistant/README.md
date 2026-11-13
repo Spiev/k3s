@@ -40,6 +40,8 @@ kubectl -n homeassistant exec deploy/homeassistant -- \
 
 After file changes: *Developer Tools → YAML → reload* the affected domain.
 
+**Lovelace storage dashboards are the exception:** `.storage/lovelace.*` must not be edited by overwriting the file while HA is running — HA keeps the config in memory and flushes that stale copy back to disk on shutdown, silently reverting a direct file edit. Use the `lovelace/config/save` WebSocket command instead. See [Waschmaschine Smart-Start](waschmaschine-smart-start.md#lessons-learned-apply-beyond-this-automation) for the concrete recipe.
+
 ### Automation conventions
 
 - **One owner per device class:** only one automation controls a given set of devices (e.g. thermostats). Others change **helpers** (`input_*`), never devices of another owner.
@@ -56,3 +58,4 @@ After file changes: *Developer Tools → YAML → reload* the affected domain.
 |---|---|
 | [Heating](heating.md) | Desired state + reconciler: target temperature, windows, summer mode |
 | [Presence](presence.md) | Per-person blueprint and shared rooms: target temperature, lights, debounce |
+| [Waschmaschine Smart-Start](waschmaschine-smart-start.md) | Remote-start the washer at the cheapest Tibber price slot (lg_thinq + Tibber) |
