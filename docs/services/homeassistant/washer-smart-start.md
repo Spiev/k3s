@@ -1,4 +1,4 @@
-# Home Assistant — Waschmaschine Smart-Start
+# Home Assistant — Washer Smart-Start
 
 Part of [Home Assistant](README.md).
 
