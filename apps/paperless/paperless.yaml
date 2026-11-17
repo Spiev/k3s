@@ -377,16 +377,20 @@ spec:
               mountPath: /usr/src/paperless/data
             - name: media
               mountPath: /usr/src/paperless/media
-          # Same command as the upstream image's Docker HEALTHCHECK. Must hit
-          # localhost: since v3.5.0, setting PAPERLESS_URL restricts
-          # ALLOWED_HOSTS to that hostname + localhost, so an httpGet probe
-          # (Host: <pod-ip>) is rejected with DisallowedHost (HTTP 400).
+          # Host header must be localhost: since v3.5.0, setting PAPERLESS_URL
+          # restricts ALLOWED_HOSTS to that hostname + localhost. Without it the
+          # kubelet sends Host: <pod-ip> and gets DisallowedHost (HTTP 400).
+          # Do NOT use httpGet.host — that changes the connection target to the
+          # node, not the Host header.
           readinessProbe:
-            exec:
-              command: ["curl", "-fs", "-S", "-L", "--max-time", "2", "http://localhost:8000"]
+            httpGet:
+              path: /
+              port: 8000
+              httpHeaders:
+                - name: Host
+                  value: localhost
             initialDelaySeconds: 30
             periodSeconds: 15
-            timeoutSeconds: 5
             failureThreshold: 10
       volumes:
         - name: data
