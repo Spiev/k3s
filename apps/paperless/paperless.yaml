@@ -310,7 +310,7 @@ spec:
           command: ['sh', '-c', 'until nc -z paperless-redis 6379; do echo "waiting for redis..."; sleep 2; done']
       containers:
         - name: paperless
-          image: ghcr.io/paperless-ngx/paperless-ngx:3.5.0@sha256:8c1e2c4e0abb50576c7a09f062ed581e2d955e298a302e1e196a35338639005e
+          image: ghcr.io/paperless-ngx/paperless-ngx:3.4.2@sha256:d704e84f88300eb6ab001ab15720a2330ff99169cf9f94d6b8fcc44b63a84c84
           env:
             - name: PAPERLESS_DBHOST
               value: paperless-db
