@@ -223,43 +223,75 @@ The backup contains: a PostgreSQL dump (in `BACKUP_TEMP_DIR/paperless/`) plus th
 `paperless-media` and `paperless-data` PVCs read directly from the local-path filesystem.
 Restic stores all three paths in a single snapshot tagged `paperless`.
 
-> **Note:** the import below streams the dump *into* the pod via `kubectl exec -i`.
-> The same k3s exec-proxy limit that affects backups applies here — if a large
-> import resets with `connection reset by peer`, copy the `.sql.gz` into the DB
-> PVC on the host first (`sudo cp` into the `*_paperless_paperless-postgres` dir)
-> and run `zcat … | psql` from inside the pod instead.
+Notes on the procedure below (verified in a real restore on 2026-11-17):
+
+- **Drop the database first.** The dump is a `pg_dumpall` and contains its own
+  `CREATE DATABASE paperless` + `\connect paperless`. Importing it into the existing
+  database collides with the existing schema. `CREATE ROLE ... already exists`
+  errors are harmless.
+- **Import from a file in the DB PVC, not via `kubectl exec -i`.** The dump is
+  ~95 MB uncompressed; streaming it through the k3s API-server exec proxy hits the
+  same `connection reset by peer` limit described for backups above.
+- **Suspend the Flux `apps` Kustomization** while working, otherwise Flux resets
+  the scaled-down replica count on its next reconcile.
+- **DB-only restore** (e.g. rolling back a failed upgrade): skip step 5. Rolling back
+  the image alone is not enough when the new version already ran its migrations —
+  the old version then crashes in `init-migrations` (e.g. `column ... does not exist`).
+  Restore the DB from a snapshot taken *before* the upgrade
+  (`restic snapshots --tag paperless`).
 
 ```bash
 cd ~/k3s/scripts && source .restic.env
 
-# 1. Restore snapshot (DB dump + PVC paths) to temp location
+# 1. Restore the snapshot to a temp location
+#    (DB-only: add --include /tmp/k3s-backup/paperless to skip the large media PVC)
 RESTIC_PASSWORD="$RESTIC_PASSWORD_S3" restic -r "$RESTIC_REPO_S3" \
   restore latest --tag paperless --target /tmp/restore
-
-# 2. Scale down Paperless webserver (keep DB down too)
-kubectl scale deployment paperless-webserver -n paperless --replicas=0
-kubectl scale deployment paperless-db -n paperless --replicas=0
-kubectl wait --for=delete pod -n paperless -l app=paperless-webserver --timeout=60s
-
-# 3. Start DB, import dump
 # Adjust the path below if BACKUP_TEMP_DIR differs from /tmp/k3s-backup
-kubectl scale deployment paperless-db -n paperless --replicas=1
-kubectl wait --for=condition=Ready pod -n paperless -l app=paperless-db --timeout=60s
-DB_POD=$(kubectl get pod -n paperless -l app=paperless-db -o jsonpath='{.items[0].metadata.name}')
-zcat /tmp/restore/tmp/k3s-backup/paperless/paperless_db_*.sql.gz \
-  | kubectl exec -i -n paperless "$DB_POD" -- psql -U paperless
+DUMP=$(ls /tmp/restore/tmp/k3s-backup/paperless/paperless_db_*.sql.gz)
+gzip -t "$DUMP" && echo "dump ok"
 
-# 4. Restore media and data PVCs directly to the local-path storage
+# 2. Stop Flux from interfering, scale down the webserver (DB keeps running)
+flux suspend kustomization apps
+kubectl scale deployment paperless-webserver -n paperless --replicas=0
+kubectl wait --for=delete pod -n paperless -l app=paperless-webserver --timeout=90s
+DB_POD=$(kubectl get pod -n paperless -l app=paperless-db -o jsonpath='{.items[0].metadata.name}')
+
+# Optional: safety dump of the current state (stays in the DB PVC)
+kubectl exec -n paperless "$DB_POD" -c postgres -- \
+  pg_dumpall -U paperless -f /var/lib/postgresql/data/pre_restore.sql
+
+# 3. Copy the uncompressed dump into the DB PVC on the host
 STORAGE="/var/lib/rancher/k3s/storage"
+PG_PVC=$(sudo find "$STORAGE" -maxdepth 1 -name "*_paperless_paperless-postgres" -type d)
+zcat "$DUMP" | sudo tee "$PG_PVC/restore.sql" > /dev/null
+
+# 4. Drop the database and import (connect to the `postgres` DB for both)
+kubectl exec -n paperless "$DB_POD" -c postgres -- \
+  psql -U paperless -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE paperless WITH (FORCE);"
+kubectl exec -n paperless "$DB_POD" -c postgres -- \
+  psql -U paperless -d postgres -q -f /var/lib/postgresql/data/restore.sql \
+  2>&1 | grep -v 'already exists'
+
+# Verify: migration state and document count
+kubectl exec -n paperless "$DB_POD" -c postgres -- psql -U paperless -d paperless -tc \
+  "SELECT name FROM django_migrations WHERE app='documents' ORDER BY id DESC LIMIT 1;
+   SELECT count(*) FROM documents_document;"
+
+# 5. Restore media and data PVCs directly to the local-path storage (full restore only)
 MEDIA_PVC=$(sudo find "$STORAGE" -maxdepth 1 -name "*_paperless_paperless-media" -type d)
 DATA_PVC=$(sudo find  "$STORAGE" -maxdepth 1 -name "*_paperless_paperless-data"  -type d)
 sudo rsync -a --delete "/tmp/restore${MEDIA_PVC}/" "$MEDIA_PVC/"
 sudo rsync -a --delete "/tmp/restore${DATA_PVC}/"  "$DATA_PVC/"
 
-# 5. Scale back up and verify
+# 6. Scale back up, resume Flux, verify
 kubectl scale deployment paperless-webserver -n paperless --replicas=1
-kubectl logs -n paperless -l app=paperless-webserver -f
+flux resume kustomization apps
+kubectl rollout status deployment/paperless-webserver -n paperless --timeout=300s
+kubectl logs -n paperless -l app=paperless-webserver --tail=20   # look for "Paperless-ngx version"
 
+# 7. Clean up (remove pre_restore.sql once the restore is confirmed)
+sudo rm -f "$PG_PVC/restore.sql"
 rm -rf /tmp/restore
 ```
 
