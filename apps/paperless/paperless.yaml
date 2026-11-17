@@ -377,12 +377,16 @@ spec:
               mountPath: /usr/src/paperless/data
             - name: media
               mountPath: /usr/src/paperless/media
+          # Same command as the upstream image's Docker HEALTHCHECK. Must hit
+          # localhost: since v3.5.0, setting PAPERLESS_URL restricts
+          # ALLOWED_HOSTS to that hostname + localhost, so an httpGet probe
+          # (Host: <pod-ip>) is rejected with DisallowedHost (HTTP 400).
           readinessProbe:
-            httpGet:
-              path: /
-              port: 8000
+            exec:
+              command: ["curl", "-fs", "-S", "-L", "--max-time", "2", "http://localhost:8000"]
             initialDelaySeconds: 30
             periodSeconds: 15
+            timeoutSeconds: 5
             failureThreshold: 10
       volumes:
         - name: data
