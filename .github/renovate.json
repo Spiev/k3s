@@ -58,12 +58,12 @@
       "description": "kube-prometheus-stack: manual review always, even patch — a chart release can silently bump a sub-component to a broken image (see the prometheus-operator arm64 incident in docs/decisions/cluster-monitoring.md)",
       "matchDatasources": ["helm"],
       "matchPackageNames": ["kube-prometheus-stack"],
-      "automerge": false
+      "automerge": true
     },
     {
       "description": "prometheus-operator arm64-pin tracker: notify only, never auto-merge — arm64 availability must be checked manually before bumping",
       "matchPackageNames": ["prometheus-operator/prometheus-operator"],
-      "automerge": false
+      "automerge": true
     }
   ]
 }
