@@ -98,7 +98,7 @@ spec:
         # Dedicated least-privilege (pg_monitor role) metrics sidecar — see
         # docs/decisions/cluster-monitoring.md.
         - name: postgres-exporter
-          image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+          image: quay.io/prometheuscommunity/postgres-exporter:v0.21.1@sha256:a88794758ad461c75f3825b51cde4bde730bdff04b3b24d00efe14217e41f615
           args: []
           env:
             - name: DATA_SOURCE_USER
