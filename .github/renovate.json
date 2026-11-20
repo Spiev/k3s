@@ -44,6 +44,12 @@
       "allowedVersions": "<9"
     },
     {
+      "description": "Postgres: stay on 18.x for Paperless-ngx and TeslaMate until both support v19 (major upgrade also needs dump/restore or pg_upgrade)",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["postgres", "docker.io/postgres", "docker.io/library/postgres"],
+      "allowedVersions": "<19"
+    },
+    {
       "description": "Auto-merge minor, patch and digest updates",
       "matchUpdateTypes": ["minor", "patch", "digest"],
       "automerge": true,
