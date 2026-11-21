@@ -236,7 +236,7 @@ spec:
               mountPath: /shared
       containers:
         - name: seafile
-          image: seafileltd/seafile-mc:13.0.30@sha256:fe1f111e93f81e673eeec2d0365fe2462d41de2d44cddc652ee4a1145f2f3938
+          image: seafileltd/seafile-mc:13.0.30@sha256:92df4680b5cbf2cdb0c7257942a9bea42b1c297aad9eab6bbd017e53f1ccfc2f
           env:
             - name: SEAFILE_MYSQL_DB_HOST
               value: mariadb
