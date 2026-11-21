@@ -3,9 +3,42 @@ kind: Ingress
 metadata:
   name: grafana
   namespace: monitoring
+  labels:
+    app: grafana
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: web
     # LAN-only: diagnostic tool for the operator, not internet-facing.
+    traefik.ingress.kubernetes.io/router.middlewares: kube-system-lan-only@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: grafana.fritz.box    # <-- deine Domain eintragen
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kube-prometheus-stack-grafana
+                port:
+                  number: 80
+---
+# HTTPS variant for browsers with automatic HTTPS upgrade (Brave/Chromium
+# "Always use secure connections"): they request https:// first and would get
+# a 404 without a TLS router. Separate Ingress because router.tls=true makes a
+# router TLS-only on *all* its entrypoints — plain HTTP above must keep working.
+# No secretName -> Traefik's self-signed default cert (browser warning,
+# regenerated on every Traefik restart).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-tls
+  namespace: monitoring
+  labels:
+    app: grafana
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
     traefik.ingress.kubernetes.io/router.middlewares: kube-system-lan-only@kubernetescrd
 spec:
   ingressClassName: traefik

@@ -3,6 +3,8 @@ kind: Ingress
 metadata:
   name: pihole-web
   namespace: pihole
+  labels:
+    app: pihole
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: web
     # LAN-only: blocks internet clients spoofing the Host header via the :80 forward
@@ -19,4 +21,34 @@ spec:
               service:
                 name: pihole-web
                 port:
-                  number: 80
+                  number: 8080
+---
+# HTTPS variant for browsers with automatic HTTPS upgrade (Brave/Chromium
+# "Always use secure connections"): see infrastructure/monitoring/grafana-ingress.yaml.example.
+# Separate Ingress because router.tls=true makes a router TLS-only on all its
+# entrypoints. No secretName -> Traefik's self-signed default cert.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pihole-web-tls
+  namespace: pihole
+  labels:
+    app: pihole
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    # LAN-only: blocks internet clients spoofing the Host header via the :80 forward
+    traefik.ingress.kubernetes.io/router.middlewares: kube-system-lan-only@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: pihole.fritz.box    # <-- deine Domain eintragen
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pihole-web
+                port:
+                  number: 8080
