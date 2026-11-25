@@ -51,6 +51,23 @@ Two Pi-hole instances run as a StatefulSet, one per node, so DNS stays up while 
 
 Not covered yet: if a whole node goes down, clients that only know that node's IP lose DNS. Fixing that needs a floating IP, which is planned with [MetalLB](../platform/metallb.md). The StatefulSet stays as it is; only the `pihole-dns` Service changes.
 
+## Conditional forwarding for `fritz.box`
+
+Pi-hole forwards everything under `fritz.box` (and reverse lookups for the LAN) to the Fritz!Box instead of the public upstreams:
+
+```bash
+kubectl exec -n pihole pihole-0 -c pihole -- \
+  pihole-FTL --config dns.revServers '["true,<LAN-CIDR>,<FRITZBOX-IP>,fritz.box"]'
+```
+
+`<LAN-CIDR>` is the home network (Fritz!Box default `192.168.178.0/24`), `<FRITZBOX-IP>` the router's LAN address.
+
+**Why it is required:** nodes and `hostNetwork` pods (Home Assistant) still have `search fritz.box` in `resolv.conf`, combined with `ndots:5`. Every external lookup therefore first asks for `<name>.fritz.box`. Without this setting those queries went to OpenDNS → the public `.box` TLD. Since 2026-11-25 the `.box` nameservers (`*.nic.box`) **drop** queries for `fritz.box` instead of returning NXDOMAIN. The queries hung, dnsmasq hit `Maximum number of concurrent DNS queries reached (max: 150)`, CoreDNS returned SERVFAIL, and glibc gave up with `EAI_AGAIN` (`[Errno -3] Try again`), so every cloud integration in Home Assistant failed. The Fritz!Box answers these names locally in a few milliseconds.
+
+Pi-hole's own local records (`dns.hosts`, `dns.cnameRecords`) still take precedence; only names Pi-hole doesn't know go to the Fritz!Box.
+
+Check: `dig @<pihole-ip> api.github.com.fritz.box` must return `NXDOMAIN` immediately, not time out.
+
 ---
 
 ## Step 1 — Static ULA address on the k3s node
