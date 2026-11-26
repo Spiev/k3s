@@ -44,30 +44,35 @@
       "allowedVersions": "<9"
     },
     {
+      "description": "Apache Tika: image has no OCI source label, so link the CHANGES.txt of the matching release tag (image 3.4.0.0 -> tag 3.4.0)",
+      "matchPackageNames": ["docker.io/apache/tika"],
+      "changelogUrl": "https://github.com/apache/tika/blob/{{newMajor}}.{{newMinor}}.{{newPatch}}/CHANGES.txt"
+    },
+    {
       "description": "Postgres: stay on 18.x for Paperless-ngx and TeslaMate until both support v19 (major upgrade also needs dump/restore or pg_upgrade)",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["postgres", "docker.io/postgres", "docker.io/library/postgres"],
       "allowedVersions": "<19"
     },
     {
-      "description": "Auto-merge minor, patch and digest updates",
+      "description": "Minor, patch and digest updates merge automatically once approved — branch protection requires a review, automerge never bypasses it",
       "matchUpdateTypes": ["minor", "patch", "digest"],
       "automerge": true,
       "automergeType": "pr"
     },
     {
-      "description": "Major updates require manual review",
+      "description": "Major updates: no automerge, merge manually after review",
       "matchUpdateTypes": ["major"],
       "automerge": false
     },
     {
-      "description": "kube-prometheus-stack: manual review always, even patch — a chart release can silently bump a sub-component to a broken image (see the prometheus-operator arm64 incident in docs/decisions/cluster-monitoring.md)",
+      "description": "kube-prometheus-stack: review every update incl. major — a chart release can silently bump a sub-component to a broken image (see the prometheus-operator arm64 incident in docs/decisions/cluster-monitoring.md); merges automatically once approved",
       "matchDatasources": ["helm"],
       "matchPackageNames": ["kube-prometheus-stack"],
       "automerge": true
     },
     {
-      "description": "prometheus-operator arm64-pin tracker: notify only, never auto-merge — arm64 availability must be checked manually before bumping",
+      "description": "prometheus-operator arm64-pin tracker: check arm64 availability before approving; merges automatically once approved",
       "matchPackageNames": ["prometheus-operator/prometheus-operator"],
       "automerge": true
     }
