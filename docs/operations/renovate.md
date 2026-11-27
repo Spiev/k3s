@@ -215,6 +215,17 @@ marker comments in `kube-prometheus-stack.yaml` against
 (no automerge): a new tag existing does not mean arm64 images are fixed —
 verify via the chart's quay.io manifest list (see the ADR) before bumping.
 
+**`fileMatch` extends, it does not replace** — the `flux` manager's built-in
+pattern for `gotk-components.yaml` stays active, so Renovate also tracks the
+Flux installation itself (`fluxcd/flux2`, via the `# Flux Version:` header in
+`clusters/raspi/flux-system/gotk-components.yaml`). With `pinDigests: true` it
+then tried to pin that dependency to a commit SHA, which the manifest has no
+place for — every run logged
+`WARN: Error updating branch: update failure (branch=renovate/pin-dependencies)`
+(debug log: `Digest is not updated … foundValue: undefined`). A package rule
+sets `pinDigests: false` for `fluxcd/flux2`; regular version updates are
+unaffected.
+
 ---
 
 ## Debugging

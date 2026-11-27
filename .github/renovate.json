@@ -70,6 +70,12 @@
       "description": "prometheus-operator arm64-pin tracker: notify only, never auto-merge — arm64 availability must be checked manually before bumping",
       "matchPackageNames": ["prometheus-operator/prometheus-operator"],
       "automerge": true
+    },
+    {
+      "description": "Flux system manifests (gotk-components.yaml, picked up by the flux manager's default file pattern) only carry a '# Flux Version:' comment — there is no place for a digest, so a pinDigest update always fails with 'update failure' on renovate/pin-dependencies",
+      "matchManagers": ["flux"],
+      "matchDepNames": ["fluxcd/flux2"],
+      "pinDigests": false
     }
   ]
 }
